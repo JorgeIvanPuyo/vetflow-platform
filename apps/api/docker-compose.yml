@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql://vetflow:vetflow@db:5432/vetflow
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vetflow
+      POSTGRES_PASSWORD: vetflow
+      POSTGRES_DB: vetflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
