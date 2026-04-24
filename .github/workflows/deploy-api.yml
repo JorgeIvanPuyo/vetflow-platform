@@ -18,7 +18,7 @@ env:
 
 jobs:
   deploy:
-    name: Build, push and deploy backend API
+    name: Test, build, push and deploy backend API
     runs-on: ubuntu-latest
 
     permissions:
@@ -35,6 +35,22 @@ jobs:
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API dependencies
+        run: |
+          cd apps/api
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run API tests
+        run: |
+          cd apps/api
+          pytest
 
       - name: Configure Docker auth
         run: |
@@ -57,4 +73,4 @@ jobs:
             --region $REGION \
             --project $PROJECT_ID \
             --allow-unauthenticated \
-            --set-env-vars APP_ENV=production,APP_PORT=8000,DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}"
+            --set-env-vars APP_ENV=production,DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}"
