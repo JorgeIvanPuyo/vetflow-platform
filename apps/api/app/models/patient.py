@@ -37,3 +37,8 @@ class Patient(BaseModel):
 
     tenant: Mapped[Tenant] = relationship("Tenant")
     owner: Mapped[Owner] = relationship("Owner", back_populates="patients")
+    consultations: Mapped[list[Consultation]] = relationship(
+        "Consultation",
+        back_populates="patient",
+    )
+    exams: Mapped[list[Exam]] = relationship("Exam", back_populates="patient")

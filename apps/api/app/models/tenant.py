@@ -13,3 +13,8 @@ class Tenant(BaseModel):
 
     users: Mapped[list[User]] = relationship("User", back_populates="tenant")
     owners: Mapped[list[Owner]] = relationship("Owner", back_populates="tenant")
+    consultations: Mapped[list[Consultation]] = relationship(
+        "Consultation",
+        back_populates="tenant",
+    )
+    exams: Mapped[list[Exam]] = relationship("Exam", back_populates="tenant")

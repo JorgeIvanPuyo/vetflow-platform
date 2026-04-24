@@ -1,7 +1,9 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.consultations import router as consultations_router
 from app.api.debug import router as debug_router
+from app.api.exams import router as exams_router
 from app.api.health import router as health_router
 from app.api.owners import router as owners_router
 from app.api.patients import router as patients_router
@@ -29,6 +31,8 @@ api_v1_router.include_router(health_router)
 api_v1_router.include_router(debug_router)
 api_v1_router.include_router(owners_router)
 api_v1_router.include_router(patients_router)
+api_v1_router.include_router(consultations_router)
+api_v1_router.include_router(exams_router)
 api_v1_router.include_router(search_router)
 
 app.include_router(health_router)
