@@ -60,7 +60,7 @@ export function GlobalSearch() {
       const message =
         error instanceof ApiClientError
           ? error.message
-          : "Could not complete search";
+          : "No se pudo completar la búsqueda";
 
       setState({
         isLoading: false,
@@ -81,35 +81,35 @@ export function GlobalSearch() {
       return null;
     }
 
-    return `${state.results.length} result${state.results.length === 1 ? "" : "s"} for "${state.submittedQuery}"`;
+    return `${state.results.length} resultado${state.results.length === 1 ? "" : "s"} para "${state.submittedQuery}"`;
   }, [state.errorMessage, state.isLoading, state.results.length, state.submittedQuery]);
 
   return (
     <div className="global-search">
       <form className="search-form" onSubmit={handleSubmit} role="search">
         <input
-          aria-label="Search owners and patients"
+          aria-label="Buscar propietarios y pacientes"
           className="search-input"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search owners, phones or patients"
+          placeholder="Buscar propietarios, teléfonos o pacientes"
           value={query}
         />
         <button className="search-button" type="submit">
-          Search
+          Buscar
         </button>
       </form>
 
       {showResultsPanel ? (
         <div className="search-results">
           <div className="search-results__header">
-            <strong>Search</strong>
+            <strong>Búsqueda</strong>
             <button className="search-results__clear" onClick={clearResults} type="button">
-              Clear
+              Limpiar
             </button>
           </div>
 
           {state.isLoading ? (
-            <div className="panel-note">Searching...</div>
+            <div className="panel-note">Buscando...</div>
           ) : null}
 
           {!state.isLoading && state.errorMessage ? (
@@ -124,7 +124,7 @@ export function GlobalSearch() {
           !state.errorMessage &&
           state.submittedQuery &&
           state.results.length === 0 ? (
-            <div className="empty-state">No owners or patients matched that search.</div>
+            <div className="empty-state">No se encontraron propietarios ni pacientes.</div>
           ) : null}
 
           {!state.isLoading && !state.errorMessage && hasResults ? (
@@ -137,11 +137,13 @@ export function GlobalSearch() {
                     onClick={clearResults}
                   >
                     <span className={`result-badge result-badge--${result.type}`}>
-                      {result.type}
+                      {result.type === "owner" ? "propietario" : "paciente"}
                     </span>
                     <span className="search-result-copy">
                       <span className="search-result-title">{result.title}</span>
-                      <span className="search-result-subtitle">{result.subtitle}</span>
+                      <span className="search-result-subtitle">
+                        {translateSearchSubtitle(result.subtitle)}
+                      </span>
                     </span>
                   </Link>
                 </li>
@@ -152,4 +154,8 @@ export function GlobalSearch() {
       ) : null}
     </div>
   );
+}
+
+function translateSearchSubtitle(subtitle: string) {
+  return subtitle.replace("Owner:", "Propietario:");
 }

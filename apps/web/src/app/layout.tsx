@@ -5,7 +5,7 @@ import "@/styles/globals.css";
 
 export const metadata: Metadata = {
   title: "Vetflow",
-  description: "Multi-tenant veterinary clinical platform",
+  description: "Plataforma clínica veterinaria multi-tenant",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body>
         <div className="app-shell">
           <AppHeader />

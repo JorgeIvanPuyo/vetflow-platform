@@ -73,7 +73,7 @@ export function PatientsScreen() {
       const message =
         error instanceof ApiClientError
           ? error.message
-          : "Could not load patients";
+          : "No se pudieron cargar los pacientes";
 
       setState((current) => ({
         ...current,
@@ -122,14 +122,14 @@ export function PatientsScreen() {
       setState((current) => ({
         ...current,
         isSubmitting: false,
-        successMessage: "Patient created successfully.",
+        successMessage: "Paciente creado correctamente.",
       }));
       await loadPatientsScreen();
     } catch (error) {
       const message =
         error instanceof ApiClientError
           ? error.message
-          : "Could not create patient";
+          : "No se pudo crear el paciente";
 
       setState((current) => ({
         ...current,
@@ -146,10 +146,10 @@ export function PatientsScreen() {
   return (
     <div className="content-grid">
       <section className="panel">
-        <h2>Create patient</h2>
+        <h2>Crear paciente</h2>
         <form className="entity-form" onSubmit={handleSubmit}>
           <label className="field">
-            <span>Owner</span>
+            <span>Propietario</span>
             <select
               required
               value={formState.owner_id}
@@ -160,7 +160,7 @@ export function PatientsScreen() {
                 }))
               }
             >
-              <option value="">Select an owner</option>
+              <option value="">Selecciona un propietario</option>
               {state.owners.map((owner) => (
                 <option key={owner.id} value={owner.id}>
                   {owner.full_name}
@@ -170,7 +170,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Name</span>
+            <span>Nombre</span>
             <input
               required
               value={formState.name}
@@ -184,7 +184,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Species</span>
+            <span>Especie</span>
             <input
               required
               value={formState.species}
@@ -198,7 +198,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Breed</span>
+            <span>Raza</span>
             <input
               value={formState.breed}
               onChange={(event) =>
@@ -211,7 +211,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Sex</span>
+            <span>Sexo</span>
             <input
               value={formState.sex}
               onChange={(event) =>
@@ -224,7 +224,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Estimated age</span>
+            <span>Edad estimada</span>
             <input
               value={formState.estimated_age}
               onChange={(event) =>
@@ -237,7 +237,7 @@ export function PatientsScreen() {
           </label>
 
           <label className="field">
-            <span>Weight (kg)</span>
+            <span>Peso (kg)</span>
             <input
               inputMode="decimal"
               value={formState.weight_kg}
@@ -255,12 +255,12 @@ export function PatientsScreen() {
             disabled={state.isSubmitting || state.owners.length === 0}
             type="submit"
           >
-            {state.isSubmitting ? "Saving..." : "Create patient"}
+            {state.isSubmitting ? "Guardando..." : "Crear paciente"}
           </button>
         </form>
 
         {state.owners.length === 0 && !state.isLoading ? (
-          <p className="empty-state">Create an owner first to register a patient.</p>
+          <p className="empty-state">Crea un propietario antes de registrar un paciente.</p>
         ) : null}
 
         {state.successMessage ? (
@@ -273,18 +273,18 @@ export function PatientsScreen() {
 
       <section className="panel">
         <div className="section-heading">
-          <h2>Patients</h2>
-          <p className="muted-text">Basic list connected to the live backend.</p>
+          <h2>Pacientes</h2>
+          <p className="muted-text">Lista básica conectada al backend activo.</p>
         </div>
 
-        {state.isLoading ? <div className="panel-note">Loading patients...</div> : null}
+        {state.isLoading ? <div className="panel-note">Cargando pacientes...</div> : null}
 
         {!state.isLoading && state.errorMessage ? (
           <div className="error-state">{state.errorMessage}</div>
         ) : null}
 
         {!state.isLoading && !state.errorMessage && state.patients.length === 0 ? (
-          <div className="empty-state">No patients found for this tenant yet.</div>
+          <div className="empty-state">No hay pacientes registrados para esta cuenta.</div>
         ) : null}
 
         {!state.isLoading && !state.errorMessage && state.patients.length > 0 ? (
@@ -296,7 +296,7 @@ export function PatientsScreen() {
                 </Link>
                 <p className="simple-list__meta">{patient.species}</p>
                 <p className="simple-list__meta">
-                  Owner: {getOwnerName(patient.owner_id)}
+                  Propietario: {getOwnerName(patient.owner_id)}
                 </p>
               </li>
             ))}

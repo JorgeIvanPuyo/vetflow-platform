@@ -52,6 +52,57 @@ export type Patient = {
   updated_at: string;
 };
 
+export type Consultation = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  visit_date: string;
+  reason: string;
+  anamnesis: string | null;
+  clinical_exam: string | null;
+  presumptive_diagnosis: string | null;
+  diagnostic_plan: string | null;
+  therapeutic_plan: string | null;
+  final_diagnosis: string | null;
+  indications: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExamStatus = "requested" | "performed" | "result_loaded";
+
+export type Exam = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  consultation_id: string | null;
+  exam_type: string;
+  status: ExamStatus;
+  requested_at: string;
+  performed_at: string | null;
+  result_summary: string | null;
+  result_detail: string | null;
+  observations: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClinicalHistoryTimelineItem = {
+  type: "consultation" | "exam";
+  id: string;
+  date: string;
+  title: string;
+  summary: string;
+};
+
+export type ClinicalHistory = {
+  patient: Patient;
+  consultations: Consultation[];
+  exams?: Exam[];
+  timeline?: ClinicalHistoryTimelineItem[];
+  owner?: Owner | null;
+};
+
 export type CreateOwnerPayload = {
   full_name: string;
   phone: string;
@@ -66,6 +117,39 @@ export type CreatePatientPayload = {
   sex?: string;
   estimated_age?: string;
   weight_kg?: number;
+};
+
+export type CreateConsultationPayload = {
+  patient_id: string;
+  visit_date: string;
+  reason: string;
+  anamnesis?: string | null;
+  clinical_exam?: string | null;
+  presumptive_diagnosis?: string | null;
+  diagnostic_plan?: string | null;
+  therapeutic_plan?: string | null;
+  final_diagnosis?: string | null;
+  indications?: string | null;
+};
+
+export type UpdateConsultationPayload = Partial<
+  Omit<CreateConsultationPayload, "patient_id">
+>;
+
+export type CreateExamPayload = {
+  patient_id: string;
+  consultation_id?: string | null;
+  exam_type: string;
+  requested_at: string;
+  observations?: string | null;
+};
+
+export type UpdateExamPayload = {
+  status?: ExamStatus;
+  performed_at?: string | null;
+  result_summary?: string | null;
+  result_detail?: string | null;
+  observations?: string | null;
 };
 
 export type SearchResult = {

@@ -11,10 +11,10 @@ export function AppHeader() {
           <span>Vetflow</span>
         </Link>
 
-        <nav className="site-nav" aria-label="Primary">
-          <Link href="/">Dashboard</Link>
-          <Link href="/owners">Owners</Link>
-          <Link href="/patients">Patients</Link>
+        <nav className="site-nav" aria-label="Navegación principal">
+          <Link href="/">Inicio</Link>
+          <Link href="/owners">Propietarios</Link>
+          <Link href="/patients">Pacientes</Link>
         </nav>
 
         <GlobalSearch />

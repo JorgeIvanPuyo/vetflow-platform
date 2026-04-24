@@ -4,10 +4,10 @@ export default function OwnersPage() {
   return (
     <div className="page-stack">
       <section className="hero-card">
-        <p className="page-subtitle">Owners</p>
-        <h1 className="page-title">Owner directory</h1>
+        <p className="page-subtitle">Propietarios</p>
+        <h1 className="page-title">Directorio de propietarios</h1>
         <p className="page-subtitle">
-          List and creation flow connected to <code>/api/v1/owners</code>.
+          Lista y creación conectadas a <code>/api/v1/owners</code>.
         </p>
       </section>
 

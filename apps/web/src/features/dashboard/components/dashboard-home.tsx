@@ -51,7 +51,7 @@ export function DashboardHome() {
         const message =
           error instanceof ApiClientError
             ? error.message
-            : "Could not load backend data";
+            : "No se pudieron cargar los datos del servidor";
 
         setState({
           isLoading: false,
@@ -72,22 +72,22 @@ export function DashboardHome() {
   return (
     <div className="page-stack">
       <section className="hero-card">
-        <p className="page-subtitle">Clinical MVP frontend base</p>
-        <h1>Connected to the multi-tenant backend</h1>
+        <p className="page-subtitle">Base frontend del MVP clínico</p>
+        <h1>Conectado al backend multicliente</h1>
         <p>
-          This starter screen confirms the frontend can talk to the FastAPI API
-          and read tenant-scoped owner data.
+          Esta pantalla confirma que el frontend puede comunicarse con la API
+          FastAPI y leer datos de propietarios del tenant activo.
         </p>
       </section>
 
       <section className="stats-grid">
         <article className="stat-card">
-          <div className="stat-card__label">Backend status</div>
+          <div className="stat-card__label">Estado del backend</div>
           <div className="stat-card__value">
             {state.isLoading ? (
-              <span className="status-pill status-pill--loading">Loading...</span>
+              <span className="status-pill status-pill--loading">Cargando...</span>
             ) : state.errorMessage ? (
-              <span className="status-pill status-pill--error">Unavailable</span>
+              <span className="status-pill status-pill--error">No disponible</span>
             ) : (
               <span className="status-pill status-pill--ok">
                 {state.backendStatus ?? "ok"}
@@ -97,7 +97,7 @@ export function DashboardHome() {
         </article>
 
         <article className="stat-card">
-          <div className="stat-card__label">Owners found</div>
+          <div className="stat-card__label">Propietarios encontrados</div>
           <div className="stat-card__value">
             {state.isLoading ? "..." : state.ownerCount}
           </div>
@@ -106,7 +106,7 @@ export function DashboardHome() {
 
       {state.errorMessage ? (
         <section className="error-state">
-          <strong>Connection error:</strong> {state.errorMessage}
+          <strong>Error de conexión:</strong> {state.errorMessage}
         </section>
       ) : null}
     </div>

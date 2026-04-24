@@ -56,7 +56,7 @@ export function OwnersScreen() {
       const message =
         error instanceof ApiClientError
           ? error.message
-          : "Could not load owners";
+          : "No se pudieron cargar los propietarios";
 
       setState((current) => ({
         ...current,
@@ -95,14 +95,14 @@ export function OwnersScreen() {
       setState((current) => ({
         ...current,
         isSubmitting: false,
-        successMessage: "Owner created successfully.",
+        successMessage: "Propietario creado correctamente.",
       }));
       await loadOwners();
     } catch (error) {
       const message =
         error instanceof ApiClientError
           ? error.message
-          : "Could not create owner";
+          : "No se pudo crear el propietario";
 
       setState((current) => ({
         ...current,
@@ -115,10 +115,10 @@ export function OwnersScreen() {
   return (
     <div className="content-grid">
       <section className="panel">
-        <h2>Create owner</h2>
+        <h2>Crear propietario</h2>
         <form className="entity-form" onSubmit={handleSubmit}>
           <label className="field">
-            <span>Full name</span>
+            <span>Nombre completo</span>
             <input
               required
               value={formState.full_name}
@@ -132,7 +132,7 @@ export function OwnersScreen() {
           </label>
 
           <label className="field">
-            <span>Phone</span>
+            <span>Teléfono</span>
             <input
               required
               value={formState.phone}
@@ -146,7 +146,7 @@ export function OwnersScreen() {
           </label>
 
           <label className="field">
-            <span>Email</span>
+            <span>Correo</span>
             <input
               type="email"
               value={formState.email}
@@ -160,7 +160,7 @@ export function OwnersScreen() {
           </label>
 
           <button className="primary-button" disabled={state.isSubmitting} type="submit">
-            {state.isSubmitting ? "Saving..." : "Create owner"}
+            {state.isSubmitting ? "Guardando..." : "Crear propietario"}
           </button>
         </form>
 
@@ -174,18 +174,18 @@ export function OwnersScreen() {
 
       <section className="panel">
         <div className="section-heading">
-          <h2>Owners</h2>
-          <p className="muted-text">Connected to the real tenant-scoped backend.</p>
+          <h2>Propietarios</h2>
+          <p className="muted-text">Conectado al backend real de la cuenta activa.</p>
         </div>
 
-        {state.isLoading ? <div className="panel-note">Loading owners...</div> : null}
+        {state.isLoading ? <div className="panel-note">Cargando propietarios...</div> : null}
 
         {!state.isLoading && state.errorMessage ? (
           <div className="error-state">{state.errorMessage}</div>
         ) : null}
 
         {!state.isLoading && !state.errorMessage && state.owners.length === 0 ? (
-          <div className="empty-state">No owners found for this tenant yet.</div>
+          <div className="empty-state">No hay propietarios registrados para esta cuenta.</div>
         ) : null}
 
         {!state.isLoading && !state.errorMessage && state.owners.length > 0 ? (
