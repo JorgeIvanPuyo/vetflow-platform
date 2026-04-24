@@ -13,15 +13,16 @@ env:
   PROJECT_ID: vet-flow-494319
   REGION: us-central1
   SERVICE_NAME: vetflow-api
+  REPOSITORY: vetflow
+  IMAGE_NAME: vetflow-api
 
 jobs:
   deploy:
-    name: Deploy backend API
+    name: Build, push and deploy backend API
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - name: Checkout repo
@@ -35,10 +36,24 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure Docker auth
+        run: |
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          IMAGE_URI="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}"
+          docker build -t "$IMAGE_URI" apps/api
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Push Docker image
+        run: |
+          docker push "$IMAGE_URI"
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE_NAME \
-            --source apps/api \
+            --image "$IMAGE_URI" \
             --region $REGION \
             --project $PROJECT_ID \
             --allow-unauthenticated \
