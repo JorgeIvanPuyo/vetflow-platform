@@ -24,7 +24,6 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
-import { createConsultation } from "@/services/consultations";
 import { createExam } from "@/services/exams";
 import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
 import { getOwner, getOwners } from "@/services/owners";
@@ -34,7 +33,6 @@ import type {
   ClinicalHistory,
   ClinicalHistoryTimelineItem,
   Consultation,
-  CreateConsultationPayload,
   CreateExamPayload,
   CreatePatientFileReferencePayload,
   CreatePreventiveCarePayload,
@@ -64,24 +62,11 @@ type PatientDetailState = {
   fileReferences: PatientFileReference[];
   errorMessage: string | null;
   successMessage: string | null;
-  showConsultationForm: boolean;
   showExamForm: boolean;
 };
 
 type PatientDetailSection = "history" | "info" | "preventive" | "files";
 type TimelineFilter = "all" | "consultation" | "exam" | "preventive_care" | "file_reference";
-
-type ConsultationFormState = {
-  visit_date: string;
-  reason: string;
-  anamnesis: string;
-  clinical_exam: string;
-  presumptive_diagnosis: string;
-  diagnostic_plan: string;
-  therapeutic_plan: string;
-  final_diagnosis: string;
-  indications: string;
-};
 
 type ExamFormState = {
   exam_type: string;
@@ -120,18 +105,6 @@ type PatientEditFormState = {
 
 type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
 
-const initialFormState: ConsultationFormState = {
-  visit_date: toDateTimeLocalValue(new Date()),
-  reason: "",
-  anamnesis: "",
-  clinical_exam: "",
-  presumptive_diagnosis: "",
-  diagnostic_plan: "",
-  therapeutic_plan: "",
-  final_diagnosis: "",
-  indications: "",
-};
-
 const initialExamFormState: ExamFormState = {
   exam_type: "",
   requested_at: toDateTimeLocalValue(new Date()),
@@ -169,7 +142,6 @@ const initialState: PatientDetailState = {
   fileReferences: [],
   errorMessage: null,
   successMessage: null,
-  showConsultationForm: false,
   showExamForm: false,
 };
 
@@ -184,19 +156,6 @@ const initialPatientEditFormState: PatientEditFormState = {
   allergies: "",
   chronic_conditions: "",
 };
-
-const consultationSections: Array<{
-  key: keyof Omit<ConsultationFormState, "visit_date" | "reason">;
-  label: string;
-}> = [
-  { key: "anamnesis", label: "Anamnesis" },
-  { key: "clinical_exam", label: "Examen clínico" },
-  { key: "presumptive_diagnosis", label: "Diagnóstico presuntivo" },
-  { key: "diagnostic_plan", label: "Plan diagnóstico" },
-  { key: "therapeutic_plan", label: "Plan terapéutico" },
-  { key: "final_diagnosis", label: "Diagnóstico final" },
-  { key: "indications", label: "Indicaciones" },
-];
 
 const patientSections: Array<{
   key: PatientDetailSection;
@@ -244,7 +203,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
-  const [formState, setFormState] = useState<ConsultationFormState>(initialFormState);
   const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
@@ -315,43 +273,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     void loadPatientDetail();
   }, [loadPatientDetail]);
 
-  async function handleCreateConsultation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const payload: CreateConsultationPayload = {
-      patient_id: patientId,
-      visit_date: new Date(formState.visit_date).toISOString(),
-      reason: formState.reason.trim(),
-      ...buildClinicalPayload(formState),
-    };
-
-    setState((current) => ({
-      ...current,
-      isSubmitting: true,
-      errorMessage: null,
-      successMessage: null,
-    }));
-
-    try {
-      await createConsultation(payload);
-      setFormState({ ...initialFormState, visit_date: toDateTimeLocalValue(new Date()) });
-      setState((current) => ({
-        ...current,
-        isSubmitting: false,
-        successMessage: "Consulta creada correctamente.",
-        showConsultationForm: false,
-        showExamForm: false,
-      }));
-      await loadPatientDetail();
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        isSubmitting: false,
-        errorMessage: getApiErrorMessage(error),
-      }));
-    }
-  }
-
   async function handleCreateExam(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -377,7 +298,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         ...current,
         isSubmitting: false,
         successMessage: "Solicitud de examen creada correctamente.",
-        showConsultationForm: false,
         showExamForm: false,
       }));
       await loadPatientDetail();
@@ -659,17 +579,10 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <button
             className="primary-button"
             type="button"
-            onClick={() =>
-              setState((current) => ({
-                ...current,
-                showConsultationForm: !current.showConsultationForm,
-                showExamForm: false,
-                successMessage: null,
-              }))
-            }
+            onClick={() => router.push(`/patients/${patientId}/consultations/new`)}
           >
             <Stethoscope aria-hidden="true" size={18} />
-            {state.showConsultationForm ? "Cerrar consulta" : "Nueva consulta"}
+            Nueva consulta
           </button>
           <button
             className="secondary-button"
@@ -678,7 +591,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               setState((current) => ({
                 ...current,
                 showExamForm: !current.showExamForm,
-                showConsultationForm: false,
                 successMessage: null,
               }))
             }
@@ -721,7 +633,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         </section>
       </section>
 
-      {state.showConsultationForm ? renderConsultationForm() : null}
       {state.showExamForm ? renderExamForm(consultations) : null}
 
       {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
@@ -755,58 +666,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {isFileModalOpen ? renderFileReferenceModal() : null}
     </div>
   );
-
-  function renderConsultationForm() {
-    return (
-      <section className="panel clinical-form-card">
-        <div className="section-heading">
-          <p className="eyebrow">Consulta</p>
-          <h2>Nueva consulta</h2>
-          <p>Nota clínica estructurada para este paciente.</p>
-        </div>
-
-        <form className="entity-form" onSubmit={handleCreateConsultation}>
-          <div className="form-grid">
-            <label className="field">
-              <span>Fecha de consulta</span>
-              <input
-                required
-                type="datetime-local"
-                value={formState.visit_date}
-                onChange={(event) => setFormState((current) => ({ ...current, visit_date: event.target.value }))}
-              />
-            </label>
-
-            <label className="field">
-              <span>Motivo</span>
-              <input
-                required
-                value={formState.reason}
-                onChange={(event) => setFormState((current) => ({ ...current, reason: event.target.value }))}
-              />
-            </label>
-          </div>
-
-          <div className="clinical-section-grid">
-            {consultationSections.map((section) => (
-              <label className="field clinical-section" key={section.key}>
-                <span>{section.label}</span>
-                <textarea
-                  rows={3}
-                  value={formState[section.key]}
-                  onChange={(event) => setFormState((current) => ({ ...current, [section.key]: event.target.value }))}
-                />
-              </label>
-            ))}
-          </div>
-
-          <button className="primary-button" disabled={state.isSubmitting} type="submit">
-            {state.isSubmitting ? "Guardando..." : "Crear consulta"}
-          </button>
-        </form>
-      </section>
-    );
-  }
 
   function renderExamForm(consultations: Consultation[]) {
     return (
@@ -1482,15 +1341,6 @@ function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: b
       <p>{item.summary}</p>
       {isNavigable ? <span className="inline-link">Ver</span> : null}
     </>
-  );
-}
-
-function buildClinicalPayload(formState: ConsultationFormState) {
-  return Object.fromEntries(
-    consultationSections.map((section) => {
-      const value = formState[section.key].trim();
-      return [section.key, value || null];
-    }),
   );
 }
 

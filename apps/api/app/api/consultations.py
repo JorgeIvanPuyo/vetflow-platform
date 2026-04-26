@@ -10,7 +10,12 @@ from app.schemas.consultation import (
     ClinicalHistoryRead,
     ClinicalHistoryTimelineItem,
     ConsultationCreate,
+    ConsultationMedicationCreate,
+    ConsultationMedicationRead,
     ConsultationRead,
+    ConsultationStepUpdate,
+    ConsultationStudyRequestCreate,
+    ConsultationStudyRequestRead,
     ConsultationUpdate,
 )
 from app.schemas.exam import ExamRead
@@ -70,6 +75,106 @@ def update_consultation(
         "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),
         "meta": {},
     }
+
+
+@router.patch("/consultations/{consultation_id}/step")
+def update_consultation_step(
+    consultation_id: uuid.UUID,
+    payload: ConsultationStepUpdate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    consultation = ConsultationService(db).update_consultation(
+        tenant.tenant_id,
+        consultation_id,
+        payload,
+    )
+    return {
+        "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.delete(
+    "/consultations/{consultation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_consultation(
+    consultation_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> None:
+    ConsultationService(db).delete_consultation(tenant.tenant_id, consultation_id)
+
+
+@router.post(
+    "/consultations/{consultation_id}/medications",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_consultation_medication(
+    consultation_id: uuid.UUID,
+    payload: ConsultationMedicationCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    medication = ConsultationService(db).create_medication(
+        tenant.tenant_id,
+        consultation_id,
+        payload,
+    )
+    return {
+        "data": ConsultationMedicationRead.model_validate(medication).model_dump(
+            mode="json",
+        ),
+        "meta": {},
+    }
+
+
+@router.delete(
+    "/consultation-medications/{medication_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_consultation_medication(
+    medication_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> None:
+    ConsultationService(db).delete_medication(tenant.tenant_id, medication_id)
+
+
+@router.post(
+    "/consultations/{consultation_id}/study-requests",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_consultation_study_request(
+    consultation_id: uuid.UUID,
+    payload: ConsultationStudyRequestCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    study_request = ConsultationService(db).create_study_request(
+        tenant.tenant_id,
+        consultation_id,
+        payload,
+    )
+    return {
+        "data": ConsultationStudyRequestRead.model_validate(study_request).model_dump(
+            mode="json",
+        ),
+        "meta": {},
+    }
+
+
+@router.delete(
+    "/consultation-study-requests/{study_request_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_consultation_study_request(
+    study_request_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> None:
+    ConsultationService(db).delete_study_request(tenant.tenant_id, study_request_id)
 
 
 @router.get("/patients/{patient_id}/consultations")
@@ -178,8 +283,7 @@ def _consultation_summary(consultation) -> str:
     return (
         consultation.final_diagnosis
         or consultation.presumptive_diagnosis
-        or consultation.clinical_exam
-        or consultation.anamnesis
+        or consultation.consultation_summary
         or "Consultation registered"
     )
 

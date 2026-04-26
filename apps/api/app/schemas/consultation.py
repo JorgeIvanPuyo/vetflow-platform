@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,6 +8,10 @@ from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
 from app.schemas.patient import PatientRead
 from app.schemas.preventive_care import PreventiveCareRead
+
+
+CONSULTATION_STATUSES = {"draft", "completed"}
+STUDY_REQUEST_TYPES = {"laboratory", "exam", "other"}
 
 
 class ConsultationBase(BaseModel):
@@ -19,6 +24,25 @@ class ConsultationBase(BaseModel):
     therapeutic_plan: str | None = None
     final_diagnosis: str | None = None
     indications: str | None = None
+    status: Literal["draft", "completed"] = "draft"
+    current_step: int | None = None
+    symptoms: str | None = None
+    symptom_duration: str | None = None
+    relevant_history: str | None = None
+    habits_and_diet: str | None = None
+    temperature_c: float | None = None
+    current_weight_kg: float | None = None
+    heart_rate: int | None = None
+    respiratory_rate: int | None = None
+    mucous_membranes: str | None = None
+    hydration: str | None = None
+    physical_exam_findings: str | None = None
+    diagnostic_tags: list[str] | None = None
+    diagnostic_plan_notes: str | None = None
+    therapeutic_plan_notes: str | None = None
+    next_control_date: date | None = None
+    consultation_summary: str | None = None
+    reminder_requested: bool = False
 
 
 class ConsultationCreate(ConsultationBase):
@@ -35,6 +59,61 @@ class ConsultationUpdate(BaseModel):
     therapeutic_plan: str | None = None
     final_diagnosis: str | None = None
     indications: str | None = None
+    status: Literal["draft", "completed"] | None = None
+    current_step: int | None = None
+    symptoms: str | None = None
+    symptom_duration: str | None = None
+    relevant_history: str | None = None
+    habits_and_diet: str | None = None
+    temperature_c: float | None = None
+    current_weight_kg: float | None = None
+    heart_rate: int | None = None
+    respiratory_rate: int | None = None
+    mucous_membranes: str | None = None
+    hydration: str | None = None
+    physical_exam_findings: str | None = None
+    diagnostic_tags: list[str] | None = None
+    diagnostic_plan_notes: str | None = None
+    therapeutic_plan_notes: str | None = None
+    next_control_date: date | None = None
+    consultation_summary: str | None = None
+    reminder_requested: bool | None = None
+
+
+class ConsultationStepUpdate(ConsultationUpdate):
+    pass
+
+
+class ConsultationMedicationCreate(BaseModel):
+    medication_name: str
+    dose_or_quantity: str | None = None
+    instructions: str | None = None
+
+
+class ConsultationMedicationRead(ConsultationMedicationCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    consultation_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConsultationStudyRequestCreate(BaseModel):
+    name: str
+    study_type: Literal["laboratory", "exam", "other"]
+    notes: str | None = None
+
+
+class ConsultationStudyRequestRead(ConsultationStudyRequestCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    consultation_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
 
 
 class ConsultationRead(ConsultationBase):
@@ -45,6 +124,8 @@ class ConsultationRead(ConsultationBase):
     patient_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    medications: list[ConsultationMedicationRead] = Field(default_factory=list)
+    study_requests: list[ConsultationStudyRequestRead] = Field(default_factory=list)
 
 
 class ClinicalHistoryTimelineItem(BaseModel):

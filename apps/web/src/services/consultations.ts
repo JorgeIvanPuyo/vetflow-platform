@@ -3,7 +3,12 @@ import type {
   ApiItemResponse,
   ApiListResponse,
   Consultation,
+  ConsultationMedication,
+  ConsultationStudyRequest,
   CreateConsultationPayload,
+  CreateMedicationPayload,
+  CreateStudyRequestPayload,
+  StepUpdatePayload,
   UpdateConsultationPayload,
 } from "@/types/api";
 
@@ -30,5 +35,49 @@ export function updateConsultation(
   return api.patch<ApiItemResponse<Consultation>>(
     `/api/v1/consultations/${consultationId}`,
     payload,
+  );
+}
+
+export function deleteConsultation(consultationId: string) {
+  return api.delete<void>(`/api/v1/consultations/${consultationId}`);
+}
+
+export function updateConsultationStep(
+  consultationId: string,
+  payload: StepUpdatePayload,
+) {
+  return api.patch<ApiItemResponse<Consultation>>(
+    `/api/v1/consultations/${consultationId}/step`,
+    payload,
+  );
+}
+
+export function createConsultationMedication(
+  consultationId: string,
+  payload: CreateMedicationPayload,
+) {
+  return api.post<ApiItemResponse<ConsultationMedication>>(
+    `/api/v1/consultations/${consultationId}/medications`,
+    payload,
+  );
+}
+
+export function deleteConsultationMedication(medicationId: string) {
+  return api.delete<void>(`/api/v1/consultation-medications/${medicationId}`);
+}
+
+export function createConsultationStudyRequest(
+  consultationId: string,
+  payload: CreateStudyRequestPayload,
+) {
+  return api.post<ApiItemResponse<ConsultationStudyRequest>>(
+    `/api/v1/consultations/${consultationId}/study-requests`,
+    payload,
+  );
+}
+
+export function deleteConsultationStudyRequest(studyRequestId: string) {
+  return api.delete<void>(
+    `/api/v1/consultation-study-requests/${studyRequestId}`,
   );
 }

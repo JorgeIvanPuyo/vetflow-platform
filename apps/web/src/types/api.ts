@@ -52,6 +52,32 @@ export type Patient = {
   updated_at: string;
 };
 
+export type ConsultationStatus = "draft" | "completed";
+
+export type ConsultationMedication = {
+  id: string;
+  tenant_id: string;
+  consultation_id: string;
+  medication_name: string;
+  dose_or_quantity: string | null;
+  instructions: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ConsultationStudyRequestType = "laboratory" | "exam" | "other";
+
+export type ConsultationStudyRequest = {
+  id: string;
+  tenant_id: string;
+  consultation_id: string;
+  name: string;
+  study_type: ConsultationStudyRequestType;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Consultation = {
   id: string;
   tenant_id: string;
@@ -65,6 +91,27 @@ export type Consultation = {
   therapeutic_plan: string | null;
   final_diagnosis: string | null;
   indications: string | null;
+  status: ConsultationStatus;
+  current_step: number | null;
+  symptoms: string | null;
+  symptom_duration: string | null;
+  relevant_history: string | null;
+  habits_and_diet: string | null;
+  temperature_c: number | null;
+  current_weight_kg: number | null;
+  heart_rate: number | null;
+  respiratory_rate: number | null;
+  mucous_membranes: string | null;
+  hydration: string | null;
+  physical_exam_findings: string | null;
+  diagnostic_tags: string[] | null;
+  diagnostic_plan_notes: string | null;
+  therapeutic_plan_notes: string | null;
+  next_control_date: string | null;
+  consultation_summary: string | null;
+  reminder_requested: boolean;
+  medications: ConsultationMedication[];
+  study_requests: ConsultationStudyRequest[];
   created_at: string;
   updated_at: string;
 };
@@ -184,11 +231,44 @@ export type CreateConsultationPayload = {
   therapeutic_plan?: string | null;
   final_diagnosis?: string | null;
   indications?: string | null;
+  status?: ConsultationStatus;
+  current_step?: number | null;
+  symptoms?: string | null;
+  symptom_duration?: string | null;
+  relevant_history?: string | null;
+  habits_and_diet?: string | null;
+  temperature_c?: number | null;
+  current_weight_kg?: number | null;
+  heart_rate?: number | null;
+  respiratory_rate?: number | null;
+  mucous_membranes?: string | null;
+  hydration?: string | null;
+  physical_exam_findings?: string | null;
+  diagnostic_tags?: string[] | null;
+  diagnostic_plan_notes?: string | null;
+  therapeutic_plan_notes?: string | null;
+  next_control_date?: string | null;
+  consultation_summary?: string | null;
+  reminder_requested?: boolean;
 };
 
 export type UpdateConsultationPayload = Partial<
   Omit<CreateConsultationPayload, "patient_id">
 >;
+
+export type StepUpdatePayload = UpdateConsultationPayload;
+
+export type CreateMedicationPayload = {
+  medication_name: string;
+  dose_or_quantity?: string | null;
+  instructions?: string | null;
+};
+
+export type CreateStudyRequestPayload = {
+  name: string;
+  study_type: ConsultationStudyRequestType;
+  notes?: string | null;
+};
 
 export type CreateExamPayload = {
   patient_id: string;
