@@ -12,6 +12,10 @@ const navItems = [
   { href: "/ajustes", label: "Ajustes", icon: Settings },
 ];
 
+function closeMobileMenu() {
+  window.dispatchEvent(new Event("vetclinic:close-mobile-menu"));
+}
+
 export function BottomNav() {
   const pathname = usePathname();
 
@@ -28,6 +32,7 @@ export function BottomNav() {
             className={`bottom-nav__item${isActive ? " bottom-nav__item--active" : ""}`}
             href={item.href}
             key={item.href}
+            onClick={closeMobileMenu}
           >
             <Icon aria-hidden="true" size={21} strokeWidth={2.2} />
             <span>{item.label}</span>

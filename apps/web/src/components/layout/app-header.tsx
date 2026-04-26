@@ -55,12 +55,100 @@ export function AppHeader() {
     };
   }, [isMenuOpen]);
 
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleCloseMobileMenu() {
+      setIsMenuOpen(false);
+    }
+
+    window.addEventListener("vetclinic:close-mobile-menu", handleCloseMobileMenu);
+
+    return () => {
+      window.removeEventListener(
+        "vetclinic:close-mobile-menu",
+        handleCloseMobileMenu,
+      );
+    };
+  }, []);
+
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
 
+  const mobileMenu = isMenuOpen ? (
+    <div
+      className="mobile-menu-overlay"
+      role="presentation"
+      onClick={() => setIsMenuOpen(false)}
+    >
+      <nav
+        className="mobile-menu"
+        aria-label="Menú principal"
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mobile-menu__header">
+          <Link
+            className="brand"
+            href="/"
+            onClick={() => setIsMenuOpen(false)}
+            aria-label="Ir al dashboard de VetClinic"
+          >
+            <span className="brand__mark" aria-hidden="true">
+              <Stethoscope size={20} />
+            </span>
+            <span>VetClinic</span>
+          </Link>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Cerrar menú"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <X aria-hidden="true" size={22} />
+          </button>
+        </div>
+
+        <div className="mobile-menu__links">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href);
+
+            return (
+              <Link
+                aria-current={active ? "page" : undefined}
+                className={`mobile-menu__link${active ? " mobile-menu__link--active" : ""}`}
+                href={item.href}
+                key={item.href}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <Icon aria-hidden="true" size={22} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+        <button
+          aria-label="Cerrar sesión"
+          className="mobile-menu__logout"
+          onClick={logout}
+          type="button"
+        >
+          <LogOut aria-hidden="true" size={20} />
+          <span>Cerrar sesión</span>
+        </button>
+      </nav>
+    </div>
+  ) : null;
+
   return (
-    <header className="site-header">
+    <>
+      <header className="site-header">
       <div className="site-header__bar">
         <button
           className="icon-button menu-trigger"
@@ -89,74 +177,6 @@ export function AppHeader() {
           <Search aria-hidden="true" size={22} />
         </button>
       </div>
-
-      {isMenuOpen ? (
-        <div
-          className="mobile-menu-overlay"
-          role="presentation"
-          onClick={() => setIsMenuOpen(false)}
-        >
-          <nav
-            className="mobile-menu"
-            aria-label="Menú principal"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mobile-menu__header">
-              <Link
-                className="brand"
-                href="/"
-                onClick={() => setIsMenuOpen(false)}
-                aria-label="Ir al dashboard de VetClinic"
-              >
-                <span className="brand__mark" aria-hidden="true">
-                  <Stethoscope size={20} />
-                </span>
-                <span>VetClinic</span>
-              </Link>
-              <button
-                className="icon-button"
-                type="button"
-                aria-label="Cerrar menú"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <X aria-hidden="true" size={22} />
-              </button>
-            </div>
-
-            <div className="mobile-menu__links">
-              {menuItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-
-                return (
-                  <Link
-                    aria-current={active ? "page" : undefined}
-                    className={`mobile-menu__link${active ? " mobile-menu__link--active" : ""}`}
-                    href={item.href}
-                    key={item.href}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <Icon aria-hidden="true" size={22} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-
-            <button
-              aria-label="Cerrar sesión"
-              className="mobile-menu__logout"
-              onClick={logout}
-              type="button"
-            >
-              <LogOut aria-hidden="true" size={20} />
-              <span>Cerrar sesión</span>
-            </button>
-          </nav>
-        </div>
-      ) : null}
 
       <div className="site-header__desktop-row">
         <nav className="desktop-nav" aria-label="Navegación principal">
@@ -189,6 +209,8 @@ export function AppHeader() {
       <div className={`site-search${isSearchOpen ? " site-search--open" : ""}`}>
         <GlobalSearch onResultSelected={() => setIsSearchOpen(false)} />
       </div>
-    </header>
+      </header>
+      {mobileMenu}
+    </>
   );
 }
