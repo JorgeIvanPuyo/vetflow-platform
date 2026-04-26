@@ -702,6 +702,17 @@ code {
   gap: 14px;
 }
 
+.detail-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detail-hero__actions .primary-button,
+.detail-hero__actions .secondary-button {
+  flex: 1 1 150px;
+}
+
 .back-link,
 .inline-link {
   color: var(--color-primary-dark);
@@ -848,9 +859,31 @@ code {
   color: var(--color-text);
 }
 
+.secondary-button--danger {
+  border-color: rgba(217, 67, 62, 0.32);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.danger-button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-button);
+  background: var(--color-danger);
+  color: white;
+  font-weight: 600;
+  padding: 0 16px;
+  cursor: pointer;
+}
+
 .primary-button:disabled,
 .secondary-button:disabled,
-.primary-action:disabled {
+.primary-action:disabled,
+.danger-button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
@@ -1293,6 +1326,21 @@ code {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   padding-top: 4px;
+}
+
+.danger-callout {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(217, 67, 62, 0.24);
+  border-radius: var(--radius-card);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  line-height: 1.5;
+  padding: 14px;
+}
+
+.danger-callout strong {
+  font-weight: 600;
 }
 
 .modal-actions--three {

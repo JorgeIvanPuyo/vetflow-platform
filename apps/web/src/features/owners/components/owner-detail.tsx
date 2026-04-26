@@ -1,11 +1,12 @@
 "use client";
 
-import { Edit, Mail, MapPin, PawPrint, Phone, User, X } from "lucide-react";
+import { Edit, Mail, MapPin, PawPrint, Phone, Trash2, User, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
-import { getOwner, updateOwner } from "@/services/owners";
+import { deleteOwner, getOwner, updateOwner } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import type { Owner, Patient, UpdateOwnerPayload } from "@/types/api";
 
@@ -16,11 +17,13 @@ type OwnerDetailProps = {
 type OwnerDetailState = {
   isLoading: boolean;
   isSaving: boolean;
+  isDeleting: boolean;
   owner: Owner | null;
   pets: Patient[];
   errorMessage: string | null;
   successMessage: string | null;
   formMessage: string | null;
+  deleteMessage: string | null;
 };
 
 type OwnerFormState = {
@@ -33,11 +36,13 @@ type OwnerFormState = {
 const initialState: OwnerDetailState = {
   isLoading: true,
   isSaving: false,
+  isDeleting: false,
   owner: null,
   pets: [],
   errorMessage: null,
   successMessage: null,
   formMessage: null,
+  deleteMessage: null,
 };
 
 const initialFormState: OwnerFormState = {
@@ -48,9 +53,12 @@ const initialFormState: OwnerFormState = {
 };
 
 export function OwnerDetail({ ownerId }: OwnerDetailProps) {
+  const router = useRouter();
   const [state, setState] = useState<OwnerDetailState>(initialState);
   const [formState, setFormState] = useState<OwnerFormState>(initialFormState);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const loadOwnerDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -103,6 +111,26 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
     setState((current) => ({ ...current, formMessage: null, isSaving: false }));
   }
 
+  function openDeleteModal() {
+    setIsDeleteOpen(true);
+    setDeleteConfirmation("");
+    setState((current) => ({
+      ...current,
+      deleteMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closeDeleteModal() {
+    if (state.isDeleting) {
+      return;
+    }
+
+    setIsDeleteOpen(false);
+    setDeleteConfirmation("");
+    setState((current) => ({ ...current, deleteMessage: null }));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -138,6 +166,32 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
     }
   }
 
+  async function handleDeleteOwner(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (deleteConfirmation !== "ELIMINAR" || state.isDeleting) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isDeleting: true,
+      deleteMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await deleteOwner(ownerId);
+      router.push("/owners");
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isDeleting: false,
+        deleteMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
   if (state.isLoading) {
     return <div className="loading-card" aria-label="Cargando propietario" />;
   }
@@ -165,15 +219,26 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
             <p>Contacto principal y mascotas asociadas</p>
           </div>
         </div>
-        <button
-          aria-label="Editar propietario"
-          className="primary-button"
-          onClick={openEditModal}
-          type="button"
-        >
-          <Edit aria-hidden="true" size={18} />
-          Editar
-        </button>
+        <div className="detail-hero__actions">
+          <button
+            aria-label="Editar propietario"
+            className="primary-button"
+            onClick={openEditModal}
+            type="button"
+          >
+            <Edit aria-hidden="true" size={18} />
+            Editar
+          </button>
+          <button
+            aria-label="Eliminar propietario"
+            className="secondary-button secondary-button--danger"
+            onClick={openDeleteModal}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={18} />
+            Eliminar
+          </button>
+        </div>
       </section>
 
       {state.successMessage ? <div className="success-state">{state.successMessage}</div> : null}
@@ -302,6 +367,69 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                 </button>
                 <button className="primary-button" disabled={state.isSaving} type="submit">
                   {state.isSaving ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isDeleteOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            aria-labelledby="delete-owner-title"
+            aria-modal="true"
+            className="bottom-sheet"
+            role="dialog"
+          >
+            <div className="bottom-sheet__header">
+              <div>
+                <p className="eyebrow">Acción irreversible</p>
+                <h2 id="delete-owner-title">Eliminar propietario</h2>
+              </div>
+              <button
+                aria-label="Cancelar"
+                className="icon-button"
+                disabled={state.isDeleting}
+                onClick={closeDeleteModal}
+                type="button"
+              >
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+
+            <div className="danger-callout" role="alert">
+              <strong>Esta acción eliminará el propietario y todos los pacientes asociados a este propietario. Procede con precaución.</strong>
+              <span>Esta acción no se puede deshacer.</span>
+            </div>
+
+            {state.deleteMessage ? <div className="error-state">{state.deleteMessage}</div> : null}
+
+            <form className="entity-form" onSubmit={handleDeleteOwner}>
+              <label className="field">
+                <span>Escribe ELIMINAR para confirmar</span>
+                <input
+                  autoComplete="off"
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                />
+              </label>
+
+              <div className="modal-actions">
+                <button
+                  className="secondary-button"
+                  disabled={state.isDeleting}
+                  onClick={closeDeleteModal}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="danger-button"
+                  disabled={deleteConfirmation !== "ELIMINAR" || state.isDeleting}
+                  type="submit"
+                >
+                  {state.isDeleting ? "Eliminando..." : "Confirmar eliminación"}
                 </button>
               </div>
             </form>

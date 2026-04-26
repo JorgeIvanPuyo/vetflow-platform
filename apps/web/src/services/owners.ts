@@ -22,3 +22,7 @@ export function createOwner(payload: CreateOwnerPayload) {
 export function updateOwner(ownerId: string, payload: UpdateOwnerPayload) {
   return api.patch<ApiItemResponse<Owner>>(`/api/v1/owners/${ownerId}`, payload);
 }
+
+export function deleteOwner(ownerId: string) {
+  return api.delete<void>(`/api/v1/owners/${ownerId}`);
+}
