@@ -1,26 +1,73 @@
 "use client";
 
-import { LogOut, Menu, Search, Stethoscope } from "lucide-react";
+import {
+  Calendar,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Package,
+  PawPrint,
+  Search,
+  Settings,
+  Stethoscope,
+  Users,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "@/features/auth/auth-context";
 import { GlobalSearch } from "@/features/search/components/global-search";
 
+const menuItems = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/owners", label: "Propietarios", icon: Users },
+  { href: "/patients", label: "Pacientes", icon: PawPrint },
+  { href: "/agenda", label: "Agenda", icon: Calendar },
+  { href: "/inventario", label: "Inventario", icon: Package },
+  { href: "/ajustes", label: "Ajustes", icon: Settings },
+];
+
 export function AppHeader() {
   const { logout, user } = useAuth();
+  const pathname = usePathname();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
+  function isActive(href: string) {
+    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  }
 
   return (
     <header className="site-header">
       <div className="site-header__bar">
         <button
-          className="icon-button"
+          className="icon-button menu-trigger"
           type="button"
           aria-expanded={isMenuOpen}
           aria-label="Abrir menú"
-          onClick={() => setIsMenuOpen((current) => !current)}
+          onClick={() => setIsMenuOpen(true)}
         >
           <Menu aria-hidden="true" size={22} />
         </button>
@@ -44,33 +91,85 @@ export function AppHeader() {
       </div>
 
       {isMenuOpen ? (
-        <nav className="mobile-menu" aria-label="Menú principal">
-          <Link href="/" onClick={() => setIsMenuOpen(false)}>Dashboard</Link>
-          <Link href="/owners" onClick={() => setIsMenuOpen(false)}>Propietarios</Link>
-          <Link href="/patients" onClick={() => setIsMenuOpen(false)}>Pacientes</Link>
-          <Link href="/agenda" onClick={() => setIsMenuOpen(false)}>Agenda</Link>
-          <Link href="/inventario" onClick={() => setIsMenuOpen(false)}>Inventario</Link>
-          <Link href="/ajustes" onClick={() => setIsMenuOpen(false)}>Ajustes</Link>
-          <button
-            aria-label="Cerrar sesión"
-            className="logout-button"
-            onClick={logout}
-            type="button"
+        <div
+          className="mobile-menu-overlay"
+          role="presentation"
+          onClick={() => setIsMenuOpen(false)}
+        >
+          <nav
+            className="mobile-menu"
+            aria-label="Menú principal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
           >
-            <LogOut aria-hidden="true" size={16} />
-            <span>Cerrar sesión</span>
-          </button>
-        </nav>
+            <div className="mobile-menu__header">
+              <Link
+                className="brand"
+                href="/"
+                onClick={() => setIsMenuOpen(false)}
+                aria-label="Ir al dashboard de VetClinic"
+              >
+                <span className="brand__mark" aria-hidden="true">
+                  <Stethoscope size={20} />
+                </span>
+                <span>VetClinic</span>
+              </Link>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Cerrar menú"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <X aria-hidden="true" size={22} />
+              </button>
+            </div>
+
+            <div className="mobile-menu__links">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+
+                return (
+                  <Link
+                    aria-current={active ? "page" : undefined}
+                    className={`mobile-menu__link${active ? " mobile-menu__link--active" : ""}`}
+                    href={item.href}
+                    key={item.href}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Icon aria-hidden="true" size={22} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <button
+              aria-label="Cerrar sesión"
+              className="mobile-menu__logout"
+              onClick={logout}
+              type="button"
+            >
+              <LogOut aria-hidden="true" size={20} />
+              <span>Cerrar sesión</span>
+            </button>
+          </nav>
+        </div>
       ) : null}
 
       <div className="site-header__desktop-row">
         <nav className="desktop-nav" aria-label="Navegación principal">
-          <Link href="/">Dashboard</Link>
-          <Link href="/owners">Propietarios</Link>
-          <Link href="/patients">Pacientes</Link>
-          <Link href="/agenda">Agenda</Link>
-          <Link href="/inventario">Inventario</Link>
-          <Link href="/ajustes">Ajustes</Link>
+          {menuItems.map((item) => (
+            <Link
+              aria-current={isActive(item.href) ? "page" : undefined}
+              className={isActive(item.href) ? "desktop-nav__link--active" : undefined}
+              href={item.href}
+              key={item.href}
+            >
+              {item.label}
+            </Link>
+          ))}
         </nav>
 
         <div className="session-actions">
