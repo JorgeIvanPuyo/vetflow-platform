@@ -232,21 +232,23 @@ export function ConsultationDetail({ consultationId }: ConsultationDetailProps) 
             </label>
           </div>
 
-          {consultationSections.map((section) => (
-            <label className="field" key={section.key}>
-              <span>{section.label}</span>
-              <textarea
-                rows={3}
-                value={formState[section.key]}
-                onChange={(event) =>
-                  setFormState((current) => ({
-                    ...current,
-                    [section.key]: event.target.value,
-                  }))
-                }
-              />
-            </label>
-          ))}
+          <div className="clinical-section-grid">
+            {consultationSections.map((section) => (
+              <label className="field clinical-section" key={section.key}>
+                <span>{section.label}</span>
+                <textarea
+                  rows={3}
+                  value={formState[section.key]}
+                  onChange={(event) =>
+                    setFormState((current) => ({
+                      ...current,
+                      [section.key]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
 
           <button className="primary-button" disabled={state.isSaving} type="submit">
             {state.isSaving ? "Guardando..." : "Guardar consulta"}
@@ -279,9 +281,9 @@ export function ConsultationDetail({ consultationId }: ConsultationDetailProps) 
                 <p className="simple-list__meta">
                   {formatDateTime(exam.requested_at)}
                 </p>
-                <p className="simple-list__meta">
-                  Estado: {getExamStatusLabel(exam.status)}
-                </p>
+                <span className={`status-pill status-pill--${exam.status}`}>
+                  {getExamStatusLabel(exam.status)}
+                </span>
               </li>
             ))}
           </ul>
@@ -321,7 +323,7 @@ function toDateTimeLocalValue(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("es", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));

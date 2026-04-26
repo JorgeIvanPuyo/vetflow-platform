@@ -21,7 +21,11 @@ const initialState: SearchState = {
   submittedQuery: "",
 };
 
-export function GlobalSearch() {
+type GlobalSearchProps = {
+  onResultSelected?: () => void;
+};
+
+export function GlobalSearch({ onResultSelected }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<SearchState>(initialState);
 
@@ -134,7 +138,10 @@ export function GlobalSearch() {
                   <Link
                     className="search-result-link"
                     href={result.type === "patient" && result.patient_id ? `/patients/${result.patient_id}` : "/owners"}
-                    onClick={clearResults}
+                    onClick={() => {
+                      clearResults();
+                      onResultSelected?.();
+                    }}
                   >
                     <span className={`result-badge result-badge--${result.type}`}>
                       {result.type === "owner" ? "propietario" : "paciente"}

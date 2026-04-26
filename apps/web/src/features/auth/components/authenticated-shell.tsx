@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 
-import { AppHeader } from "@/components/layout/app-header";
+import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider, useAuth } from "@/features/auth/auth-context";
 import { LoginForm } from "@/features/auth/components/login-form";
 
@@ -25,10 +25,5 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
     return <LoginForm />;
   }
 
-  return (
-    <div className="app-shell">
-      <AppHeader />
-      <main className="page-container">{children}</main>
-    </div>
-  );
+  return <AppShell>{children}</AppShell>;
 }

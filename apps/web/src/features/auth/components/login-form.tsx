@@ -1,5 +1,6 @@
 "use client";
 
+import { Stethoscope } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { useAuth } from "@/features/auth/auth-context";
@@ -35,8 +36,15 @@ export function LoginForm() {
   return (
     <main className="auth-screen">
       <section className="auth-card" aria-labelledby="login-title">
+        <div className="auth-brand">
+          <span className="brand__mark brand__mark--large" aria-hidden="true">
+            <Stethoscope size={28} />
+          </span>
+          <span>VetClinic</span>
+        </div>
+
         <div>
-          <p className="page-subtitle">Vetflow</p>
+          <p className="eyebrow">Acceso clínico</p>
           <h1 id="login-title">Iniciar sesión</h1>
           <p className="auth-card__copy">
             Ingresa con tu usuario autorizado para acceder a la clínica vinculada.
@@ -66,11 +74,9 @@ export function LoginForm() {
             />
           </label>
 
-          {state.errorMessage ? (
-            <div className="error-state">{state.errorMessage}</div>
-          ) : null}
+          {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
 
-          <button className="primary-action" disabled={state.isSubmitting} type="submit">
+          <button className="primary-button primary-button--full" disabled={state.isSubmitting} type="submit">
             {state.isSubmitting ? "Entrando..." : "Entrar"}
           </button>
         </form>

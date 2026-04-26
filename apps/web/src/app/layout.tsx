@@ -4,8 +4,8 @@ import { AuthenticatedShell } from "@/features/auth/components/authenticated-she
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Vetflow",
-  description: "Plataforma clínica veterinaria multi-tenant",
+  title: "VetClinic",
+  description: "Plataforma clínica veterinaria",
 };
 
 export default function RootLayout({

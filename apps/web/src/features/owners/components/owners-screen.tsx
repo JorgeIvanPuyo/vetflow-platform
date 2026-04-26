@@ -1,5 +1,6 @@
 "use client";
 
+import { Mail, Phone, UserPlus, Users } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 import { ApiClientError } from "@/lib/api";
@@ -113,9 +114,15 @@ export function OwnersScreen() {
   }
 
   return (
-    <div className="content-grid">
-      <section className="panel">
-        <h2>Crear propietario</h2>
+    <div className="content-grid owners-layout">
+      <section className="panel form-panel">
+        <div className="section-heading">
+          <span className="icon-bubble"><UserPlus size={22} /></span>
+          <p className="eyebrow">Directorio</p>
+          <h2>Crear propietario</h2>
+          <p>Registra los datos mínimos de contacto para vincular pacientes.</p>
+        </div>
+
         <form className="entity-form" onSubmit={handleSubmit}>
           <label className="field">
             <span>Nombre completo</span>
@@ -123,10 +130,7 @@ export function OwnersScreen() {
               required
               value={formState.full_name}
               onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  full_name: event.target.value,
-                }))
+                setFormState((current) => ({ ...current, full_name: event.target.value }))
               }
             />
           </label>
@@ -137,10 +141,7 @@ export function OwnersScreen() {
               required
               value={formState.phone}
               onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  phone: event.target.value,
-                }))
+                setFormState((current) => ({ ...current, phone: event.target.value }))
               }
             />
           </label>
@@ -151,10 +152,7 @@ export function OwnersScreen() {
               type="email"
               value={formState.email}
               onChange={(event) =>
-                setFormState((current) => ({
-                  ...current,
-                  email: event.target.value,
-                }))
+                setFormState((current) => ({ ...current, email: event.target.value }))
               }
             />
           </label>
@@ -164,18 +162,20 @@ export function OwnersScreen() {
           </button>
         </form>
 
-        {state.successMessage ? (
-          <p className="success-state">{state.successMessage}</p>
-        ) : null}
+        {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
         {state.errorMessage && !state.isLoading ? (
           <p className="error-state">{state.errorMessage}</p>
         ) : null}
       </section>
 
       <section className="panel">
-        <div className="section-heading">
-          <h2>Propietarios</h2>
-          <p className="muted-text">Conectado al backend real de la cuenta activa.</p>
+        <div className="section-heading section-heading--row">
+          <div>
+            <p className="eyebrow">Contactos</p>
+            <h2>Propietarios</h2>
+            <p>{state.isLoading ? "Cargando..." : `${state.owners.length} registrados`}</p>
+          </div>
+          <span className="icon-bubble icon-bubble--blue"><Users size={22} /></span>
         </div>
 
         {state.isLoading ? <div className="panel-note">Cargando propietarios...</div> : null}
@@ -189,12 +189,17 @@ export function OwnersScreen() {
         ) : null}
 
         {!state.isLoading && !state.errorMessage && state.owners.length > 0 ? (
-          <ul className="simple-list">
+          <ul className="contact-list">
             {state.owners.map((owner) => (
-              <li className="simple-list__item" key={owner.id}>
-                <p className="simple-list__title">{owner.full_name}</p>
-                <p className="simple-list__meta">{owner.phone}</p>
-                {owner.email ? <p className="simple-list__meta">{owner.email}</p> : null}
+              <li className="contact-card" key={owner.id}>
+                <span className="contact-avatar" aria-hidden="true">
+                  {owner.full_name.charAt(0).toUpperCase()}
+                </span>
+                <span className="contact-card__body">
+                  <strong>{owner.full_name}</strong>
+                  <span><Phone size={14} /> {owner.phone}</span>
+                  {owner.email ? <span><Mail size={14} /> {owner.email}</span> : null}
+                </span>
               </li>
             ))}
           </ul>

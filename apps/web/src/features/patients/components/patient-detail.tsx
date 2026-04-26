@@ -1,5 +1,6 @@
 "use client";
 
+import { FileText, Stethoscope } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
@@ -257,105 +258,86 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const timeline = getClinicalTimeline(state.clinicalHistory);
 
   return (
-    <div className="page-stack">
-      <section className="hero-card">
-        <p className="page-subtitle">
-          <Link href="/patients">Pacientes</Link> / Historia clínica
-        </p>
-        <div className="hero-actions">
+    <div className="page-stack patient-detail-page">
+      <section className="detail-hero">
+        <Link className="back-link" href="/patients">
+          Volver a pacientes
+        </Link>
+        <div className="detail-hero__main">
+          <span className="pet-avatar pet-avatar--large" aria-hidden="true">{getSpeciesInitial(patient.species)}</span>
           <div>
-            <h1 className="page-title">{patient.name}</h1>
-            <p className="page-subtitle">
+            <h1>{patient.name}</h1>
+            <p>
               {patient.species}
               {patient.breed ? ` · ${patient.breed}` : ""}
             </p>
           </div>
-          <div className="button-row">
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() =>
-                setState((current) => ({
-                  ...current,
-                  showConsultationForm: !current.showConsultationForm,
-                  showExamForm: false,
-                  successMessage: null,
-                }))
-              }
-            >
-              {state.showConsultationForm ? "Cerrar formulario" : "Nueva consulta"}
-            </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() =>
-                setState((current) => ({
-                  ...current,
-                  showExamForm: !current.showExamForm,
-                  showConsultationForm: false,
-                  successMessage: null,
-                }))
-              }
-            >
-              {state.showExamForm ? "Cerrar formulario" : "Nuevo examen"}
-            </button>
-          </div>
+        </div>
+        <div className="button-row">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() =>
+              setState((current) => ({
+                ...current,
+                showConsultationForm: !current.showConsultationForm,
+                showExamForm: false,
+                successMessage: null,
+              }))
+            }
+          >
+            {state.showConsultationForm ? "Cerrar consulta" : "Nueva consulta"}
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() =>
+              setState((current) => ({
+                ...current,
+                showExamForm: !current.showExamForm,
+                showConsultationForm: false,
+                successMessage: null,
+              }))
+            }
+          >
+            {state.showExamForm ? "Cerrar examen" : "Nuevo examen"}
+          </button>
         </div>
       </section>
 
       <section className="summary-grid">
-        <article className="panel">
-          <h2>Resumen del paciente</h2>
-          <dl className="detail-grid">
+        <article className="panel patient-summary-card">
+          <div className="patient-summary-card__header">
+            <span className="pet-avatar" aria-hidden="true">{getSpeciesInitial(patient.species)}</span>
             <div>
-              <dt>Especie</dt>
-              <dd>{patient.species}</dd>
+              <h2>{patient.name}</h2>
+              <p>
+                {patient.species}
+                {patient.breed ? ` · ${patient.breed}` : ""}
+              </p>
             </div>
-            <div>
-              <dt>Raza</dt>
-              <dd>{patient.breed ?? "No indicado"}</dd>
-            </div>
-            <div>
-              <dt>Sexo</dt>
-              <dd>{patient.sex ?? "No indicado"}</dd>
-            </div>
-            <div>
-              <dt>Edad estimada</dt>
-              <dd>{patient.estimated_age ?? "No indicado"}</dd>
-            </div>
-            <div>
-              <dt>Peso</dt>
-              <dd>
-                {patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}
-              </dd>
-            </div>
-            <div>
-              <dt>Alergias</dt>
-              <dd>{patient.allergies ?? "Sin registros"}</dd>
-            </div>
-            <div>
-              <dt>Condiciones crónicas</dt>
-              <dd>{patient.chronic_conditions ?? "Sin registros"}</dd>
-            </div>
+          </div>
+          <dl className="metric-list">
+            <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
+            <div><dt>Edad</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
+            <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
           </dl>
+          {patient.allergies ? (
+            <div className="alert-box">Alergias: {patient.allergies}</div>
+          ) : null}
         </article>
 
-        <article className="panel">
-          <h2>Resumen del propietario</h2>
+        <article className="panel owner-card">
+          <div className="section-heading">
+            <p className="eyebrow">Responsable</p>
+            <h2>Propietario</h2>
+          </div>
           {state.owner ? (
-            <dl className="detail-grid detail-grid--compact">
-              <div>
-                <dt>Nombre</dt>
-                <dd>{state.owner.full_name}</dd>
-              </div>
-              <div>
-                <dt>Teléfono</dt>
-                <dd>{state.owner.phone}</dd>
-              </div>
-              <div>
-                <dt>Correo</dt>
-                <dd>{state.owner.email ?? "No indicado"}</dd>
-              </div>
+            <dl className="owner-details">
+              <div><dt>Nombre</dt><dd>{state.owner.full_name}</dd></div>
+              <div><dt>Teléfono</dt><dd>{state.owner.phone}</dd></div>
+              <div><dt>Correo</dt><dd>{state.owner.email ?? "No indicado"}</dd></div>
+              <div><dt>Dirección</dt><dd>{state.owner.address ?? "No indicada"}</dd></div>
             </dl>
           ) : (
             <div className="empty-state">No hay datos del propietario disponibles.</div>
@@ -364,10 +346,11 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       </section>
 
       {state.showConsultationForm ? (
-        <section className="panel">
+        <section className="panel clinical-form-card">
           <div className="section-heading">
+            <p className="eyebrow">Consulta</p>
             <h2>Nueva consulta</h2>
-            <p className="muted-text">Nota clínica estructurada para este paciente.</p>
+            <p>Nota clínica estructurada para este paciente.</p>
           </div>
 
           <form className="entity-form" onSubmit={handleCreateConsultation}>
@@ -393,36 +376,31 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                   required
                   value={formState.reason}
                   onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      reason: event.target.value,
-                    }))
+                    setFormState((current) => ({ ...current, reason: event.target.value }))
                   }
                 />
               </label>
             </div>
 
-            {consultationSections.map((section) => (
-              <label className="field" key={section.key}>
-                <span>{section.label}</span>
-                <textarea
-                  rows={3}
-                  value={formState[section.key]}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      [section.key]: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            ))}
+            <div className="clinical-section-grid">
+              {consultationSections.map((section) => (
+                <label className="field clinical-section" key={section.key}>
+                  <span>{section.label}</span>
+                  <textarea
+                    rows={3}
+                    value={formState[section.key]}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        [section.key]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
 
-            <button
-              className="primary-button"
-              disabled={state.isSubmitting}
-              type="submit"
-            >
+            <button className="primary-button" disabled={state.isSubmitting} type="submit">
               {state.isSubmitting ? "Guardando..." : "Crear consulta"}
             </button>
           </form>
@@ -430,10 +408,11 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       ) : null}
 
       {state.showExamForm ? (
-        <section className="panel">
+        <section className="panel clinical-form-card">
           <div className="section-heading">
+            <p className="eyebrow">Exámenes</p>
             <h2>Nuevo examen</h2>
-            <p className="muted-text">Solicitud de examen en texto para este paciente.</p>
+            <p>Solicitud de examen en texto para este paciente.</p>
           </div>
 
           <form className="entity-form" onSubmit={handleCreateExam}>
@@ -444,10 +423,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                   required
                   value={examFormState.exam_type}
                   onChange={(event) =>
-                    setExamFormState((current) => ({
-                      ...current,
-                      exam_type: event.target.value,
-                    }))
+                    setExamFormState((current) => ({ ...current, exam_type: event.target.value }))
                   }
                 />
               </label>
@@ -482,8 +458,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 <option value="">Sin consulta vinculada</option>
                 {consultations.map((consultation) => (
                   <option key={consultation.id} value={consultation.id}>
-                    {formatDateTime(consultation.visit_date)} -{" "}
-                    {consultation.reason}
+                    {formatDateTime(consultation.visit_date)} - {consultation.reason}
                   </option>
                 ))}
               </select>
@@ -495,73 +470,85 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 rows={3}
                 value={examFormState.observations}
                 onChange={(event) =>
-                  setExamFormState((current) => ({
-                    ...current,
-                    observations: event.target.value,
-                  }))
+                  setExamFormState((current) => ({ ...current, observations: event.target.value }))
                 }
               />
             </label>
 
-            <button
-              className="primary-button"
-              disabled={state.isSubmitting}
-              type="submit"
-            >
+            <button className="primary-button" disabled={state.isSubmitting} type="submit">
               {state.isSubmitting ? "Guardando..." : "Crear solicitud de examen"}
             </button>
           </form>
         </section>
       ) : null}
 
-      {state.successMessage ? (
-        <p className="success-state">{state.successMessage}</p>
-      ) : null}
-      {state.errorMessage && !state.isLoading ? (
-        <p className="error-state">{state.errorMessage}</p>
-      ) : null}
+      {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
+      {state.errorMessage && !state.isLoading ? <p className="error-state">{state.errorMessage}</p> : null}
 
-      <section className="panel">
-        <div className="section-heading">
-          <h2>Historia clínica</h2>
-          <p className="muted-text">
-            Consultas y exámenes ordenados por fecha clínica.
-          </p>
+      <section className="panel tabbed-card">
+        <div className="tab-list" role="tablist" aria-label="Detalle del paciente">
+          <a className="tab-pill tab-pill--active" href="#historia">Historia</a>
+          <a className="tab-pill" href="#informacion">Información</a>
+          <a className="tab-pill" href="#vacunas">Vacunas</a>
+          <a className="tab-pill" href="#archivos">Archivos</a>
         </div>
 
-        {state.isLoading ? (
-          <div className="panel-note">Actualizando historia clínica...</div>
-        ) : null}
-
-        {!state.isLoading && timeline.length === 0 ? (
-          <div className="empty-state">
-            No hay consultas ni exámenes registrados para este paciente.
+        <section id="historia" className="tab-section">
+          <div className="section-heading">
+            <p className="eyebrow">Timeline</p>
+            <h2>Historia clínica</h2>
+            <p>Consultas y exámenes ordenados por fecha clínica.</p>
           </div>
-        ) : null}
 
-        {timeline.length > 0 ? (
-          <ol className="timeline">
-            {timeline.map((item) => (
-              <li className="timeline-item" key={`${item.type}-${item.id}`}>
-                <Link
-                  className="timeline-card"
-                  href={
-                    item.type === "exam"
-                      ? `/exams/${item.id}`
-                      : `/consultations/${item.id}`
-                  }
-                >
-                  <span className={`type-label type-label--${item.type}`}>
-                    {item.type === "exam" ? "Examen" : "Consulta"}
+          {state.isLoading ? <div className="panel-note">Actualizando historia clínica...</div> : null}
+
+          {!state.isLoading && timeline.length === 0 ? (
+            <div className="empty-state">No hay consultas ni exámenes registrados para este paciente.</div>
+          ) : null}
+
+          {timeline.length > 0 ? (
+            <ol className="clinical-timeline">
+              {timeline.map((item) => (
+                <li className={`clinical-timeline__item clinical-timeline__item--${item.type}`} key={`${item.type}-${item.id}`}>
+                  <span className="clinical-timeline__dot" aria-hidden="true">
+                    {item.type === "exam" ? <FileText size={18} /> : <Stethoscope size={18} />}
                   </span>
-                  <time dateTime={item.date}>{formatDateTime(item.date)}</time>
-                  <h3>{item.title}</h3>
-                  <p>{item.summary}</p>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        ) : null}
+                  <Link className="clinical-timeline__card" href={item.type === "exam" ? `/exams/${item.id}` : `/consultations/${item.id}`}>
+                    <span className={`badge badge--${item.type === "exam" ? "blue" : "success"}`}>
+                      {item.type === "exam" ? "Examen" : "Consulta"}
+                    </span>
+                    <time dateTime={item.date}>{formatDateTime(item.date)}</time>
+                    <h3>{item.title}</h3>
+                    <p>{item.summary}</p>
+                    <span className="inline-link">Ver</span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </section>
+
+        <section id="informacion" className="tab-section tab-section--soft">
+          <h2>Información</h2>
+          <dl className="detail-grid">
+            <div><dt>Especie</dt><dd>{patient.species}</dd></div>
+            <div><dt>Raza</dt><dd>{patient.breed ?? "No indicado"}</dd></div>
+            <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
+            <div><dt>Edad estimada</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
+            <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
+            <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
+          </dl>
+        </section>
+
+        <section id="vacunas" className="tab-section tab-section--soft">
+          <h2>Vacunas</h2>
+          <div className="empty-state">Módulo en construcción. Esta funcionalidad estará disponible en una próxima versión.</div>
+        </section>
+
+        <section id="archivos" className="tab-section tab-section--soft">
+          <h2>Archivos</h2>
+          <div className="empty-state">Módulo en construcción. Esta funcionalidad estará disponible en una próxima versión.</div>
+        </section>
       </section>
     </div>
   );
@@ -582,7 +569,7 @@ function toDateTimeLocalValue(date: Date) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("es", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -612,4 +599,8 @@ function getClinicalTimeline(
     title: consultation.reason,
     summary: getConsultationSummary(consultation),
   }));
+}
+
+function getSpeciesInitial(species: string) {
+  return species.trim().charAt(0).toUpperCase() || "P";
 }
