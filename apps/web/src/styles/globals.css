@@ -646,3 +646,129 @@ select {
     width: 100%;
   }
 }
+
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.auth-card {
+  width: min(100%, 440px);
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+  border: 1px solid rgba(217, 209, 195, 0.9);
+  border-radius: 1.5rem;
+  background: rgba(255, 253, 248, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin: 0.2rem 0 0.5rem;
+  font-size: clamp(2rem, 7vw, 3rem);
+}
+
+.auth-card__copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-field {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.form-field input {
+  min-height: 48px;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: white;
+  color: var(--text);
+}
+
+.form-field input:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.2);
+  border-color: var(--accent);
+}
+
+.primary-action,
+.logout-button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-action {
+  padding: 0.85rem 1rem;
+  background: var(--accent);
+  color: white;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.auth-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session-actions__email {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-button {
+  padding: 0.7rem 0.9rem;
+  background: rgba(31, 41, 51, 0.08);
+  color: var(--text);
+}
+
+.logout-button:hover {
+  background: rgba(15, 118, 110, 0.12);
+}
+
+@media (max-width: 860px) {
+  .site-header__inner {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 1rem 0;
+  }
+
+  .global-search {
+    width: 100%;
+    max-width: none;
+  }
+
+  .session-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

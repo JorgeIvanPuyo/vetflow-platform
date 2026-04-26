@@ -4,6 +4,8 @@ type RequestOptions = {
   body?: unknown;
 };
 
+type AuthTokenProvider = () => Promise<string | null>;
+
 class ApiClientError extends Error {
   status: number;
   code: string;
@@ -18,18 +20,32 @@ class ApiClientError extends Error {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const TENANT_ID =
-  process.env.NEXT_PUBLIC_TENANT_ID ?? "11111111-1111-1111-1111-111111111111";
+
+let authTokenProvider: AuthTokenProvider | null = null;
+
+function setAuthTokenProvider(provider: AuthTokenProvider | null) {
+  authTokenProvider = provider;
+}
 
 async function request<T>(
   path: string,
   method: HttpMethod,
   options: RequestOptions = {},
 ): Promise<T> {
+  const token = authTokenProvider ? await authTokenProvider() : null;
+
+  if (!token) {
+    throw new ApiClientError(
+      "No hay una sesión activa para llamar a la API",
+      401,
+      "missing_auth_token",
+    );
+  }
+
   const headers = new Headers({
     Accept: "application/json",
     "Content-Type": "application/json",
-    "X-Tenant-Id": TENANT_ID,
+    Authorization: `Bearer ${token}`,
   });
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -79,4 +95,4 @@ export const api = {
   },
 };
 
-export { ApiClientError };
+export { ApiClientError, setAuthTokenProvider };

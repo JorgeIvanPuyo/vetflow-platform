@@ -7,6 +7,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import get_settings
+
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -62,3 +64,10 @@ def other_tenant(db_session: Session) -> Tenant:
     db_session.commit()
     db_session.refresh(tenant)
     return tenant
+
+@pytest.fixture(autouse=True)
+def development_app_env(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

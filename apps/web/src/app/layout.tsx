@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { AppHeader } from "@/components/layout/app-header";
+import { AuthenticatedShell } from "@/features/auth/components/authenticated-shell";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
@@ -16,10 +16,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        <div className="app-shell">
-          <AppHeader />
-          <main className="page-container">{children}</main>
-        </div>
+        <AuthenticatedShell>{children}</AuthenticatedShell>
       </body>
     </html>
   );

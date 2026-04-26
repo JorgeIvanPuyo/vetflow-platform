@@ -14,6 +14,11 @@ class Settings:
             "DATABASE_URL",
             "postgresql://vetflow:vetflow@localhost:5432/vetflow",
         )
+        self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
+        self.firebase_service_account_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+        self.firebase_service_account_json_path = os.getenv(
+            "FIREBASE_SERVICE_ACCOUNT_JSON_PATH"
+        )
         self.api_v1_prefix = "/api/v1"
 
 

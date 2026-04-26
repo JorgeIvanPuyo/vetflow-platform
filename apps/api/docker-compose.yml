@@ -8,13 +8,18 @@ services:
     depends_on:
       - db
     env_file:
-      - .env.example
+      - .env
     environment:
-      DATABASE_URL: postgresql://vetflow:vetflow@db:5432/vetflow
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vetflow:vetflow@db:5432/vetflow}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON_PATH: ${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-/app/firebase-service-account.json}
     ports:
       - "8000:8000"
+    volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-
+    
   db:
     image: postgres:15
     environment:

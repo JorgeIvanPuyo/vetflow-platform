@@ -46,3 +46,7 @@ build/
 
 # account for any other files that should be ignored
 GCP_*.json
+
+firebase-service-account.json
+apps/api/firebase-service-account.json
+apps/web/firebaseConfig.json

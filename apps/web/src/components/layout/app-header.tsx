@@ -1,8 +1,13 @@
+"use client";
+
 import Link from "next/link";
 
+import { useAuth } from "@/features/auth/auth-context";
 import { GlobalSearch } from "@/features/search/components/global-search";
 
 export function AppHeader() {
+  const { logout, user } = useAuth();
+
   return (
     <header className="site-header">
       <div className="site-header__inner">
@@ -18,6 +23,13 @@ export function AppHeader() {
         </nav>
 
         <GlobalSearch />
+
+        <div className="session-actions">
+          <span className="session-actions__email">{user?.email}</span>
+          <button className="logout-button" onClick={logout} type="button">
+            Cerrar sesión
+          </button>
+        </div>
       </div>
     </header>
   );
