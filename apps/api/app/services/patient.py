@@ -73,6 +73,9 @@ class PatientService:
         if "species" in updates and updates["species"] is None:
             raise AppError(422, "validation_error", "species cannot be null")
 
+        if "owner_id" in updates and updates["owner_id"] is None:
+            raise AppError(422, "validation_error", "owner_id cannot be null")
+
         new_owner_id = updates.get("owner_id")
         if new_owner_id is not None:
             owner = self.owner_repository.get_by_id(tenant_id, new_owner_id)

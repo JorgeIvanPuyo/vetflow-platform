@@ -848,6 +848,16 @@ code {
   line-height: 1.45;
 }
 
+.detail-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.detail-action-row .secondary-button {
+  flex: 1 1 128px;
+}
+
 .back-link,
 .inline-link {
   color: var(--color-primary-dark);

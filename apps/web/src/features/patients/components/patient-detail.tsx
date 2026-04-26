@@ -3,6 +3,7 @@
 import {
   Cat,
   Dog,
+  Edit,
   FileText,
   FolderOpen,
   History,
@@ -14,18 +15,20 @@ import {
   Plus,
   Stethoscope,
   Syringe,
+  Trash2,
   User,
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { createConsultation } from "@/services/consultations";
 import { createExam } from "@/services/exams";
 import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
-import { getOwner } from "@/services/owners";
-import { getPatientClinicalHistory } from "@/services/patients";
+import { getOwner, getOwners } from "@/services/owners";
+import { deletePatient, getPatientClinicalHistory, updatePatient } from "@/services/patients";
 import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
   ClinicalHistory,
@@ -40,6 +43,7 @@ import type {
   PatientFileReference,
   PreventiveCare,
   PreventiveCareType,
+  UpdatePatientPayload,
 } from "@/types/api";
 
 type PatientDetailProps = {
@@ -51,8 +55,11 @@ type PatientDetailState = {
   isSubmitting: boolean;
   isPreventiveSubmitting: boolean;
   isFileSubmitting: boolean;
+  isPatientSaving: boolean;
+  isPatientDeleting: boolean;
   clinicalHistory: ClinicalHistory | null;
   owner: Owner | null;
+  owners: Owner[];
   preventiveCare: PreventiveCare[];
   fileReferences: PatientFileReference[];
   errorMessage: string | null;
@@ -99,6 +106,20 @@ type FileReferenceFormState = {
   external_url: string;
 };
 
+type PatientEditFormState = {
+  owner_id: string;
+  name: string;
+  species: string;
+  breed: string;
+  sex: string;
+  estimated_age: string;
+  weight_kg: string;
+  allergies: string;
+  chronic_conditions: string;
+};
+
+type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
+
 const initialFormState: ConsultationFormState = {
   visit_date: toDateTimeLocalValue(new Date()),
   reason: "",
@@ -139,14 +160,29 @@ const initialState: PatientDetailState = {
   isSubmitting: false,
   isPreventiveSubmitting: false,
   isFileSubmitting: false,
+  isPatientSaving: false,
+  isPatientDeleting: false,
   clinicalHistory: null,
   owner: null,
+  owners: [],
   preventiveCare: [],
   fileReferences: [],
   errorMessage: null,
   successMessage: null,
   showConsultationForm: false,
   showExamForm: false,
+};
+
+const initialPatientEditFormState: PatientEditFormState = {
+  owner_id: "",
+  name: "",
+  species: "",
+  breed: "",
+  sex: "",
+  estimated_age: "",
+  weight_kg: "",
+  allergies: "",
+  chronic_conditions: "",
 };
 
 const consultationSections: Array<{
@@ -195,7 +231,14 @@ const fileTypeOptions = [
   { value: "other", label: "Otro" },
 ];
 
+const speciesOptions: Array<{ value: Exclude<SpeciesOption, "">; label: string; icon: ReactNode }> = [
+  { value: "Canino", label: "Canino", icon: <Dog size={22} /> },
+  { value: "Felino", label: "Felino", icon: <Cat size={22} /> },
+  { value: "Otro", label: "Otro", icon: <Plus size={22} /> },
+];
+
 export function PatientDetail({ patientId }: PatientDetailProps) {
+  const router = useRouter();
   const [state, setState] = useState<PatientDetailState>(initialState);
   const [activeSection, setActiveSection] = useState<PatientDetailSection>("history");
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
@@ -205,15 +248,31 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
+  const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
+  const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
+  const [patientEditFormState, setPatientEditFormState] =
+    useState<PatientEditFormState>(initialPatientEditFormState);
+  const [editSpeciesOption, setEditSpeciesOption] = useState<SpeciesOption>("");
+  const [customEditSpecies, setCustomEditSpecies] = useState("");
+  const [editHasNoKnownAllergies, setEditHasNoKnownAllergies] = useState(false);
+  const [editHasNoKnownChronicConditions, setEditHasNoKnownChronicConditions] =
+    useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const loadPatientDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
 
     try {
-      const [historyResponse, preventiveResponse, fileReferenceResponse] = await Promise.all([
+      const [
+        historyResponse,
+        preventiveResponse,
+        fileReferenceResponse,
+        ownersResponse,
+      ] = await Promise.all([
         getPatientClinicalHistory(patientId),
         getPatientPreventiveCare(patientId),
         getPatientFileReferences(patientId),
+        getOwners(),
       ]);
       let owner: Owner | null = null;
 
@@ -235,6 +294,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         preventiveCare: preventiveResponse.data,
         fileReferences: fileReferenceResponse.data,
         owner,
+        owners: ownersResponse.data,
         errorMessage: null,
       }));
     } catch (error) {
@@ -243,6 +303,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         isLoading: false,
         clinicalHistory: null,
         owner: null,
+        owners: [],
         preventiveCare: [],
         fileReferences: [],
         errorMessage: getApiErrorMessage(error),
@@ -410,6 +471,147 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     }
   }
 
+  function openPatientEditModal(patient: Patient) {
+    setPatientEditFormState(toPatientEditFormState(patient));
+    const speciesOption = getSpeciesOption(patient.species);
+    setEditSpeciesOption(speciesOption);
+    setCustomEditSpecies(speciesOption === "Otro" ? patient.species : "");
+    setEditHasNoKnownAllergies(!hasClinicalText(patient.allergies));
+    setEditHasNoKnownChronicConditions(!hasClinicalText(patient.chronic_conditions));
+    setIsPatientEditOpen(true);
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closePatientEditModal() {
+    if (state.isPatientSaving) {
+      return;
+    }
+
+    setIsPatientEditOpen(false);
+    setPatientEditFormState(initialPatientEditFormState);
+    setEditSpeciesOption("");
+    setCustomEditSpecies("");
+    setEditHasNoKnownAllergies(false);
+    setEditHasNoKnownChronicConditions(false);
+  }
+
+  function openPatientDeleteModal() {
+    setDeleteConfirmation("");
+    setIsPatientDeleteOpen(true);
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closePatientDeleteModal() {
+    if (state.isPatientDeleting) {
+      return;
+    }
+
+    setIsPatientDeleteOpen(false);
+    setDeleteConfirmation("");
+  }
+
+  async function handleUpdatePatient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const species = getSelectedSpecies(
+      editSpeciesOption,
+      patientEditFormState.species,
+      customEditSpecies,
+    );
+
+    if (!patientEditFormState.owner_id || !patientEditFormState.name.trim() || !species) {
+      setState((current) => ({
+        ...current,
+        errorMessage: "Completa propietario, nombre y especie para guardar cambios.",
+        successMessage: null,
+      }));
+      return;
+    }
+
+    const allergies = normalizeOptionalClinicalText(patientEditFormState.allergies);
+    const chronicConditions = normalizeOptionalClinicalText(
+      patientEditFormState.chronic_conditions,
+    );
+
+    const payload: UpdatePatientPayload = {
+      owner_id: patientEditFormState.owner_id,
+      name: patientEditFormState.name.trim(),
+      species,
+      breed: patientEditFormState.breed.trim() || null,
+      sex: patientEditFormState.sex.trim() || null,
+      estimated_age: patientEditFormState.estimated_age.trim() || null,
+      allergies: editHasNoKnownAllergies ? null : allergies,
+      chronic_conditions: editHasNoKnownChronicConditions ? null : chronicConditions,
+    };
+
+    payload.weight_kg = patientEditFormState.weight_kg.trim()
+      ? Number(patientEditFormState.weight_kg)
+      : null;
+
+    setState((current) => ({
+      ...current,
+      isPatientSaving: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await updatePatient(patientId, payload);
+      setIsPatientEditOpen(false);
+      setPatientEditFormState(initialPatientEditFormState);
+      setEditSpeciesOption("");
+      setCustomEditSpecies("");
+      setEditHasNoKnownAllergies(false);
+      setEditHasNoKnownChronicConditions(false);
+      setState((current) => ({
+        ...current,
+        isPatientSaving: false,
+        successMessage: "Paciente actualizado correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isPatientSaving: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleDeletePatient(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (deleteConfirmation !== "ELIMINAR" || state.isPatientDeleting) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isPatientDeleting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await deletePatient(patientId);
+      router.push("/patients");
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isPatientDeleting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
   const timeline = useMemo(() => {
     if (!state.clinicalHistory) {
       return [];
@@ -488,20 +690,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       </section>
 
       <section className="panel patient-profile-card">
-        <div className="patient-profile-card__main">
-          <span className={`pet-avatar pet-avatar--large ${getSexAvatarClass(patient.sex)}`} aria-hidden="true">
-            {getSpeciesIcon(patient.species, 30)}
-          </span>
-          <div>
-            <p className="eyebrow">Paciente</p>
-            <h2>{patient.name}</h2>
-            <p>
-              {patient.species}
-              {patient.breed ? ` · ${patient.breed}` : ""}
-            </p>
-          </div>
-        </div>
-
         <dl className="metric-list">
           <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
           <div><dt>Edad</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
@@ -561,6 +749,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {activeSection === "preventive" ? renderPreventiveCareSection() : null}
       {activeSection === "files" ? renderFilesSection() : null}
 
+      {isPatientEditOpen ? renderPatientEditModal() : null}
+      {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
       {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
     </div>
@@ -729,10 +919,30 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   function renderInfoSection(patient: Patient) {
     return (
       <section className="panel patient-detail-section">
-        <div className="section-heading">
-          <p className="eyebrow">Ficha</p>
-          <h2>Información</h2>
-          <p>Datos generales registrados para este paciente.</p>
+        <div className="section-heading section-heading--row">
+          <div>
+            <p className="eyebrow">Ficha</p>
+            <h2>Información</h2>
+            <p>Datos generales registrados para este paciente.</p>
+          </div>
+          <div className="detail-action-row">
+            <button
+              aria-label="Editar paciente"
+              className="secondary-button"
+              onClick={() => openPatientEditModal(patient)}
+              type="button"
+            >
+              <Edit aria-hidden="true" size={18} /> Editar
+            </button>
+            <button
+              aria-label="Eliminar paciente"
+              className="secondary-button secondary-button--danger"
+              onClick={openPatientDeleteModal}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={18} /> Eliminar
+            </button>
+          </div>
         </div>
         <dl className="detail-grid">
           <div><dt>Nombre</dt><dd>{patient.name}</dd></div>
@@ -821,6 +1031,340 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           </div>
         )}
       </section>
+    );
+  }
+
+  function renderPatientEditModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section
+          aria-labelledby="edit-patient-title"
+          aria-modal="true"
+          className="bottom-sheet"
+          role="dialog"
+        >
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Edición</p>
+              <h2 id="edit-patient-title">Editar paciente</h2>
+            </div>
+            <button
+              aria-label="Cancelar"
+              className="icon-button"
+              disabled={state.isPatientSaving}
+              onClick={closePatientEditModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
+
+          <form className="entity-form" onSubmit={handleUpdatePatient}>
+            <label className="field">
+              <span>Propietario</span>
+              <select
+                required
+                value={patientEditFormState.owner_id}
+                onChange={(event) =>
+                  setPatientEditFormState((current) => ({
+                    ...current,
+                    owner_id: event.target.value,
+                  }))
+                }
+              >
+                <option value="">Selecciona un propietario</option>
+                {state.owners.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.full_name} · {owner.phone}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="form-grid">
+              <label className="field">
+                <span>Nombre</span>
+                <input
+                  required
+                  value={patientEditFormState.name}
+                  onChange={(event) =>
+                    setPatientEditFormState((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <fieldset className="choice-section">
+                <legend>Especie</legend>
+                <div className="choice-grid choice-grid--three">
+                  {speciesOptions.map((option) => (
+                    <button
+                      aria-pressed={editSpeciesOption === option.value}
+                      className={getChoiceClass(editSpeciesOption === option.value)}
+                      key={option.value}
+                      onClick={() => {
+                        setEditSpeciesOption(option.value);
+                        if (option.value === "Otro") {
+                          setPatientEditFormState((current) => ({ ...current, species: "" }));
+                          setCustomEditSpecies("");
+                          return;
+                        }
+
+                        setCustomEditSpecies("");
+                        setPatientEditFormState((current) => ({
+                          ...current,
+                          species: option.value,
+                        }));
+                      }}
+                      type="button"
+                    >
+                      {option.icon}
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {editSpeciesOption === "Otro" ? (
+                <label className="field">
+                  <span>Especifica la especie</span>
+                  <input
+                    required
+                    value={customEditSpecies}
+                    onChange={(event) => {
+                      setCustomEditSpecies(event.target.value);
+                      setPatientEditFormState((current) => ({
+                        ...current,
+                        species: event.target.value,
+                      }));
+                    }}
+                  />
+                </label>
+              ) : null}
+
+              <label className="field">
+                <span>Raza</span>
+                <input
+                  value={patientEditFormState.breed}
+                  placeholder="Ej. Labrador, Criollo, Persa"
+                  onChange={(event) =>
+                    setPatientEditFormState((current) => ({
+                      ...current,
+                      breed: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <fieldset className="choice-section">
+                <legend>Sexo</legend>
+                <div className="choice-grid choice-grid--two">
+                  {["Macho", "Hembra"].map((sex) => (
+                    <button
+                      aria-pressed={patientEditFormState.sex === sex}
+                      className={getChoiceClass(patientEditFormState.sex === sex)}
+                      key={sex}
+                      onClick={() =>
+                        setPatientEditFormState((current) => ({
+                          ...current,
+                          sex: current.sex === sex ? "" : sex,
+                        }))
+                      }
+                      type="button"
+                    >
+                      <span aria-hidden="true">{sex === "Macho" ? "♂" : "♀"}</span>
+                      <span>{sex}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <label className="field">
+                <span>Edad estimada</span>
+                <input
+                  value={patientEditFormState.estimated_age}
+                  placeholder="Ej. 2 años, 8 meses, Adulto"
+                  onChange={(event) =>
+                    setPatientEditFormState((current) => ({
+                      ...current,
+                      estimated_age: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>Peso (kg)</span>
+                <input
+                  inputMode="decimal"
+                  value={patientEditFormState.weight_kg}
+                  placeholder="Ej. 12.5"
+                  onChange={(event) =>
+                    setPatientEditFormState((current) => ({
+                      ...current,
+                      weight_kg: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="clinical-toggle-card">
+              <label className="checkbox-row">
+                <input
+                  checked={editHasNoKnownAllergies}
+                  type="checkbox"
+                  onChange={(event) => {
+                    setEditHasNoKnownAllergies(event.target.checked);
+                    if (event.target.checked) {
+                      setPatientEditFormState((current) => ({ ...current, allergies: "" }));
+                    }
+                  }}
+                />
+                <span>Sin alergias conocidas</span>
+              </label>
+              {!editHasNoKnownAllergies ? (
+                <label className="field">
+                  <span>Alergias</span>
+                  <textarea
+                    rows={2}
+                    value={patientEditFormState.allergies}
+                    placeholder="Ej. Penicilina, pollo, lácteos"
+                    onChange={(event) =>
+                      setPatientEditFormState((current) => ({
+                        ...current,
+                        allergies: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+            </div>
+
+            <div className="clinical-toggle-card">
+              <label className="checkbox-row">
+                <input
+                  checked={editHasNoKnownChronicConditions}
+                  type="checkbox"
+                  onChange={(event) => {
+                    setEditHasNoKnownChronicConditions(event.target.checked);
+                    if (event.target.checked) {
+                      setPatientEditFormState((current) => ({
+                        ...current,
+                        chronic_conditions: "",
+                      }));
+                    }
+                  }}
+                />
+                <span>Sin condiciones crónicas conocidas</span>
+              </label>
+              {!editHasNoKnownChronicConditions ? (
+                <label className="field">
+                  <span>Condiciones crónicas</span>
+                  <textarea
+                    rows={2}
+                    value={patientEditFormState.chronic_conditions}
+                    placeholder="Ej. Diabetes, dermatitis, epilepsia"
+                    onChange={(event) =>
+                      setPatientEditFormState((current) => ({
+                        ...current,
+                        chronic_conditions: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                disabled={state.isPatientSaving}
+                onClick={closePatientEditModal}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={state.isPatientSaving} type="submit">
+                {state.isPatientSaving ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
+  function renderPatientDeleteModal(patientName: string) {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section
+          aria-labelledby="delete-patient-title"
+          aria-modal="true"
+          className="bottom-sheet"
+          role="dialog"
+        >
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Acción irreversible</p>
+              <h2 id="delete-patient-title">Eliminar paciente</h2>
+            </div>
+            <button
+              aria-label="Cancelar"
+              className="icon-button"
+              disabled={state.isPatientDeleting}
+              onClick={closePatientDeleteModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          <div className="danger-callout" role="alert">
+            <strong>{patientName}</strong>
+            <span>
+              Esta acción eliminará el paciente y toda su información clínica asociada,
+              incluyendo consultas, exámenes, vacunas/desparasitación y referencias de
+              archivos.
+            </span>
+            <span>Esta acción no se puede deshacer.</span>
+          </div>
+
+          {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
+
+          <form className="entity-form" onSubmit={handleDeletePatient}>
+            <label className="field">
+              <span>Escribe ELIMINAR para confirmar</span>
+              <input
+                autoComplete="off"
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                disabled={state.isPatientDeleting}
+                onClick={closePatientDeleteModal}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="danger-button"
+                disabled={deleteConfirmation !== "ELIMINAR" || state.isPatientDeleting}
+                type="submit"
+              >
+                {state.isPatientDeleting ? "Eliminando..." : "Confirmar eliminación"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
     );
   }
 
@@ -1058,8 +1602,62 @@ function getSexAvatarClass(sex: string | null) {
   return "pet-avatar--neutral";
 }
 
+function toPatientEditFormState(patient: Patient): PatientEditFormState {
+  return {
+    owner_id: patient.owner_id,
+    name: patient.name,
+    species: patient.species,
+    breed: patient.breed ?? "",
+    sex: patient.sex ?? "",
+    estimated_age: patient.estimated_age ?? "",
+    weight_kg: patient.weight_kg ?? "",
+    allergies: patient.allergies ?? "",
+    chronic_conditions: patient.chronic_conditions ?? "",
+  };
+}
+
+function getSpeciesOption(species: string): SpeciesOption {
+  const normalized = species.trim().toLowerCase();
+  if (["canino", "perro", "dog", "canine"].some((word) => normalized.includes(word))) {
+    return "Canino";
+  }
+  if (["felino", "gato", "cat", "feline"].some((word) => normalized.includes(word))) {
+    return "Felino";
+  }
+  return "Otro";
+}
+
+function getChoiceClass(isSelected: boolean) {
+  return isSelected ? "choice-card choice-card--selected" : "choice-card";
+}
+
+function getSelectedSpecies(
+  selectedSpeciesOption: SpeciesOption,
+  species: string,
+  customSpecies: string,
+) {
+  return selectedSpeciesOption === "Otro" ? customSpecies.trim() : species.trim();
+}
+
+function normalizeOptionalClinicalText(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized || isNoneValue(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function hasClinicalText(value: string | null) {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
-  return Boolean(normalized && !["ninguna", "ninguno", "no", "n/a", "na"].includes(normalized));
+  return Boolean(normalized && !isNoneValue(normalized));
+}
+
+function isNoneValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return ["ninguna", "ninguno", "no", "n/a", "na", "sin alergias", "sin condiciones"].includes(
+    normalized,
+  );
 }

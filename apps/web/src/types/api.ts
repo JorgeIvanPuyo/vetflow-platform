@@ -159,6 +159,20 @@ export type CreatePatientPayload = {
   chronic_conditions?: string;
 };
 
+export type UpdatePatientPayload = Partial<
+  Omit<
+    CreatePatientPayload,
+    "breed" | "sex" | "estimated_age" | "weight_kg" | "allergies" | "chronic_conditions"
+  >
+> & {
+  breed?: string | null;
+  sex?: string | null;
+  estimated_age?: string | null;
+  weight_kg?: number | null;
+  allergies?: string | null;
+  chronic_conditions?: string | null;
+};
+
 export type CreateConsultationPayload = {
   patient_id: string;
   visit_date: string;

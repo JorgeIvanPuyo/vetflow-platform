@@ -5,6 +5,7 @@ import type {
   ClinicalHistory,
   CreatePatientPayload,
   Patient,
+  UpdatePatientPayload,
 } from "@/types/api";
 
 type GetPatientsOptions = {
@@ -36,4 +37,12 @@ export function getPatientClinicalHistory(patientId: string) {
 
 export function createPatient(payload: CreatePatientPayload) {
   return api.post<ApiItemResponse<Patient>>("/api/v1/patients", payload);
+}
+
+export function updatePatient(patientId: string, payload: UpdatePatientPayload) {
+  return api.patch<ApiItemResponse<Patient>>(`/api/v1/patients/${patientId}`, payload);
+}
+
+export function deletePatient(patientId: string) {
+  return api.delete<void>(`/api/v1/patients/${patientId}`);
 }
