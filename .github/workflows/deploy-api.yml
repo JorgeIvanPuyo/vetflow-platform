@@ -73,4 +73,5 @@ jobs:
             --region $REGION \
             --project $PROJECT_ID \
             --allow-unauthenticated \
-            --set-env-vars ^@^APP_ENV=production@DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}@FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}@FIREBASE_SERVICE_ACCOUNT_JSON=${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+            --update-env-vars APP_ENV=production,DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}",FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --set-secrets FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest
