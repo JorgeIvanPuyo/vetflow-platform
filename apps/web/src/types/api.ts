@@ -107,6 +107,7 @@ export type CreateOwnerPayload = {
   full_name: string;
   phone: string;
   email?: string;
+  address?: string;
 };
 
 export type CreatePatientPayload = {
@@ -117,6 +118,8 @@ export type CreatePatientPayload = {
   sex?: string;
   estimated_age?: string;
   weight_kg?: number;
+  allergies?: string;
+  chronic_conditions?: string;
 };
 
 export type CreateConsultationPayload = {

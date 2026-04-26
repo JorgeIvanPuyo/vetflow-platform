@@ -1267,3 +1267,83 @@ code {
   background: var(--color-primary-soft);
   color: var(--color-primary-dark);
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px 12px 0;
+  background: rgba(17, 24, 39, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.bottom-sheet {
+  width: min(100%, 680px);
+  max-height: min(92vh, 820px);
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 24px 24px 0 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-floating);
+}
+
+.bottom-sheet__header {
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -16px -16px 0;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.bottom-sheet__header h2 {
+  margin: 4px 0 0;
+  font-size: 1.45rem;
+  letter-spacing: -0.04em;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.modal-actions--three {
+  grid-template-columns: 1fr;
+}
+
+.secondary-button--full {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .modal-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .bottom-sheet {
+    border-radius: 24px;
+  }
+
+  .modal-actions--three {
+    grid-template-columns: auto auto 1fr;
+  }
+
+  .modal-actions--three .primary-button {
+    justify-self: end;
+  }
+}
