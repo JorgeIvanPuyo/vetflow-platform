@@ -5,10 +5,14 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.models.consultation import Consultation
 from app.models.exam import Exam
+from app.models.patient_file_reference import PatientFileReference
+from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.patient import Patient
 from app.repositories.consultation import ConsultationRepository
 from app.repositories.exam import ExamRepository
+from app.repositories.file_reference import FileReferenceRepository
 from app.repositories.patient import PatientRepository
+from app.repositories.preventive_care import PreventiveCareRepository
 from app.schemas.consultation import ConsultationCreate, ConsultationUpdate
 
 
@@ -17,6 +21,8 @@ class ConsultationService:
         self.db = db
         self.consultation_repository = ConsultationRepository(db)
         self.exam_repository = ExamRepository(db)
+        self.preventive_care_repository = PreventiveCareRepository(db)
+        self.file_reference_repository = FileReferenceRepository(db)
         self.patient_repository = PatientRepository(db)
 
     def create_consultation(
@@ -81,14 +87,28 @@ class ConsultationService:
 
     def get_patient_clinical_history(
         self, tenant_id: uuid.UUID, patient_id: uuid.UUID
-    ) -> tuple[Patient, list[Consultation], list[Exam]]:
+    ) -> tuple[
+        Patient,
+        list[Consultation],
+        list[Exam],
+        list[PatientPreventiveCare],
+        list[PatientFileReference],
+    ]:
         patient = self._get_patient_for_tenant(tenant_id, patient_id)
         consultations, _ = self.consultation_repository.list_by_patient(
             tenant_id,
             patient_id,
         )
         exams, _ = self.exam_repository.list_by_patient(tenant_id, patient_id)
-        return patient, consultations, exams
+        preventive_care, _ = self.preventive_care_repository.list_by_patient(
+            tenant_id,
+            patient_id,
+        )
+        file_references, _ = self.file_reference_repository.list_by_patient(
+            tenant_id,
+            patient_id,
+        )
+        return patient, consultations, exams, preventive_care, file_references
 
     def _get_patient_for_tenant(
         self, tenant_id: uuid.UUID, patient_id: uuid.UUID

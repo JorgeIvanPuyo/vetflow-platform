@@ -14,7 +14,9 @@ from app.schemas.consultation import (
     ConsultationUpdate,
 )
 from app.schemas.exam import ExamRead
+from app.schemas.file_reference import FileReferenceRead
 from app.schemas.patient import PatientRead
+from app.schemas.preventive_care import PreventiveCareRead
 from app.services.consultation import ConsultationService
 
 router = APIRouter(tags=["consultations"])
@@ -99,7 +101,13 @@ def get_patient_clinical_history(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    patient, consultations, exams = ConsultationService(db).get_patient_clinical_history(
+    (
+        patient,
+        consultations,
+        exams,
+        preventive_care,
+        file_references,
+    ) = ConsultationService(db).get_patient_clinical_history(
         tenant.tenant_id,
         patient_id,
     )
@@ -124,6 +132,26 @@ def get_patient_clinical_history(
             )
             for exam in exams
         ],
+        *[
+            ClinicalHistoryTimelineItem(
+                type="preventive_care",
+                id=record.id,
+                date=record.applied_at,
+                title=record.name,
+                summary=_preventive_care_summary(record),
+            )
+            for record in preventive_care
+        ],
+        *[
+            ClinicalHistoryTimelineItem(
+                type="file_reference",
+                id=file_reference.id,
+                date=file_reference.created_at,
+                title=file_reference.name,
+                summary=file_reference.file_type,
+            )
+            for file_reference in file_references
+        ],
     ]
     timeline.sort(key=lambda item: item.date, reverse=True)
 
@@ -134,6 +162,13 @@ def get_patient_clinical_history(
             for consultation in consultations
         ],
         exams=[ExamRead.model_validate(exam) for exam in exams],
+        preventive_care=[
+            PreventiveCareRead.model_validate(record) for record in preventive_care
+        ],
+        file_references=[
+            FileReferenceRead.model_validate(file_reference)
+            for file_reference in file_references
+        ],
         timeline=timeline,
     )
     return {"data": clinical_history.model_dump(mode="json"), "meta": {}}
@@ -156,3 +191,15 @@ def _exam_summary(status: str) -> str:
         "result_loaded": "Result loaded",
     }
     return status_labels.get(status, status)
+
+
+def _preventive_care_summary(record) -> str:
+    care_type_labels = {
+        "vaccine": "Vaccine",
+        "deworming": "Deworming",
+        "other": "Preventive care",
+    }
+    return record.lot_number or record.notes or care_type_labels.get(
+        record.care_type,
+        record.care_type,
+    )

@@ -1,10 +1,15 @@
 import uuid
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.consultation import Consultation
+from app.models.exam import Exam
 from app.models.owner import Owner
 from app.models.patient import Patient
+from app.models.patient_file_reference import PatientFileReference
+from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
 from app.schemas.patient import PatientCreate, PatientUpdate
@@ -87,5 +92,29 @@ class PatientService:
 
     def delete_patient(self, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> None:
         patient = self.get_patient(tenant_id, patient_id)
+        self.db.execute(
+            delete(PatientFileReference).where(
+                PatientFileReference.tenant_id == tenant_id,
+                PatientFileReference.patient_id == patient_id,
+            )
+        )
+        self.db.execute(
+            delete(PatientPreventiveCare).where(
+                PatientPreventiveCare.tenant_id == tenant_id,
+                PatientPreventiveCare.patient_id == patient_id,
+            )
+        )
+        self.db.execute(
+            delete(Exam).where(
+                Exam.tenant_id == tenant_id,
+                Exam.patient_id == patient_id,
+            )
+        )
+        self.db.execute(
+            delete(Consultation).where(
+                Consultation.tenant_id == tenant_id,
+                Consultation.patient_id == patient_id,
+            )
+        )
         self.patient_repository.delete(patient)
         self.db.commit()

@@ -8,6 +8,8 @@ from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.owner import Owner
 from app.models.patient import Patient
+from app.models.patient_file_reference import PatientFileReference
+from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.owner import OwnerRepository
 from app.schemas.owner import OwnerCreate, OwnerUpdate
 
@@ -63,6 +65,18 @@ class OwnerService:
         )
 
         if patient_ids:
+            self.db.execute(
+                delete(PatientFileReference).where(
+                    PatientFileReference.tenant_id == tenant_id,
+                    PatientFileReference.patient_id.in_(patient_ids),
+                )
+            )
+            self.db.execute(
+                delete(PatientPreventiveCare).where(
+                    PatientPreventiveCare.tenant_id == tenant_id,
+                    PatientPreventiveCare.patient_id.in_(patient_ids),
+                )
+            )
             self.db.execute(
                 delete(Exam).where(
                     Exam.tenant_id == tenant_id,

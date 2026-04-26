@@ -1,21 +1,45 @@
 "use client";
 
-import { FileText, Stethoscope } from "lucide-react";
+import {
+  Cat,
+  Dog,
+  FileText,
+  FolderOpen,
+  History,
+  Info,
+  Mail,
+  MapPin,
+  PawPrint,
+  Phone,
+  Plus,
+  Stethoscope,
+  Syringe,
+  User,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { createConsultation } from "@/services/consultations";
 import { createExam } from "@/services/exams";
+import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
 import { getOwner } from "@/services/owners";
 import { getPatientClinicalHistory } from "@/services/patients";
+import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
   ClinicalHistory,
   ClinicalHistoryTimelineItem,
   Consultation,
   CreateConsultationPayload,
   CreateExamPayload,
+  CreatePatientFileReferencePayload,
+  CreatePreventiveCarePayload,
   Owner,
+  Patient,
+  PatientFileReference,
+  PreventiveCare,
+  PreventiveCareType,
 } from "@/types/api";
 
 type PatientDetailProps = {
@@ -25,13 +49,20 @@ type PatientDetailProps = {
 type PatientDetailState = {
   isLoading: boolean;
   isSubmitting: boolean;
+  isPreventiveSubmitting: boolean;
+  isFileSubmitting: boolean;
   clinicalHistory: ClinicalHistory | null;
   owner: Owner | null;
+  preventiveCare: PreventiveCare[];
+  fileReferences: PatientFileReference[];
   errorMessage: string | null;
   successMessage: string | null;
   showConsultationForm: boolean;
   showExamForm: boolean;
 };
+
+type PatientDetailSection = "history" | "info" | "preventive" | "files";
+type TimelineFilter = "all" | "consultation" | "exam" | "preventive_care" | "file_reference";
 
 type ConsultationFormState = {
   visit_date: string;
@@ -50,6 +81,22 @@ type ExamFormState = {
   requested_at: string;
   consultation_id: string;
   observations: string;
+};
+
+type PreventiveCareFormState = {
+  name: string;
+  care_type: PreventiveCareType;
+  applied_at: string;
+  next_due_at: string;
+  lot_number: string;
+  notes: string;
+};
+
+type FileReferenceFormState = {
+  name: string;
+  file_type: string;
+  description: string;
+  external_url: string;
 };
 
 const initialFormState: ConsultationFormState = {
@@ -71,11 +118,31 @@ const initialExamFormState: ExamFormState = {
   observations: "",
 };
 
+const initialPreventiveCareFormState: PreventiveCareFormState = {
+  name: "",
+  care_type: "vaccine",
+  applied_at: toDateTimeLocalValue(new Date()),
+  next_due_at: "",
+  lot_number: "",
+  notes: "",
+};
+
+const initialFileReferenceFormState: FileReferenceFormState = {
+  name: "",
+  file_type: "radiography",
+  description: "",
+  external_url: "",
+};
+
 const initialState: PatientDetailState = {
   isLoading: true,
   isSubmitting: false,
+  isPreventiveSubmitting: false,
+  isFileSubmitting: false,
   clinicalHistory: null,
   owner: null,
+  preventiveCare: [],
+  fileReferences: [],
   errorMessage: null,
   successMessage: null,
   showConsultationForm: false,
@@ -95,29 +162,66 @@ const consultationSections: Array<{
   { key: "indications", label: "Indicaciones" },
 ];
 
+const patientSections: Array<{
+  key: PatientDetailSection;
+  label: string;
+  icon: ReactNode;
+}> = [
+  { key: "history", label: "Historial completo", icon: <History size={18} /> },
+  { key: "info", label: "Información", icon: <Info size={18} /> },
+  { key: "preventive", label: "Vacunas y desparasitación", icon: <Syringe size={18} /> },
+  { key: "files", label: "Archivos adjuntos", icon: <FolderOpen size={18} /> },
+];
+
+const timelineFilters: Array<{ value: TimelineFilter; label: string }> = [
+  { value: "all", label: "Todo" },
+  { value: "consultation", label: "Consultas" },
+  { value: "exam", label: "Exámenes" },
+  { value: "preventive_care", label: "Vacunas/desparasitación" },
+  { value: "file_reference", label: "Archivos" },
+];
+
+const preventiveCareTypeOptions: Array<{ value: PreventiveCareType; label: string }> = [
+  { value: "vaccine", label: "Vacuna" },
+  { value: "deworming", label: "Desparasitación" },
+  { value: "other", label: "Otro" },
+];
+
+const fileTypeOptions = [
+  { value: "radiography", label: "Radiografía" },
+  { value: "laboratory", label: "Laboratorio" },
+  { value: "ultrasound", label: "Ecografía" },
+  { value: "clinical_photo", label: "Foto clínica" },
+  { value: "other", label: "Otro" },
+];
+
 export function PatientDetail({ patientId }: PatientDetailProps) {
   const [state, setState] = useState<PatientDetailState>(initialState);
-  const [formState, setFormState] =
-    useState<ConsultationFormState>(initialFormState);
-  const [examFormState, setExamFormState] =
-    useState<ExamFormState>(initialExamFormState);
+  const [activeSection, setActiveSection] = useState<PatientDetailSection>("history");
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
+  const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
+  const [formState, setFormState] = useState<ConsultationFormState>(initialFormState);
+  const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
+  const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
+  const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
 
-  const loadClinicalHistory = useCallback(async () => {
-    setState((current) => ({
-      ...current,
-      isLoading: true,
-      errorMessage: null,
-    }));
+  const loadPatientDetail = useCallback(async () => {
+    setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
 
     try {
-      const response = await getPatientClinicalHistory(patientId);
+      const [historyResponse, preventiveResponse, fileReferenceResponse] = await Promise.all([
+        getPatientClinicalHistory(patientId),
+        getPatientPreventiveCare(patientId),
+        getPatientFileReferences(patientId),
+      ]);
       let owner: Owner | null = null;
 
-      if (response.data.owner) {
-        owner = response.data.owner;
-      } else if (response.data.patient.owner_id) {
+      if (historyResponse.data.owner) {
+        owner = historyResponse.data.owner;
+      } else if (historyResponse.data.patient.owner_id) {
         try {
-          const ownerResponse = await getOwner(response.data.patient.owner_id);
+          const ownerResponse = await getOwner(historyResponse.data.patient.owner_id);
           owner = ownerResponse.data;
         } catch {
           owner = null;
@@ -127,27 +231,28 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       setState((current) => ({
         ...current,
         isLoading: false,
-        clinicalHistory: response.data,
+        clinicalHistory: historyResponse.data,
+        preventiveCare: preventiveResponse.data,
+        fileReferences: fileReferenceResponse.data,
         owner,
         errorMessage: null,
       }));
     } catch (error) {
-      const message =
-        getApiErrorMessage(error);
-
       setState((current) => ({
         ...current,
         isLoading: false,
         clinicalHistory: null,
         owner: null,
-        errorMessage: message,
+        preventiveCare: [],
+        fileReferences: [],
+        errorMessage: getApiErrorMessage(error),
       }));
     }
   }, [patientId]);
 
   useEffect(() => {
-    void loadClinicalHistory();
-  }, [loadClinicalHistory]);
+    void loadPatientDetail();
+  }, [loadPatientDetail]);
 
   async function handleCreateConsultation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,10 +273,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
     try {
       await createConsultation(payload);
-      setFormState({
-        ...initialFormState,
-        visit_date: toDateTimeLocalValue(new Date()),
-      });
+      setFormState({ ...initialFormState, visit_date: toDateTimeLocalValue(new Date()) });
       setState((current) => ({
         ...current,
         isSubmitting: false,
@@ -179,15 +281,12 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         showConsultationForm: false,
         showExamForm: false,
       }));
-      await loadClinicalHistory();
+      await loadPatientDetail();
     } catch (error) {
-      const message =
-        getApiErrorMessage(error);
-
       setState((current) => ({
         ...current,
         isSubmitting: false,
-        errorMessage: message,
+        errorMessage: getApiErrorMessage(error),
       }));
     }
   }
@@ -212,10 +311,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
     try {
       await createExam(payload);
-      setExamFormState({
-        ...initialExamFormState,
-        requested_at: toDateTimeLocalValue(new Date()),
-      });
+      setExamFormState({ ...initialExamFormState, requested_at: toDateTimeLocalValue(new Date()) });
       setState((current) => ({
         ...current,
         isSubmitting: false,
@@ -223,18 +319,107 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         showConsultationForm: false,
         showExamForm: false,
       }));
-      await loadClinicalHistory();
+      await loadPatientDetail();
     } catch (error) {
-      const message =
-        getApiErrorMessage(error);
-
       setState((current) => ({
         ...current,
         isSubmitting: false,
-        errorMessage: message,
+        errorMessage: getApiErrorMessage(error),
       }));
     }
   }
+
+  async function handleCreatePreventiveCare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const payload: CreatePreventiveCarePayload = {
+      name: preventiveFormState.name.trim(),
+      care_type: preventiveFormState.care_type,
+      applied_at: new Date(preventiveFormState.applied_at).toISOString(),
+      next_due_at: preventiveFormState.next_due_at
+        ? new Date(preventiveFormState.next_due_at).toISOString()
+        : null,
+      lot_number: preventiveFormState.lot_number.trim() || null,
+      notes: preventiveFormState.notes.trim() || null,
+    };
+
+    setState((current) => ({
+      ...current,
+      isPreventiveSubmitting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await createPreventiveCare(patientId, payload);
+      setPreventiveFormState({
+        ...initialPreventiveCareFormState,
+        applied_at: toDateTimeLocalValue(new Date()),
+      });
+      setIsPreventiveModalOpen(false);
+      setActiveSection("preventive");
+      setState((current) => ({
+        ...current,
+        isPreventiveSubmitting: false,
+        successMessage: "Registro preventivo agregado correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isPreventiveSubmitting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleCreateFileReference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const payload: CreatePatientFileReferencePayload = {
+      name: fileFormState.name.trim(),
+      file_type: fileFormState.file_type,
+      description: fileFormState.description.trim() || null,
+      external_url: fileFormState.external_url.trim() || null,
+    };
+
+    setState((current) => ({
+      ...current,
+      isFileSubmitting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await createPatientFileReference(patientId, payload);
+      setFileFormState(initialFileReferenceFormState);
+      setIsFileModalOpen(false);
+      setActiveSection("files");
+      setState((current) => ({
+        ...current,
+        isFileSubmitting: false,
+        successMessage: "Referencia de archivo agregada correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isFileSubmitting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  const timeline = useMemo(() => {
+    if (!state.clinicalHistory) {
+      return [];
+    }
+
+    const allItems = getClinicalTimeline(state.clinicalHistory);
+    return timelineFilter === "all"
+      ? allItems
+      : allItems.filter((item) => item.type === timelineFilter);
+  }, [state.clinicalHistory, timelineFilter]);
 
   if (state.isLoading && !state.clinicalHistory) {
     return <div className="loading-card" aria-label="Cargando historia clínica" />;
@@ -249,21 +434,22 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   const { patient, consultations } = state.clinicalHistory;
-  const timeline = getClinicalTimeline(state.clinicalHistory);
 
   return (
     <div className="page-stack patient-detail-page">
-      <section className="detail-hero">
+      <section className="detail-hero patient-detail-hero">
         <Link className="back-link" href="/patients">
           Volver a pacientes
         </Link>
         <div className="detail-hero__main">
-          <span className="pet-avatar pet-avatar--large" aria-hidden="true">{getSpeciesInitial(patient.species)}</span>
+          <span className={`pet-avatar pet-avatar--large ${getSexAvatarClass(patient.sex)}`} aria-hidden="true">
+            {getSpeciesIcon(patient.species, 30)}
+          </span>
           <div>
             <h1>{patient.name}</h1>
             <p>
+              {patient.breed ? `${patient.breed} · ` : ""}
               {patient.species}
-              {patient.breed ? ` · ${patient.breed}` : ""}
             </p>
           </div>
         </div>
@@ -280,6 +466,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               }))
             }
           >
+            <Stethoscope aria-hidden="true" size={18} />
             {state.showConsultationForm ? "Cerrar consulta" : "Nueva consulta"}
           </button>
           <button
@@ -294,257 +481,463 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               }))
             }
           >
+            <FileText aria-hidden="true" size={18} />
             {state.showExamForm ? "Cerrar examen" : "Nuevo examen"}
           </button>
         </div>
       </section>
 
-      <section className="summary-grid">
-        <article className="panel patient-summary-card">
-          <div className="patient-summary-card__header">
-            <span className="pet-avatar" aria-hidden="true">{getSpeciesInitial(patient.species)}</span>
-            <div>
-              <h2>{patient.name}</h2>
-              <p>
-                {patient.species}
-                {patient.breed ? ` · ${patient.breed}` : ""}
-              </p>
-            </div>
+      <section className="panel patient-profile-card">
+        <div className="patient-profile-card__main">
+          <span className={`pet-avatar pet-avatar--large ${getSexAvatarClass(patient.sex)}`} aria-hidden="true">
+            {getSpeciesIcon(patient.species, 30)}
+          </span>
+          <div>
+            <p className="eyebrow">Paciente</p>
+            <h2>{patient.name}</h2>
+            <p>
+              {patient.species}
+              {patient.breed ? ` · ${patient.breed}` : ""}
+            </p>
           </div>
-          <dl className="metric-list">
-            <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
-            <div><dt>Edad</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
-            <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
-          </dl>
-          {patient.allergies ? (
-            <div className="alert-box">Alergias: {patient.allergies}</div>
-          ) : null}
-        </article>
+        </div>
 
-        <article className="panel owner-card">
+        <dl className="metric-list">
+          <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
+          <div><dt>Edad</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
+          <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
+        </dl>
+
+        {hasClinicalText(patient.allergies) ? (
+          <div className="alert-box alert-box--structured">
+            <strong>Alergias</strong>
+            <span>{patient.allergies}</span>
+          </div>
+        ) : null}
+
+        <section className="owner-inline-card" aria-label="Propietario">
           <div className="section-heading">
             <p className="eyebrow">Responsable</p>
             <h2>Propietario</h2>
           </div>
           {state.owner ? (
-            <dl className="owner-details">
-              <div><dt>Nombre</dt><dd>{state.owner.full_name}</dd></div>
-              <div><dt>Teléfono</dt><dd>{state.owner.phone}</dd></div>
-              <div><dt>Correo</dt><dd>{state.owner.email ?? "No indicado"}</dd></div>
-              <div><dt>Dirección</dt><dd>{state.owner.address ?? "No indicada"}</dd></div>
+            <dl className="owner-details owner-details--compact">
+              <div><dt>Nombre</dt><dd><User size={15} /> {state.owner.full_name}</dd></div>
+              <div><dt>Teléfono</dt><dd><Phone size={15} /> {state.owner.phone}</dd></div>
+              {state.owner.email ? <div><dt>Correo</dt><dd><Mail size={15} /> {state.owner.email}</dd></div> : null}
+              {state.owner.address ? <div><dt>Dirección</dt><dd><MapPin size={15} /> {state.owner.address}</dd></div> : null}
             </dl>
           ) : (
             <div className="empty-state">No hay datos del propietario disponibles.</div>
           )}
-        </article>
+        </section>
       </section>
 
-      {state.showConsultationForm ? (
-        <section className="panel clinical-form-card">
-          <div className="section-heading">
-            <p className="eyebrow">Consulta</p>
-            <h2>Nueva consulta</h2>
-            <p>Nota clínica estructurada para este paciente.</p>
-          </div>
-
-          <form className="entity-form" onSubmit={handleCreateConsultation}>
-            <div className="form-grid">
-              <label className="field">
-                <span>Fecha de consulta</span>
-                <input
-                  required
-                  type="datetime-local"
-                  value={formState.visit_date}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      visit_date: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <label className="field">
-                <span>Motivo</span>
-                <input
-                  required
-                  value={formState.reason}
-                  onChange={(event) =>
-                    setFormState((current) => ({ ...current, reason: event.target.value }))
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="clinical-section-grid">
-              {consultationSections.map((section) => (
-                <label className="field clinical-section" key={section.key}>
-                  <span>{section.label}</span>
-                  <textarea
-                    rows={3}
-                    value={formState[section.key]}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        [section.key]: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-            </div>
-
-            <button className="primary-button" disabled={state.isSubmitting} type="submit">
-              {state.isSubmitting ? "Guardando..." : "Crear consulta"}
-            </button>
-          </form>
-        </section>
-      ) : null}
-
-      {state.showExamForm ? (
-        <section className="panel clinical-form-card">
-          <div className="section-heading">
-            <p className="eyebrow">Exámenes</p>
-            <h2>Nuevo examen</h2>
-            <p>Solicitud de examen en texto para este paciente.</p>
-          </div>
-
-          <form className="entity-form" onSubmit={handleCreateExam}>
-            <div className="form-grid">
-              <label className="field">
-                <span>Tipo de examen</span>
-                <input
-                  required
-                  value={examFormState.exam_type}
-                  onChange={(event) =>
-                    setExamFormState((current) => ({ ...current, exam_type: event.target.value }))
-                  }
-                />
-              </label>
-
-              <label className="field">
-                <span>Solicitado el</span>
-                <input
-                  required
-                  type="datetime-local"
-                  value={examFormState.requested_at}
-                  onChange={(event) =>
-                    setExamFormState((current) => ({
-                      ...current,
-                      requested_at: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
-            <label className="field">
-              <span>Consulta</span>
-              <select
-                value={examFormState.consultation_id}
-                onChange={(event) =>
-                  setExamFormState((current) => ({
-                    ...current,
-                    consultation_id: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Sin consulta vinculada</option>
-                {consultations.map((consultation) => (
-                  <option key={consultation.id} value={consultation.id}>
-                    {formatDateTime(consultation.visit_date)} - {consultation.reason}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="field">
-              <span>Observaciones</span>
-              <textarea
-                rows={3}
-                value={examFormState.observations}
-                onChange={(event) =>
-                  setExamFormState((current) => ({ ...current, observations: event.target.value }))
-                }
-              />
-            </label>
-
-            <button className="primary-button" disabled={state.isSubmitting} type="submit">
-              {state.isSubmitting ? "Guardando..." : "Crear solicitud de examen"}
-            </button>
-          </form>
-        </section>
-      ) : null}
+      {state.showConsultationForm ? renderConsultationForm() : null}
+      {state.showExamForm ? renderExamForm(consultations) : null}
 
       {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
       {state.errorMessage && !state.isLoading ? <p className="error-state">{state.errorMessage}</p> : null}
+      {state.isLoading ? <div className="panel-note">Actualizando datos del paciente...</div> : null}
 
-      <section className="panel tabbed-card">
-        <div className="tab-list" role="tablist" aria-label="Detalle del paciente">
-          <a className="tab-pill tab-pill--active" href="#historia">Historia</a>
-          <a className="tab-pill" href="#informacion">Información</a>
-          <a className="tab-pill" href="#vacunas">Vacunas</a>
-          <a className="tab-pill" href="#archivos">Archivos</a>
+      <nav className="patient-section-nav" aria-label="Secciones del paciente">
+        {patientSections.map((section) => (
+          <button
+            aria-label={section.label}
+            aria-pressed={activeSection === section.key}
+            className={activeSection === section.key ? "patient-section-nav__item patient-section-nav__item--active" : "patient-section-nav__item"}
+            key={section.key}
+            type="button"
+            onClick={() => setActiveSection(section.key)}
+          >
+            {section.icon}
+            <span>{section.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {activeSection === "history" ? renderHistorySection(timeline) : null}
+      {activeSection === "info" ? renderInfoSection(patient) : null}
+      {activeSection === "preventive" ? renderPreventiveCareSection() : null}
+      {activeSection === "files" ? renderFilesSection() : null}
+
+      {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
+      {isFileModalOpen ? renderFileReferenceModal() : null}
+    </div>
+  );
+
+  function renderConsultationForm() {
+    return (
+      <section className="panel clinical-form-card">
+        <div className="section-heading">
+          <p className="eyebrow">Consulta</p>
+          <h2>Nueva consulta</h2>
+          <p>Nota clínica estructurada para este paciente.</p>
         </div>
 
-        <section id="historia" className="tab-section">
-          <div className="section-heading">
-            <p className="eyebrow">Timeline</p>
-            <h2>Historia clínica</h2>
-            <p>Consultas y exámenes ordenados por fecha clínica.</p>
+        <form className="entity-form" onSubmit={handleCreateConsultation}>
+          <div className="form-grid">
+            <label className="field">
+              <span>Fecha de consulta</span>
+              <input
+                required
+                type="datetime-local"
+                value={formState.visit_date}
+                onChange={(event) => setFormState((current) => ({ ...current, visit_date: event.target.value }))}
+              />
+            </label>
+
+            <label className="field">
+              <span>Motivo</span>
+              <input
+                required
+                value={formState.reason}
+                onChange={(event) => setFormState((current) => ({ ...current, reason: event.target.value }))}
+              />
+            </label>
           </div>
 
-          {state.isLoading ? <div className="panel-note">Actualizando historia clínica...</div> : null}
+          <div className="clinical-section-grid">
+            {consultationSections.map((section) => (
+              <label className="field clinical-section" key={section.key}>
+                <span>{section.label}</span>
+                <textarea
+                  rows={3}
+                  value={formState[section.key]}
+                  onChange={(event) => setFormState((current) => ({ ...current, [section.key]: event.target.value }))}
+                />
+              </label>
+            ))}
+          </div>
 
-          {!state.isLoading && timeline.length === 0 ? (
-            <div className="empty-state">No hay consultas ni exámenes registrados para este paciente.</div>
-          ) : null}
-
-          {timeline.length > 0 ? (
-            <ol className="clinical-timeline">
-              {timeline.map((item) => (
-                <li className={`clinical-timeline__item clinical-timeline__item--${item.type}`} key={`${item.type}-${item.id}`}>
-                  <span className="clinical-timeline__dot" aria-hidden="true">
-                    {item.type === "exam" ? <FileText size={18} /> : <Stethoscope size={18} />}
-                  </span>
-                  <Link className="clinical-timeline__card" href={item.type === "exam" ? `/exams/${item.id}` : `/consultations/${item.id}`}>
-                    <span className={`badge badge--${item.type === "exam" ? "blue" : "success"}`}>
-                      {item.type === "exam" ? "Examen" : "Consulta"}
-                    </span>
-                    <time dateTime={item.date}>{formatDateTime(item.date)}</time>
-                    <h3>{item.title}</h3>
-                    <p>{item.summary}</p>
-                    <span className="inline-link">Ver</span>
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </section>
-
-        <section id="informacion" className="tab-section tab-section--soft">
-          <h2>Información</h2>
-          <dl className="detail-grid">
-            <div><dt>Especie</dt><dd>{patient.species}</dd></div>
-            <div><dt>Raza</dt><dd>{patient.breed ?? "No indicado"}</dd></div>
-            <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
-            <div><dt>Edad estimada</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
-            <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
-            <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
-          </dl>
-        </section>
-
-        <section id="vacunas" className="tab-section tab-section--soft">
-          <h2>Vacunas</h2>
-          <div className="empty-state">Módulo en construcción. Esta funcionalidad estará disponible en una próxima versión.</div>
-        </section>
-
-        <section id="archivos" className="tab-section tab-section--soft">
-          <h2>Archivos</h2>
-          <div className="empty-state">Módulo en construcción. Esta funcionalidad estará disponible en una próxima versión.</div>
-        </section>
+          <button className="primary-button" disabled={state.isSubmitting} type="submit">
+            {state.isSubmitting ? "Guardando..." : "Crear consulta"}
+          </button>
+        </form>
       </section>
-    </div>
+    );
+  }
+
+  function renderExamForm(consultations: Consultation[]) {
+    return (
+      <section className="panel clinical-form-card">
+        <div className="section-heading">
+          <p className="eyebrow">Exámenes</p>
+          <h2>Nuevo examen</h2>
+          <p>Solicitud de examen en texto para este paciente.</p>
+        </div>
+
+        <form className="entity-form" onSubmit={handleCreateExam}>
+          <div className="form-grid">
+            <label className="field">
+              <span>Tipo de examen</span>
+              <input
+                required
+                value={examFormState.exam_type}
+                onChange={(event) => setExamFormState((current) => ({ ...current, exam_type: event.target.value }))}
+              />
+            </label>
+
+            <label className="field">
+              <span>Solicitado el</span>
+              <input
+                required
+                type="datetime-local"
+                value={examFormState.requested_at}
+                onChange={(event) => setExamFormState((current) => ({ ...current, requested_at: event.target.value }))}
+              />
+            </label>
+          </div>
+
+          <label className="field">
+            <span>Consulta</span>
+            <select
+              value={examFormState.consultation_id}
+              onChange={(event) => setExamFormState((current) => ({ ...current, consultation_id: event.target.value }))}
+            >
+              <option value="">Sin consulta vinculada</option>
+              {consultations.map((consultation) => (
+                <option key={consultation.id} value={consultation.id}>
+                  {formatDateTime(consultation.visit_date)} - {consultation.reason}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Observaciones</span>
+            <textarea
+              rows={3}
+              value={examFormState.observations}
+              onChange={(event) => setExamFormState((current) => ({ ...current, observations: event.target.value }))}
+            />
+          </label>
+
+          <button className="primary-button" disabled={state.isSubmitting} type="submit">
+            {state.isSubmitting ? "Guardando..." : "Crear solicitud de examen"}
+          </button>
+        </form>
+      </section>
+    );
+  }
+
+  function renderHistorySection(timeline: ClinicalHistoryTimelineItem[]) {
+    return (
+      <section className="panel patient-detail-section">
+        <div className="section-heading section-heading--row">
+          <div>
+            <p className="eyebrow">Timeline</p>
+            <h2>Historial completo</h2>
+            <p>Consultas, exámenes, vacunas, desparasitación y archivos.</p>
+          </div>
+          <label className="compact-filter">
+            <span className="sr-only">Filtrar historial</span>
+            <select value={timelineFilter} onChange={(event) => setTimelineFilter(event.target.value as TimelineFilter)}>
+              {timelineFilters.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {timeline.length === 0 ? (
+          <div className="empty-state">No hay registros para mostrar en este historial.</div>
+        ) : (
+          <ol className="clinical-timeline">
+            {timeline.map((item) => (
+              <li className={`clinical-timeline__item clinical-timeline__item--${item.type}`} key={`${item.type}-${item.id}`}>
+                <span className="clinical-timeline__dot" aria-hidden="true">
+                  {getTimelineIcon(item.type)}
+                </span>
+                {getTimelineHref(item) ? (
+                  <Link className="clinical-timeline__card" href={getTimelineHref(item) ?? "#"}>
+                    {renderTimelineContent(item, true)}
+                  </Link>
+                ) : (
+                  <article className="clinical-timeline__card">
+                    {renderTimelineContent(item, false)}
+                  </article>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    );
+  }
+
+  function renderInfoSection(patient: Patient) {
+    return (
+      <section className="panel patient-detail-section">
+        <div className="section-heading">
+          <p className="eyebrow">Ficha</p>
+          <h2>Información</h2>
+          <p>Datos generales registrados para este paciente.</p>
+        </div>
+        <dl className="detail-grid">
+          <div><dt>Nombre</dt><dd>{patient.name}</dd></div>
+          <div><dt>Especie</dt><dd>{patient.species}</dd></div>
+          <div><dt>Raza</dt><dd>{patient.breed ?? "No indicado"}</dd></div>
+          <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
+          <div><dt>Edad estimada</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
+          <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
+          <div><dt>Alergias</dt><dd>{hasClinicalText(patient.allergies) ? patient.allergies : "Sin registros"}</dd></div>
+          <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
+          <div><dt>Fecha de creación</dt><dd>{formatDateTime(patient.created_at)}</dd></div>
+        </dl>
+      </section>
+    );
+  }
+
+  function renderPreventiveCareSection() {
+    return (
+      <section className="panel patient-detail-section">
+        <div className="section-heading section-heading--row">
+          <div>
+            <p className="eyebrow">Prevención</p>
+            <h2>Vacunas y desparasitación</h2>
+            <p>Registros preventivos persistentes del paciente.</p>
+          </div>
+          <button className="primary-button" type="button" onClick={() => setIsPreventiveModalOpen(true)}>
+            <Plus aria-hidden="true" size={18} /> Agregar
+          </button>
+        </div>
+
+        {state.preventiveCare.length === 0 ? (
+          <div className="empty-state">No hay vacunas o desparasitaciones registradas.</div>
+        ) : (
+          <div className="record-card-list">
+            {state.preventiveCare.map((record) => (
+              <article className="record-card" key={record.id}>
+                <span className="icon-bubble"><Syringe size={20} /></span>
+                <div>
+                  <h3>{record.name}</h3>
+                  <p>{getPreventiveCareTypeLabel(record.care_type)} · Aplicado {formatDateTime(record.applied_at)}</p>
+                  {record.next_due_at ? <p>Próxima dosis: {formatDateTime(record.next_due_at)}</p> : null}
+                  {record.lot_number ? <p>Lote: {record.lot_number}</p> : null}
+                  {record.notes ? <p>{record.notes}</p> : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderFilesSection() {
+    return (
+      <section className="panel patient-detail-section">
+        <div className="section-heading section-heading--row">
+          <div>
+            <p className="eyebrow">Referencias</p>
+            <h2>Archivos adjuntos</h2>
+            <p>Metadatos o enlaces externos, sin carga real de archivos.</p>
+          </div>
+          <button className="primary-button" type="button" onClick={() => setIsFileModalOpen(true)}>
+            <Plus aria-hidden="true" size={18} /> Agregar
+          </button>
+        </div>
+
+        {state.fileReferences.length === 0 ? (
+          <div className="empty-state">No hay archivos registrados</div>
+        ) : (
+          <div className="record-card-list">
+            {state.fileReferences.map((fileReference) => (
+              <article className="record-card" key={fileReference.id}>
+                <span className="icon-bubble icon-bubble--blue"><FileText size={20} /></span>
+                <div>
+                  <h3>{fileReference.name}</h3>
+                  <p>{getFileTypeLabel(fileReference.file_type)}</p>
+                  {fileReference.description ? <p>{fileReference.description}</p> : null}
+                  {fileReference.external_url ? (
+                    <a className="inline-link" href={fileReference.external_url} rel="noreferrer" target="_blank">
+                      Abrir referencia externa
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderPreventiveCareModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section aria-labelledby="preventive-care-title" aria-modal="true" className="bottom-sheet" role="dialog">
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Prevención</p>
+              <h2 id="preventive-care-title">Agregar vacuna o desparasitación</h2>
+            </div>
+            <button aria-label="Cancelar" className="icon-button" onClick={() => setIsPreventiveModalOpen(false)} type="button">
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          <form className="entity-form" onSubmit={handleCreatePreventiveCare}>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nombre</span>
+                <input required value={preventiveFormState.name} onChange={(event) => setPreventiveFormState((current) => ({ ...current, name: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Tipo</span>
+                <select value={preventiveFormState.care_type} onChange={(event) => setPreventiveFormState((current) => ({ ...current, care_type: event.target.value as PreventiveCareType }))}>
+                  {preventiveCareTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>Fecha</span>
+                <input required type="datetime-local" value={preventiveFormState.applied_at} onChange={(event) => setPreventiveFormState((current) => ({ ...current, applied_at: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Próxima dosis</span>
+                <input type="datetime-local" value={preventiveFormState.next_due_at} onChange={(event) => setPreventiveFormState((current) => ({ ...current, next_due_at: event.target.value }))} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Lote</span>
+              <input value={preventiveFormState.lot_number} onChange={(event) => setPreventiveFormState((current) => ({ ...current, lot_number: event.target.value }))} />
+            </label>
+            <label className="field">
+              <span>Notas</span>
+              <textarea rows={3} value={preventiveFormState.notes} onChange={(event) => setPreventiveFormState((current) => ({ ...current, notes: event.target.value }))} />
+            </label>
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={() => setIsPreventiveModalOpen(false)} type="button">Cancelar</button>
+              <button className="primary-button" disabled={state.isPreventiveSubmitting} type="submit">
+                {state.isPreventiveSubmitting ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
+  function renderFileReferenceModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section aria-labelledby="file-reference-title" aria-modal="true" className="bottom-sheet" role="dialog">
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Archivos</p>
+              <h2 id="file-reference-title">Agregar referencia</h2>
+            </div>
+            <button aria-label="Cancelar" className="icon-button" onClick={() => setIsFileModalOpen(false)} type="button">
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          <p className="panel-note">Por ahora solo se registra la referencia del archivo. La carga real de archivos se implementará en una próxima versión.</p>
+
+          <form className="entity-form" onSubmit={handleCreateFileReference}>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nombre del archivo</span>
+                <input required value={fileFormState.name} onChange={(event) => setFileFormState((current) => ({ ...current, name: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>Tipo</span>
+                <select value={fileFormState.file_type} onChange={(event) => setFileFormState((current) => ({ ...current, file_type: event.target.value }))}>
+                  {fileTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="field">
+              <span>Descripción</span>
+              <textarea rows={3} value={fileFormState.description} onChange={(event) => setFileFormState((current) => ({ ...current, description: event.target.value }))} />
+            </label>
+            <label className="field">
+              <span>URL externa opcional</span>
+              <input type="url" value={fileFormState.external_url} onChange={(event) => setFileFormState((current) => ({ ...current, external_url: event.target.value }))} />
+            </label>
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={() => setIsFileModalOpen(false)} type="button">Cancelar</button>
+              <button className="primary-button" disabled={state.isFileSubmitting} type="submit">
+                {state.isFileSubmitting ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+}
+
+function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: boolean) {
+  return (
+    <>
+      <span className={`badge ${getTimelineBadgeClass(item.type)}`}>{getTimelineTypeLabel(item.type)}</span>
+      <time dateTime={item.date}>{formatDateTime(item.date)}</time>
+      <h3>{item.title}</h3>
+      <p>{item.summary}</p>
+      {isNavigable ? <span className="inline-link">Ver</span> : null}
+    </>
   );
 }
 
@@ -557,8 +950,9 @@ function buildClinicalPayload(formState: ConsultationFormState) {
   );
 }
 
-function toDateTimeLocalValue(date: Date) {
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+function toDateTimeLocalValue(date: Date | string) {
+  const value = typeof date === "string" ? new Date(date) : date;
+  const offsetDate = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
   return offsetDate.toISOString().slice(0, 16);
 }
 
@@ -569,19 +963,7 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function getConsultationSummary(consultation: Consultation) {
-  return (
-    consultation.final_diagnosis ??
-    consultation.presumptive_diagnosis ??
-    consultation.clinical_exam ??
-    consultation.anamnesis ??
-    "Sin resumen clínico registrado."
-  );
-}
-
-function getClinicalTimeline(
-  clinicalHistory: ClinicalHistory,
-): ClinicalHistoryTimelineItem[] {
+function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryTimelineItem[] {
   if (clinicalHistory.timeline) {
     return clinicalHistory.timeline;
   }
@@ -595,6 +977,89 @@ function getClinicalTimeline(
   }));
 }
 
-function getSpeciesInitial(species: string) {
-  return species.trim().charAt(0).toUpperCase() || "P";
+function getConsultationSummary(consultation: Consultation) {
+  return (
+    consultation.final_diagnosis ??
+    consultation.presumptive_diagnosis ??
+    consultation.clinical_exam ??
+    consultation.anamnesis ??
+    "Sin resumen clínico registrado."
+  );
+}
+
+function getTimelineHref(item: ClinicalHistoryTimelineItem) {
+  if (item.type === "consultation") {
+    return `/consultations/${item.id}`;
+  }
+  if (item.type === "exam") {
+    return `/exams/${item.id}`;
+  }
+  return null;
+}
+
+function getTimelineIcon(type: ClinicalHistoryTimelineItem["type"]) {
+  if (type === "consultation") return <Stethoscope size={18} />;
+  if (type === "exam") return <FileText size={18} />;
+  if (type === "preventive_care") return <Syringe size={18} />;
+  return <FolderOpen size={18} />;
+}
+
+function getTimelineTypeLabel(type: ClinicalHistoryTimelineItem["type"]) {
+  const labels = {
+    consultation: "Consulta",
+    exam: "Examen",
+    preventive_care: "Vacuna/desparasitación",
+    file_reference: "Archivo",
+  };
+  return labels[type];
+}
+
+function getTimelineBadgeClass(type: ClinicalHistoryTimelineItem["type"]) {
+  if (type === "exam" || type === "file_reference") return "badge--blue";
+  return "badge--success";
+}
+
+function getPreventiveCareTypeLabel(type: PreventiveCareType) {
+  const labels: Record<PreventiveCareType, string> = {
+    vaccine: "Vacuna",
+    deworming: "Desparasitación",
+    other: "Otro",
+  };
+  return labels[type];
+}
+
+function getFileTypeLabel(type: string) {
+  return fileTypeOptions.find((option) => option.value === type)?.label ?? readableLabel(type);
+}
+
+function readableLabel(value: string) {
+  return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function getSpeciesIcon(species: string, size = 24) {
+  const normalized = species.trim().toLowerCase();
+  if (["canino", "perro", "dog", "canine"].some((word) => normalized.includes(word))) {
+    return <Dog size={size} />;
+  }
+  if (["felino", "gato", "cat", "feline"].some((word) => normalized.includes(word))) {
+    return <Cat size={size} />;
+  }
+  return <PawPrint size={size} />;
+}
+
+function getSexAvatarClass(sex: string | null) {
+  const normalized = sex?.trim().toLowerCase() ?? "";
+  if (["macho", "masculino", "male"].includes(normalized)) {
+    return "pet-avatar--male";
+  }
+  if (["hembra", "femenino", "female"].includes(normalized)) {
+    return "pet-avatar--female";
+  }
+  return "pet-avatar--neutral";
+}
+
+function hasClinicalText(value: string | null) {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized && !["ninguna", "ninguno", "no", "n/a", "na"].includes(normalized));
 }

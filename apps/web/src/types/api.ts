@@ -87,8 +87,36 @@ export type Exam = {
   updated_at: string;
 };
 
+export type PreventiveCareType = "vaccine" | "deworming" | "other";
+
+export type PreventiveCare = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  name: string;
+  care_type: PreventiveCareType;
+  applied_at: string;
+  next_due_at: string | null;
+  lot_number: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PatientFileReference = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  name: string;
+  file_type: string;
+  description: string | null;
+  external_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ClinicalHistoryTimelineItem = {
-  type: "consultation" | "exam";
+  type: "consultation" | "exam" | "preventive_care" | "file_reference";
   id: string;
   date: string;
   title: string;
@@ -99,6 +127,8 @@ export type ClinicalHistory = {
   patient: Patient;
   consultations: Consultation[];
   exams?: Exam[];
+  preventive_care?: PreventiveCare[];
+  file_references?: PatientFileReference[];
   timeline?: ClinicalHistoryTimelineItem[];
   owner?: Owner | null;
 };
@@ -161,6 +191,27 @@ export type UpdateExamPayload = {
   result_detail?: string | null;
   observations?: string | null;
 };
+
+export type CreatePreventiveCarePayload = {
+  name: string;
+  care_type: PreventiveCareType;
+  applied_at: string;
+  next_due_at?: string | null;
+  lot_number?: string | null;
+  notes?: string | null;
+};
+
+export type UpdatePreventiveCarePayload = Partial<CreatePreventiveCarePayload>;
+
+export type CreatePatientFileReferencePayload = {
+  name: string;
+  file_type: string;
+  description?: string | null;
+  external_url?: string | null;
+};
+
+export type UpdatePatientFileReferencePayload =
+  Partial<CreatePatientFileReferencePayload>;
 
 export type SearchResult = {
   type: "owner" | "patient";

@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.exam import ExamRead
+from app.schemas.file_reference import FileReferenceRead
 from app.schemas.patient import PatientRead
+from app.schemas.preventive_care import PreventiveCareRead
 
 
 class ConsultationBase(BaseModel):
@@ -57,4 +59,6 @@ class ClinicalHistoryRead(BaseModel):
     patient: PatientRead
     consultations: list[ConsultationRead]
     exams: list[ExamRead]
+    preventive_care: list[PreventiveCareRead] = Field(default_factory=list)
+    file_references: list[FileReferenceRead] = Field(default_factory=list)
     timeline: list[ClinicalHistoryTimelineItem]

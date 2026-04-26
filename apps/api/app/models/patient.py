@@ -42,3 +42,11 @@ class Patient(BaseModel):
         back_populates="patient",
     )
     exams: Mapped[list[Exam]] = relationship("Exam", back_populates="patient")
+    preventive_care_records: Mapped[list[PatientPreventiveCare]] = relationship(
+        "PatientPreventiveCare",
+        back_populates="patient",
+    )
+    file_references: Mapped[list[PatientFileReference]] = relationship(
+        "PatientFileReference",
+        back_populates="patient",
+    )

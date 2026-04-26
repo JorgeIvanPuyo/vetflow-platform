@@ -682,6 +682,21 @@ code {
   font-size: 1.6rem;
 }
 
+.pet-avatar--male {
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+}
+
+.pet-avatar--female {
+  color: #8a3f78;
+  background: #f7e6f2;
+}
+
+.pet-avatar--neutral {
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+}
+
 .contact-avatar {
   color: #1f4f8b;
   background: var(--color-blue-soft);
@@ -711,6 +726,126 @@ code {
 .detail-hero__actions .primary-button,
 .detail-hero__actions .secondary-button {
   flex: 1 1 150px;
+}
+
+.patient-profile-card {
+  display: grid;
+  gap: 16px;
+}
+
+.patient-profile-card__main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.patient-profile-card__main h2 {
+  margin: 4px 0 5px;
+  font-size: clamp(1.65rem, 7vw, 2.25rem);
+  letter-spacing: -0.045em;
+}
+
+.patient-profile-card__main p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.owner-inline-card {
+  display: grid;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.owner-details--compact dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-box--structured {
+  display: grid;
+  gap: 4px;
+}
+
+.alert-box--structured strong {
+  font-weight: 600;
+}
+
+.patient-section-nav {
+  position: sticky;
+  top: calc(var(--header-height) + 8px);
+  z-index: 9;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(228, 222, 211, 0.92);
+  border-radius: 22px;
+  background: rgba(246, 243, 236, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.patient-section-nav__item {
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 17px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.15;
+  padding: 8px 5px;
+  cursor: pointer;
+}
+
+.patient-section-nav__item--active {
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  box-shadow: var(--shadow-card);
+}
+
+.patient-detail-section {
+  display: grid;
+  gap: 16px;
+}
+
+.compact-filter select {
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 12px;
+}
+
+.record-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.record-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-soft);
+}
+
+.record-card h3 {
+  margin: 0 0 5px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.record-card p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
 }
 
 .back-link,
@@ -1040,6 +1175,16 @@ code {
 }
 
 .clinical-timeline__item--exam .clinical-timeline__dot {
+  color: #1f4f8b;
+  background: var(--color-blue-soft);
+}
+
+.clinical-timeline__item--preventive_care .clinical-timeline__dot {
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+}
+
+.clinical-timeline__item--file_reference .clinical-timeline__dot {
   color: #1f4f8b;
   background: var(--color-blue-soft);
 }
