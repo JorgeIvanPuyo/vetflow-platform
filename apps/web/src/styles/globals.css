@@ -820,6 +820,79 @@ code {
   line-height: 1.5;
 }
 
+.choice-section {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-section legend {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.choice-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choice-card {
+  min-height: 78px;
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  padding: 12px 10px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.choice-card--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  box-shadow: inset 0 0 0 1px rgba(78, 165, 141, 0.16);
+}
+
+.clinical-toggle-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(228, 222, 211, 0.82);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-soft);
+  padding: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+}
+
 .clinical-section {
   padding: 12px;
   border: 1px solid var(--color-border);

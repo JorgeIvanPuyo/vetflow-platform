@@ -2,7 +2,9 @@
 
 import {
   AlertCircle,
+  Cat,
   ChevronRight,
+  Dog,
   Filter,
   Plus,
   Search,
@@ -54,6 +56,7 @@ type OwnerFormState = {
 };
 
 type CreationStep = "patient" | "owner";
+type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
 
 const initialPatientsState: PatientsState = {
   isLoading: true,
@@ -97,6 +100,10 @@ export function PatientsScreen() {
   const [query, setQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creationStep, setCreationStep] = useState<CreationStep>("patient");
+  const [selectedSpeciesOption, setSelectedSpeciesOption] = useState<SpeciesOption>("");
+  const [customSpecies, setCustomSpecies] = useState("");
+  const [hasNoKnownAllergies, setHasNoKnownAllergies] = useState(false);
+  const [hasNoKnownChronicConditions, setHasNoKnownChronicConditions] = useState(false);
 
   async function loadPatientsScreen() {
     setState((current) => ({
@@ -147,6 +154,10 @@ export function PatientsScreen() {
     setCreationStep("patient");
     setFormState(initialPatientFormState);
     setOwnerFormState(initialOwnerFormState);
+    setSelectedSpeciesOption("");
+    setCustomSpecies("");
+    setHasNoKnownAllergies(false);
+    setHasNoKnownChronicConditions(false);
     setState((current) => ({
       ...current,
       isSubmitting: false,
@@ -158,11 +169,23 @@ export function PatientsScreen() {
 
   async function handleCreatePatient(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const species = selectedSpeciesOption === "Otro"
+      ? customSpecies.trim()
+      : formState.species.trim();
+
+    if (!formState.owner_id || !formState.name.trim() || !species) {
+      setState((current) => ({
+        ...current,
+        flowMessage: "Completa propietario, nombre y especie para crear el paciente.",
+        flowMessageType: "error",
+      }));
+      return;
+    }
 
     const payload: CreatePatientPayload = {
       owner_id: formState.owner_id,
       name: formState.name.trim(),
-      species: formState.species.trim(),
+      species,
     };
 
     if (formState.breed.trim()) {
@@ -177,11 +200,15 @@ export function PatientsScreen() {
     if (formState.weight_kg.trim()) {
       payload.weight_kg = Number(formState.weight_kg);
     }
-    if (formState.allergies.trim()) {
-      payload.allergies = formState.allergies.trim();
+    const allergies = normalizeOptionalClinicalText(formState.allergies);
+    if (!hasNoKnownAllergies && allergies) {
+      payload.allergies = allergies;
     }
-    if (formState.chronic_conditions.trim()) {
-      payload.chronic_conditions = formState.chronic_conditions.trim();
+    const chronicConditions = normalizeOptionalClinicalText(
+      formState.chronic_conditions,
+    );
+    if (!hasNoKnownChronicConditions && chronicConditions) {
+      payload.chronic_conditions = chronicConditions;
     }
 
     setState((current) => ({
@@ -196,6 +223,10 @@ export function PatientsScreen() {
     try {
       await createPatient(payload);
       setFormState(initialPatientFormState);
+      setSelectedSpeciesOption("");
+      setCustomSpecies("");
+      setHasNoKnownAllergies(false);
+      setHasNoKnownChronicConditions(false);
       setIsCreateOpen(false);
       setCreationStep("patient");
       setState((current) => ({
@@ -342,7 +373,7 @@ export function PatientsScreen() {
               <span className="patient-card__body">
                 <span className="patient-card__title-row">
                   <strong>{patient.name}</strong>
-                  {patient.allergies ? (
+                  {hasClinicalText(patient.allergies) ? (
                     <span className="badge badge--danger">
                       <AlertCircle size={13} /> Alergias
                     </span>
@@ -427,20 +458,22 @@ export function PatientsScreen() {
                   </p>
                 ) : null}
 
-                <button
-                  className="secondary-button secondary-button--full"
-                  onClick={() => {
-                    setCreationStep("owner");
-                    setState((current) => ({
-                      ...current,
-                      flowMessage: null,
-                      flowMessageType: "success",
-                    }));
-                  }}
-                  type="button"
-                >
-                  + Crear nuevo propietario
-                </button>
+                {!formState.owner_id ? (
+                  <button
+                    className="secondary-button secondary-button--full"
+                    onClick={() => {
+                      setCreationStep("owner");
+                      setState((current) => ({
+                        ...current,
+                        flowMessage: null,
+                        flowMessageType: "success",
+                      }));
+                    }}
+                    type="button"
+                  >
+                    + Crear nuevo propietario
+                  </button>
+                ) : null}
 
                 <div className="form-grid">
                   <label className="field">
@@ -454,41 +487,117 @@ export function PatientsScreen() {
                     />
                   </label>
 
-                  <label className="field">
-                    <span>Especie</span>
-                    <input
-                      required
-                      value={formState.species}
-                      onChange={(event) =>
-                        setFormState((current) => ({ ...current, species: event.target.value }))
-                      }
-                    />
-                  </label>
+                  <fieldset className="choice-section">
+                    <legend>Especie</legend>
+                    <div className="choice-grid choice-grid--three">
+                      <button
+                        aria-pressed={selectedSpeciesOption === "Canino"}
+                        className={getChoiceClass(selectedSpeciesOption === "Canino")}
+                        onClick={() => {
+                          setSelectedSpeciesOption("Canino");
+                          setCustomSpecies("");
+                          setFormState((current) => ({ ...current, species: "Canino" }));
+                        }}
+                        type="button"
+                      >
+                        <Dog aria-hidden="true" size={22} />
+                        <span>Canino</span>
+                      </button>
+                      <button
+                        aria-pressed={selectedSpeciesOption === "Felino"}
+                        className={getChoiceClass(selectedSpeciesOption === "Felino")}
+                        onClick={() => {
+                          setSelectedSpeciesOption("Felino");
+                          setCustomSpecies("");
+                          setFormState((current) => ({ ...current, species: "Felino" }));
+                        }}
+                        type="button"
+                      >
+                        <Cat aria-hidden="true" size={22} />
+                        <span>Felino</span>
+                      </button>
+                      <button
+                        aria-pressed={selectedSpeciesOption === "Otro"}
+                        className={getChoiceClass(selectedSpeciesOption === "Otro")}
+                        onClick={() => {
+                          setSelectedSpeciesOption("Otro");
+                          setFormState((current) => ({ ...current, species: "" }));
+                        }}
+                        type="button"
+                      >
+                        <Plus aria-hidden="true" size={22} />
+                        <span>Otro</span>
+                      </button>
+                    </div>
+                  </fieldset>
+
+                  {selectedSpeciesOption === "Otro" ? (
+                    <label className="field">
+                      <span>Especifica la especie</span>
+                      <input
+                        required
+                        value={customSpecies}
+                        onChange={(event) => {
+                          setCustomSpecies(event.target.value);
+                          setFormState((current) => ({
+                            ...current,
+                            species: event.target.value,
+                          }));
+                        }}
+                      />
+                    </label>
+                  ) : null}
 
                   <label className="field">
                     <span>Raza</span>
                     <input
                       value={formState.breed}
+                      placeholder="Ej. Labrador, Criollo, Persa"
                       onChange={(event) =>
                         setFormState((current) => ({ ...current, breed: event.target.value }))
                       }
                     />
                   </label>
 
-                  <label className="field">
-                    <span>Sexo</span>
-                    <input
-                      value={formState.sex}
-                      onChange={(event) =>
-                        setFormState((current) => ({ ...current, sex: event.target.value }))
-                      }
-                    />
-                  </label>
+                  <fieldset className="choice-section">
+                    <legend>Sexo</legend>
+                    <div className="choice-grid choice-grid--two">
+                      <button
+                        aria-pressed={formState.sex === "Macho"}
+                        className={getChoiceClass(formState.sex === "Macho")}
+                        onClick={() =>
+                          setFormState((current) => ({
+                            ...current,
+                            sex: current.sex === "Macho" ? "" : "Macho",
+                          }))
+                        }
+                        type="button"
+                      >
+                        <span aria-hidden="true">♂</span>
+                        <span>Macho</span>
+                      </button>
+                      <button
+                        aria-pressed={formState.sex === "Hembra"}
+                        className={getChoiceClass(formState.sex === "Hembra")}
+                        onClick={() =>
+                          setFormState((current) => ({
+                            ...current,
+                            sex: current.sex === "Hembra" ? "" : "Hembra",
+                          }))
+                        }
+                        type="button"
+                      >
+                        <span aria-hidden="true">♀</span>
+                        <span>Hembra</span>
+                      </button>
+                    </div>
+                  </fieldset>
 
                   <label className="field">
                     <span>Edad estimada</span>
                     <input
                       value={formState.estimated_age}
+                      placeholder="Ej. 2 años, 8 meses, Adulto"
                       onChange={(event) =>
                         setFormState((current) => ({
                           ...current,
@@ -503,6 +612,7 @@ export function PatientsScreen() {
                     <input
                       inputMode="decimal"
                       value={formState.weight_kg}
+                      placeholder="Ej. 12.5"
                       onChange={(event) =>
                         setFormState((current) => ({
                           ...current,
@@ -513,30 +623,69 @@ export function PatientsScreen() {
                   </label>
                 </div>
 
-                <label className="field">
-                  <span>Alergias</span>
-                  <textarea
-                    rows={2}
-                    value={formState.allergies}
-                    onChange={(event) =>
-                      setFormState((current) => ({ ...current, allergies: event.target.value }))
-                    }
-                  />
-                </label>
+                <div className="clinical-toggle-card">
+                  <label className="checkbox-row">
+                    <input
+                      checked={hasNoKnownAllergies}
+                      type="checkbox"
+                      onChange={(event) => {
+                        setHasNoKnownAllergies(event.target.checked);
+                        if (event.target.checked) {
+                          setFormState((current) => ({ ...current, allergies: "" }));
+                        }
+                      }}
+                    />
+                    <span>Sin alergias conocidas</span>
+                  </label>
+                  {!hasNoKnownAllergies ? (
+                    <label className="field">
+                      <span>Alergias</span>
+                      <textarea
+                        rows={2}
+                        value={formState.allergies}
+                        placeholder="Ej. Penicilina, pollo, lácteos"
+                        onChange={(event) =>
+                          setFormState((current) => ({ ...current, allergies: event.target.value }))
+                        }
+                      />
+                    </label>
+                  ) : null}
+                </div>
 
-                <label className="field">
-                  <span>Condiciones crónicas</span>
-                  <textarea
-                    rows={2}
-                    value={formState.chronic_conditions}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        chronic_conditions: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
+                <div className="clinical-toggle-card">
+                  <label className="checkbox-row">
+                    <input
+                      checked={hasNoKnownChronicConditions}
+                      type="checkbox"
+                      onChange={(event) => {
+                        setHasNoKnownChronicConditions(event.target.checked);
+                        if (event.target.checked) {
+                          setFormState((current) => ({
+                            ...current,
+                            chronic_conditions: "",
+                          }));
+                        }
+                      }}
+                    />
+                    <span>Sin condiciones crónicas conocidas</span>
+                  </label>
+                  {!hasNoKnownChronicConditions ? (
+                    <label className="field">
+                      <span>Condiciones crónicas</span>
+                      <textarea
+                        rows={2}
+                        value={formState.chronic_conditions}
+                        placeholder="Ej. Diabetes, dermatitis, epilepsia"
+                        onChange={(event) =>
+                          setFormState((current) => ({
+                            ...current,
+                            chronic_conditions: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  ) : null}
+                </div>
 
                 <div className="modal-actions">
                   <button className="secondary-button" onClick={closeCreateFlow} type="button">
@@ -544,7 +693,13 @@ export function PatientsScreen() {
                   </button>
                   <button
                     className="primary-button"
-                    disabled={state.isSubmitting || state.owners.length === 0}
+                    disabled={
+                      state.isSubmitting ||
+                      state.owners.length === 0 ||
+                      !formState.owner_id ||
+                      !formState.name.trim() ||
+                      !getSelectedSpecies(selectedSpeciesOption, formState.species, customSpecies)
+                    }
                     type="submit"
                   >
                     {state.isSubmitting ? "Creando..." : "Crear paciente"}
@@ -633,5 +788,38 @@ export function PatientsScreen() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function getChoiceClass(isSelected: boolean) {
+  return isSelected ? "choice-card choice-card--selected" : "choice-card";
+}
+
+function getSelectedSpecies(
+  selectedSpeciesOption: SpeciesOption,
+  species: string,
+  customSpecies: string,
+) {
+  return selectedSpeciesOption === "Otro" ? customSpecies.trim() : species.trim();
+}
+
+function normalizeOptionalClinicalText(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized || isNoneValue(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function hasClinicalText(value: string | null) {
+  return Boolean(value && normalizeOptionalClinicalText(value));
+}
+
+function isNoneValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return ["ninguna", "ninguno", "no", "n/a", "na", "sin alergias", "sin condiciones"].includes(
+    normalized,
   );
 }
