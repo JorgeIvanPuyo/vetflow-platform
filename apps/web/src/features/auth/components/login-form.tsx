@@ -1,6 +1,6 @@
 "use client";
 
-import { Stethoscope } from "lucide-react";
+import { Eye, EyeOff, Stethoscope } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { useAuth } from "@/features/auth/auth-context";
@@ -14,6 +14,7 @@ export function LoginForm() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<LoginState>({
     isSubmitting: false,
     errorMessage: null,
@@ -65,13 +66,27 @@ export function LoginForm() {
 
           <label className="form-field">
             <span>Contraseña</span>
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              type="password"
-              value={password}
-            />
+            <span className="password-field">
+              <input
+                autoComplete="current-password"
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                type={showPassword ? "text" : "password"}
+                value={password}
+              />
+              <button
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                className="password-toggle"
+                onClick={() => setShowPassword((current) => !current)}
+                type="button"
+              >
+                {showPassword ? (
+                  <EyeOff aria-hidden="true" size={19} />
+                ) : (
+                  <Eye aria-hidden="true" size={19} />
+                )}
+              </button>
+            </span>
           </label>
 
           {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}

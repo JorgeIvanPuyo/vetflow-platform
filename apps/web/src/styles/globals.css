@@ -1050,7 +1050,7 @@ code {
 
 @media (max-width: 520px) {
   .filter-button span,
-  .logout-button span {
+  .session-actions .logout-button span {
     display: none;
   }
 
@@ -1234,4 +1234,36 @@ code {
   to {
     transform: translateX(100%);
   }
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 3.2rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
 }

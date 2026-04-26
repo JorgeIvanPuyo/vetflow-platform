@@ -51,7 +51,12 @@ export function AppHeader() {
           <Link href="/agenda" onClick={() => setIsMenuOpen(false)}>Agenda</Link>
           <Link href="/inventario" onClick={() => setIsMenuOpen(false)}>Inventario</Link>
           <Link href="/ajustes" onClick={() => setIsMenuOpen(false)}>Ajustes</Link>
-          <button className="logout-button" onClick={logout} type="button">
+          <button
+            aria-label="Cerrar sesión"
+            className="logout-button"
+            onClick={logout}
+            type="button"
+          >
             <LogOut aria-hidden="true" size={16} />
             <span>Cerrar sesión</span>
           </button>
@@ -70,7 +75,12 @@ export function AppHeader() {
 
         <div className="session-actions">
           <span className="session-actions__email">{user?.email}</span>
-          <button className="logout-button" onClick={logout} type="button">
+          <button
+            aria-label="Cerrar sesión"
+            className="logout-button"
+            onClick={logout}
+            type="button"
+          >
             <LogOut aria-hidden="true" size={16} />
             <span>Cerrar sesión</span>
           </button>
