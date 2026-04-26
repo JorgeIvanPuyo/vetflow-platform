@@ -110,6 +110,13 @@ export type CreateOwnerPayload = {
   address?: string;
 };
 
+export type UpdateOwnerPayload = Partial<
+  Omit<CreateOwnerPayload, "email" | "address">
+> & {
+  email?: string | null;
+  address?: string | null;
+};
+
 export type CreatePatientPayload = {
   owner_id: string;
   name: string;

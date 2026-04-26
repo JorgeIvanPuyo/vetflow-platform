@@ -7,8 +7,21 @@ import type {
   Patient,
 } from "@/types/api";
 
-export function getPatients() {
-  return api.get<ApiListResponse<Patient>>("/api/v1/patients");
+type GetPatientsOptions = {
+  ownerId?: string;
+};
+
+export function getPatients(options: GetPatientsOptions = {}) {
+  const params = new URLSearchParams();
+
+  if (options.ownerId) {
+    params.set("owner_id", options.ownerId);
+  }
+
+  const query = params.toString();
+  return api.get<ApiListResponse<Patient>>(
+    query ? `/api/v1/patients?${query}` : "/api/v1/patients",
+  );
 }
 
 export function getPatient(patientId: string) {

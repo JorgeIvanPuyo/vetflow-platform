@@ -4,6 +4,7 @@ import type {
   ApiListResponse,
   CreateOwnerPayload,
   Owner,
+  UpdateOwnerPayload,
 } from "@/types/api";
 
 export function getOwners() {
@@ -16,4 +17,8 @@ export function getOwner(ownerId: string) {
 
 export function createOwner(payload: CreateOwnerPayload) {
   return api.post<ApiItemResponse<Owner>>("/api/v1/owners", payload);
+}
+
+export function updateOwner(ownerId: string, payload: UpdateOwnerPayload) {
+  return api.patch<ApiItemResponse<Owner>>(`/api/v1/owners/${ownerId}`, payload);
 }
