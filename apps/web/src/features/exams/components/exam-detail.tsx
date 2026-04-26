@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { getExam, updateExam } from "@/services/exams";
 import type { Exam, ExamStatus, UpdateExamPayload } from "@/types/api";
 
@@ -76,7 +76,7 @@ export function ExamDetail({ examId }: ExamDetailProps) {
         }
 
         const message =
-          error instanceof ApiClientError ? error.message : "No se pudo cargar el examen";
+          getApiErrorMessage(error);
 
         setState({
           isLoading: false,
@@ -126,7 +126,7 @@ export function ExamDetail({ examId }: ExamDetailProps) {
       setFormState(toFormState(response.data));
     } catch (error) {
       const message =
-        error instanceof ApiClientError ? error.message : "No se pudo actualizar el examen";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -137,7 +137,7 @@ export function ExamDetail({ examId }: ExamDetailProps) {
   }
 
   if (state.isLoading) {
-    return <div className="panel">Cargando examen...</div>;
+    return <div className="loading-card" aria-label="Cargando datos del examen" />;
   }
 
   if (state.errorMessage && !state.exam) {

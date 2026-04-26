@@ -1,5 +1,6 @@
 "use client";
 
+import { Stethoscope } from "lucide-react";
 import { ReactNode } from "react";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -15,10 +16,10 @@ export function AuthenticatedShell({ children }: { children: ReactNode }) {
 }
 
 function AuthenticatedContent({ children }: { children: ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isTokenLoading } = useAuth();
 
-  if (isLoading) {
-    return <div className="auth-loading">Cargando sesión...</div>;
+  if (isLoading || isTokenLoading) {
+    return <SessionLoadingScreen />;
   }
 
   if (!user) {
@@ -26,4 +27,21 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   }
 
   return <AppShell>{children}</AppShell>;
+}
+
+function SessionLoadingScreen() {
+  return (
+    <main className="auth-loading-screen" aria-live="polite" aria-busy="true">
+      <section className="auth-loading-card">
+        <span className="brand__mark brand__mark--large" aria-hidden="true">
+          <Stethoscope size={28} />
+        </span>
+        <div>
+          <strong>VetClinic</strong>
+          <p>Cargando tu sesión...</p>
+        </div>
+        <span className="loading-spinner" aria-hidden="true" />
+      </section>
+    </main>
+  );
 }

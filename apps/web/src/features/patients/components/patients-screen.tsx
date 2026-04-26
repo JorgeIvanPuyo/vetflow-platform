@@ -4,7 +4,7 @@ import { AlertCircle, ChevronRight, Filter, Plus, Search, PawPrint } from "lucid
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { getOwners } from "@/services/owners";
 import { createPatient, getPatients } from "@/services/patients";
 import type { CreatePatientPayload, Owner, Patient } from "@/types/api";
@@ -73,9 +73,7 @@ export function PatientsScreen() {
       }));
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudieron cargar los pacientes";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -129,9 +127,7 @@ export function PatientsScreen() {
       await loadPatientsScreen();
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo crear el paciente";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { getConsultation, updateConsultation } from "@/services/consultations";
 import { getConsultationExams } from "@/services/exams";
 import type {
@@ -106,9 +106,7 @@ export function ConsultationDetail({ consultationId }: ConsultationDetailProps) 
         }
 
         const message =
-          error instanceof ApiClientError
-            ? error.message
-            : "No se pudo cargar la consulta";
+          getApiErrorMessage(error);
 
         setState({
           isLoading: false,
@@ -155,9 +153,7 @@ export function ConsultationDetail({ consultationId }: ConsultationDetailProps) 
       setFormState(toFormState(response.data));
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo actualizar la consulta";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -168,7 +164,7 @@ export function ConsultationDetail({ consultationId }: ConsultationDetailProps) 
   }
 
   if (state.isLoading) {
-    return <div className="panel">Cargando consulta...</div>;
+    return <div className="loading-card" aria-label="Cargando datos de la consulta" />;
   }
 
   if (state.errorMessage && !state.consultation) {

@@ -4,7 +4,7 @@ import { FileText, Stethoscope } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { createConsultation } from "@/services/consultations";
 import { createExam } from "@/services/exams";
 import { getOwner } from "@/services/owners";
@@ -133,9 +133,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       }));
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo cargar la historia clínica";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -184,9 +182,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       await loadClinicalHistory();
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo crear la consulta";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -230,9 +226,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       await loadClinicalHistory();
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo crear la solicitud de examen";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -243,7 +237,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   if (state.isLoading && !state.clinicalHistory) {
-    return <div className="panel">Cargando historia clínica...</div>;
+    return <div className="loading-card" aria-label="Cargando historia clínica" />;
   }
 
   if (state.errorMessage && !state.clinicalHistory) {

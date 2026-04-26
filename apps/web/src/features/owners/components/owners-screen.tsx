@@ -3,7 +3,7 @@
 import { Mail, Phone, UserPlus, Users } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { createOwner, getOwners } from "@/services/owners";
 import type { CreateOwnerPayload, Owner } from "@/types/api";
 
@@ -55,9 +55,7 @@ export function OwnersScreen() {
       }));
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudieron cargar los propietarios";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,
@@ -101,9 +99,7 @@ export function OwnersScreen() {
       await loadOwners();
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo crear el propietario";
+        getApiErrorMessage(error);
 
       setState((current) => ({
         ...current,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { searchGlobal } from "@/services/search";
 import type { SearchResult } from "@/types/api";
 
@@ -62,9 +62,7 @@ export function GlobalSearch({ onResultSelected }: GlobalSearchProps) {
       });
     } catch (error) {
       const message =
-        error instanceof ApiClientError
-          ? error.message
-          : "No se pudo completar la búsqueda";
+        getApiErrorMessage(error);
 
       setState({
         isLoading: false,

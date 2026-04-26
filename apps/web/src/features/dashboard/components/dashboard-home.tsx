@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
 
-import { ApiClientError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import { getBackendHealth } from "@/services/system";
@@ -63,9 +63,7 @@ export function DashboardHome() {
         }
 
         const message =
-          error instanceof ApiClientError
-            ? error.message
-            : "No se pudieron cargar los datos del servidor";
+          getApiErrorMessage(error);
 
         setState({
           isLoading: false,
