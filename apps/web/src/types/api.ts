@@ -240,6 +240,96 @@ export type ClinicalHistoryPdfExportPayload = {
   detail_level: "summary" | "full";
 };
 
+export type ClinicProfile = {
+  id: string;
+  name: string;
+  display_name: string | null;
+  logo_url: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+};
+
+export type UpdateClinicProfilePayload = {
+  display_name?: string | null;
+  logo_url?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
+
+export type ClinicTeamMember = {
+  id: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+};
+
+export type AppointmentType =
+  | "consultation"
+  | "follow_up"
+  | "vaccine"
+  | "deworming"
+  | "exam"
+  | "other";
+
+export type AppointmentStatus =
+  | "scheduled"
+  | "completed"
+  | "cancelled"
+  | "no_show";
+
+export type Appointment = {
+  id: string;
+  tenant_id: string;
+  patient_id: string | null;
+  owner_id: string | null;
+  assigned_user_id?: string | null;
+  created_by_user_id?: string | null;
+  title: string;
+  reason: string | null;
+  appointment_type: AppointmentType;
+  status: AppointmentStatus;
+  start_at: string;
+  end_at: string;
+  notes: string | null;
+  patient_name?: string | null;
+  owner_name?: string | null;
+  assigned_user_name?: string | null;
+  assigned_user_email?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateAppointmentPayload = {
+  patient_id?: string | null;
+  owner_id?: string | null;
+  assigned_user_id?: string | null;
+  title: string;
+  reason?: string | null;
+  appointment_type: AppointmentType;
+  status?: AppointmentStatus;
+  start_at: string;
+  end_at: string;
+  notes?: string | null;
+};
+
+export type UpdateAppointmentPayload = Partial<CreateAppointmentPayload>;
+
+export type AppointmentFilters = {
+  date_from?: string;
+  date_to?: string;
+  assigned_user_id?: string;
+  patient_id?: string;
+  owner_id?: string;
+  status?: AppointmentStatus;
+  appointment_type?: AppointmentType;
+};
+
 export type CreateOwnerPayload = {
   full_name: string;
   phone: string;

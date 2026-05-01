@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CalendarDays,
   Cat,
   Download,
   Dog,
@@ -917,6 +918,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           >
             <Stethoscope aria-hidden="true" size={18} />
             Nueva consulta
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => router.push(`/agenda?patient_id=${patientId}`)}
+          >
+            <CalendarDays aria-hidden="true" size={18} />
+            Agendar turno
           </button>
           <button
             className="secondary-button"

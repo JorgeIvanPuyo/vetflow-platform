@@ -18,6 +18,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/features/auth/auth-context";
+import { useClinic } from "@/features/clinic/clinic-context";
 import { GlobalSearch } from "@/features/search/components/global-search";
 
 const menuItems = [
@@ -26,11 +27,12 @@ const menuItems = [
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/ajustes", label: "Ajustes", icon: Settings },
+  { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
 export function AppHeader() {
   const { logout, user } = useAuth();
+  const { displayName, profile } = useClinic();
   const pathname = usePathname();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -96,12 +98,10 @@ export function AppHeader() {
             className="brand"
             href="/"
             onClick={() => setIsMenuOpen(false)}
-            aria-label="Ir al dashboard de VetClinic"
+            aria-label={`Ir al dashboard de ${displayName}`}
           >
-            <span className="brand__mark" aria-hidden="true">
-              <Stethoscope size={20} />
-            </span>
-            <span>VetClinic</span>
+            <ClinicBrandMark logoUrl={profile?.logo_url} />
+            <span>{displayName}</span>
           </Link>
           <button
             className="icon-button"
@@ -160,11 +160,9 @@ export function AppHeader() {
           <Menu aria-hidden="true" size={22} />
         </button>
 
-        <Link className="brand" href="/" aria-label="Ir al dashboard de VetClinic">
-          <span className="brand__mark" aria-hidden="true">
-            <Stethoscope size={20} />
-          </span>
-          <span>VetClinic</span>
+        <Link className="brand" href="/" aria-label={`Ir al dashboard de ${displayName}`}>
+          <ClinicBrandMark logoUrl={profile?.logo_url} />
+          <span>{displayName}</span>
         </Link>
 
         <button
@@ -212,5 +210,22 @@ export function AppHeader() {
       </header>
       {mobileMenu}
     </>
+  );
+}
+
+function ClinicBrandMark({ logoUrl }: { logoUrl?: string | null }) {
+  if (logoUrl) {
+    return (
+      <span className="brand__mark brand__mark--image" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img alt="" src={logoUrl} />
+      </span>
+    );
+  }
+
+  return (
+    <span className="brand__mark" aria-hidden="true">
+      <Stethoscope size={20} />
+    </span>
   );
 }

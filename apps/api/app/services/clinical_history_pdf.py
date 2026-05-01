@@ -18,6 +18,7 @@ from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
+from app.models.tenant import Tenant
 from app.repositories.owner import OwnerRepository
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.consultation import ConsultationService
@@ -58,6 +59,7 @@ class ClinicalHistoryPdfService:
                 patient_id,
             )
             owner = self._get_owner_for_patient(tenant_id, patient)
+            clinic = self.db.get(Tenant, tenant_id)
             filtered_consultations = self._filter_by_date(
                 consultations,
                 options,
@@ -79,6 +81,7 @@ class ClinicalHistoryPdfService:
                 self._file_reference_event_date,
             )
             text_lines = self.build_text_lines(
+                clinic=clinic,
                 patient=patient,
                 owner=owner,
                 consultations=filtered_consultations,
@@ -111,6 +114,7 @@ class ClinicalHistoryPdfService:
     def build_text_lines(
         self,
         *,
+        clinic: Tenant | None = None,
         patient: Patient,
         owner: Owner | None,
         consultations: list[Consultation],
@@ -121,9 +125,19 @@ class ClinicalHistoryPdfService:
     ) -> list[str]:
         lines: list[str] = [
             "Historia clínica veterinaria",
-            f"Paciente: {patient.name}",
-            f"Generado: {self._format_datetime(datetime.now(timezone.utc))}",
         ]
+        if clinic is not None:
+            lines.append(f"Clínica: {clinic.display_name or clinic.name}")
+            self._append_optional(lines, "Teléfono de la clínica", clinic.phone)
+            self._append_optional(lines, "Correo de la clínica", clinic.email)
+            self._append_optional(lines, "Dirección de la clínica", clinic.address)
+
+        lines.extend(
+            [
+                f"Paciente: {patient.name}",
+                f"Generado: {self._format_datetime(datetime.now(timezone.utc))}",
+            ]
+        )
 
         date_range = self._format_date_range(options)
         if date_range:

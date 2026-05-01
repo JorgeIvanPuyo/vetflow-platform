@@ -1,3 +1,4 @@
+from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.owner import Owner
@@ -16,4 +17,5 @@ __all__ = [
     "Exam",
     "PatientPreventiveCare",
     "PatientFileReference",
+    "Appointment",
 ]

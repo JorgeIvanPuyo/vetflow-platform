@@ -9,7 +9,7 @@ const navItems = [
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/ajustes", label: "Ajustes", icon: Settings },
+  { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
 function closeMobileMenu() {

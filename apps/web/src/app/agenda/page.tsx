@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/features/placeholders/components/module-placeholder";
+import { AgendaScreen } from "@/features/agenda/components/agenda-screen";
 
 export default function AgendaPage() {
-  return <ModulePlaceholder moduleName="Agenda" />;
+  return <AgendaScreen />;
 }

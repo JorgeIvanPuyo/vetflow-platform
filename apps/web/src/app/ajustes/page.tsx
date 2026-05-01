@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/features/placeholders/components/module-placeholder";
+import { redirect } from "next/navigation";
 
 export default function SettingsPage() {
-  return <ModulePlaceholder moduleName="Ajustes" />;
+  redirect("/settings");
 }
