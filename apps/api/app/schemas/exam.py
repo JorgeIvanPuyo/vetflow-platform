@@ -34,6 +34,7 @@ class ExamRead(ExamBase):
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
     consultation_id: uuid.UUID | None
+    requested_by_user_id: uuid.UUID | None
     status: str
     performed_at: datetime | None
     result_summary: str | None

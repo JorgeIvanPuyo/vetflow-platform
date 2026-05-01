@@ -18,7 +18,11 @@ def create_exam(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    exam = ExamService(db).create_exam(tenant.tenant_id, payload)
+    exam = ExamService(db).create_exam(
+        tenant.tenant_id,
+        payload,
+        requested_by_user_id=tenant.user_id,
+    )
     return {"data": ExamRead.model_validate(exam).model_dump(mode="json"), "meta": {}}
 
 

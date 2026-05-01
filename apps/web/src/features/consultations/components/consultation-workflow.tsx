@@ -27,6 +27,7 @@ import {
 } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
+import { getTraceableUserName } from "@/lib/user-traceability";
 import {
   createConsultation,
   createConsultationMedication,
@@ -179,6 +180,8 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const consultationId = consultation?.id ?? null;
   const title = props.mode === "new" ? "Nueva consulta" : "Consulta";
   const patientDescription = getPatientDescription(patient);
+  const attendingUserName = getTraceableUserName(consultation, "attending");
+  const registeredByName = getTraceableUserName(consultation, "created_by");
   const localStorageKeyPrefix = consultationId
     ? `vetclinic:consultation:${consultationId}`
     : null;
@@ -524,7 +527,16 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
               Condiciones: {patient?.chronic_conditions}
             </span>
           ) : null}
+          {attendingUserName ? (
+            <span className="badge">Atendido por: {attendingUserName}</span>
+          ) : null}
+          {registeredByName ? (
+            <span className="badge">Registrado por: {registeredByName}</span>
+          ) : null}
         </div>
+        {props.mode === "new" ? (
+          <p className="panel-note">Esta consulta quedará registrada con tu usuario.</p>
+        ) : null}
 
         <nav className="consultation-stepper" aria-label="Pasos de la consulta">
           {steps.map((step) => {

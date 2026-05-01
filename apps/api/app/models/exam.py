@@ -30,6 +30,12 @@ class Exam(BaseModel):
         nullable=True,
         index=True,
     )
+    requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
     exam_type: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     requested_at: Mapped[datetime] = mapped_column(
@@ -51,3 +57,4 @@ class Exam(BaseModel):
         "Consultation",
         back_populates="exams",
     )
+    requested_by_user: Mapped[User | None] = relationship("User")

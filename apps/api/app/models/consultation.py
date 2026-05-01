@@ -35,6 +35,18 @@ class Consultation(BaseModel):
         nullable=False,
         index=True,
     )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    attending_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
     visit_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -81,6 +93,14 @@ class Consultation(BaseModel):
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="consultations")
     patient: Mapped[Patient] = relationship("Patient", back_populates="consultations")
+    created_by_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys=[created_by_user_id],
+    )
+    attending_user: Mapped[User | None] = relationship(
+        "User",
+        foreign_keys=[attending_user_id],
+    )
     exams: Mapped[list[Exam]] = relationship("Exam", back_populates="consultation")
     medications: Mapped[list[ConsultationMedication]] = relationship(
         "ConsultationMedication",

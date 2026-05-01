@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
+import { getTraceableUserName } from "@/lib/user-traceability";
 import { getExam, updateExam } from "@/services/exams";
 import type { Exam, ExamStatus, UpdateExamPayload } from "@/types/api";
 
@@ -148,6 +149,8 @@ export function ExamDetail({ examId }: ExamDetailProps) {
     return <div className="empty-state">Examen no encontrado.</div>;
   }
 
+  const requestedByName = getTraceableUserName(state.exam, "requested_by");
+
   return (
     <div className="page-stack">
       <section className="hero-card">
@@ -171,15 +174,17 @@ export function ExamDetail({ examId }: ExamDetailProps) {
         <h2>Detalle del examen</h2>
         <dl className="detail-grid">
           <div>
-            <dt>ID del paciente</dt>
-            <dd>{state.exam.patient_id}</dd>
+            <dt>Paciente</dt>
+            <dd>
+              <Link href={`/patients/${state.exam.patient_id}`}>Ver paciente</Link>
+            </dd>
           </div>
           <div>
-            <dt>ID de consulta</dt>
+            <dt>Consulta</dt>
             <dd>
               {state.exam.consultation_id ? (
                 <Link href={`/consultations/${state.exam.consultation_id}`}>
-                  {state.exam.consultation_id}
+                  Ver consulta
                 </Link>
               ) : (
                 "Sin vincular"
@@ -198,6 +203,12 @@ export function ExamDetail({ examId }: ExamDetailProps) {
                 : "No indicado"}
             </dd>
           </div>
+          {requestedByName ? (
+            <div>
+              <dt>Solicitado por</dt>
+              <dd>{requestedByName}</dd>
+            </div>
+          ) : null}
         </dl>
       </section>
 

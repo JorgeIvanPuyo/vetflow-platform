@@ -21,7 +21,13 @@ class PatientService:
         self.owner_repository = OwnerRepository(db)
         self.patient_repository = PatientRepository(db)
 
-    def create_patient(self, tenant_id: uuid.UUID, payload: PatientCreate) -> Patient:
+    def create_patient(
+        self,
+        tenant_id: uuid.UUID,
+        payload: PatientCreate,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
+    ) -> Patient:
         owner = self.owner_repository.get_by_id(tenant_id, payload.owner_id)
         if owner is None:
             owner_any_tenant = self.db.get(Owner, payload.owner_id)
@@ -37,7 +43,11 @@ class PatientService:
                 "Owner not found for the provided tenant",
             )
 
-        patient = Patient(tenant_id=tenant_id, **payload.model_dump())
+        patient = Patient(
+            tenant_id=tenant_id,
+            created_by_user_id=created_by_user_id,
+            **payload.model_dump(),
+        )
         self.patient_repository.create(patient)
         self.db.commit()
         return patient

@@ -15,6 +15,9 @@ from app.repositories.user import UserRepository
 @dataclass(frozen=True)
 class TenantContext:
     tenant_id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    user_email: str | None = None
+    user_full_name: str | None = None
 
 
 def _resolve_development_tenant(x_tenant_id: str | None, db: Session) -> TenantContext:
@@ -110,4 +113,9 @@ def get_tenant_context(
             message="Tenant not found",
         )
 
-    return TenantContext(tenant_id=user.tenant_id)
+    return TenantContext(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_email=user.email,
+        user_full_name=user.full_name,
+    )

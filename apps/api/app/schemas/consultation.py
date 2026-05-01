@@ -122,6 +122,8 @@ class ConsultationRead(ConsultationBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
+    created_by_user_id: uuid.UUID | None
+    attending_user_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
     medications: list[ConsultationMedicationRead] = Field(default_factory=list)

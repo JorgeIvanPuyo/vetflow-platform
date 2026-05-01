@@ -152,7 +152,7 @@ export function OwnersScreen() {
           <p>
             {state.isLoading
               ? "Cargando propietarios..."
-              : `${state.owners.length} propietario${state.owners.length === 1 ? "" : "s"} registrado${state.owners.length === 1 ? "" : "s"}`}
+              : `${state.owners.length} propietario${state.owners.length === 1 ? "" : "s"} registrado${state.owners.length === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
         <button
@@ -174,7 +174,7 @@ export function OwnersScreen() {
       ) : null}
 
       {!state.isLoading && !state.errorMessage && state.owners.length === 0 ? (
-        <div className="empty-state">No hay propietarios registrados para esta cuenta.</div>
+        <div className="empty-state">No hay propietarios registrados en la clínica.</div>
       ) : null}
 
       {!state.isLoading && !state.errorMessage && state.owners.length > 0 ? (

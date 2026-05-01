@@ -36,6 +36,8 @@ def create_consultation(
     consultation = ConsultationService(db).create_consultation(
         tenant.tenant_id,
         payload,
+        created_by_user_id=tenant.user_id,
+        attending_user_id=tenant.user_id,
     )
     return {
         "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),

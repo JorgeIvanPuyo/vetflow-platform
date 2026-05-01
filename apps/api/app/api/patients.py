@@ -18,7 +18,11 @@ def create_patient(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    patient = PatientService(db).create_patient(tenant.tenant_id, payload)
+    patient = PatientService(db).create_patient(
+        tenant.tenant_id,
+        payload,
+        created_by_user_id=tenant.user_id,
+    )
     return {
         "data": PatientRead.model_validate(patient).model_dump(mode="json"),
         "meta": {},

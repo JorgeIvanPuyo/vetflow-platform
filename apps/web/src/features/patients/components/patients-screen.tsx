@@ -320,7 +320,7 @@ export function PatientsScreen() {
           <p>
             {state.isLoading
               ? "Cargando pacientes..."
-              : `${state.patients.length} paciente${state.patients.length === 1 ? "" : "s"} registrado${state.patients.length === 1 ? "" : "s"}`}
+              : `${state.patients.length} paciente${state.patients.length === 1 ? "" : "s"} registrado${state.patients.length === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
         <button
@@ -360,7 +360,7 @@ export function PatientsScreen() {
       ) : null}
 
       {!state.isLoading && !state.errorMessage && filteredPatients.length === 0 ? (
-        <div className="empty-state">No hay pacientes que coincidan con la búsqueda.</div>
+        <div className="empty-state">No hay pacientes de la clínica que coincidan con la búsqueda.</div>
       ) : null}
 
       {!state.isLoading && !state.errorMessage && filteredPatients.length > 0 ? (

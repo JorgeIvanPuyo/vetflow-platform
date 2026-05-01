@@ -35,10 +35,19 @@ export type Owner = {
   updated_at: string;
 };
 
+export type UserTrace = {
+  full_name?: string | null;
+  display_name?: string | null;
+  name?: string | null;
+};
+
 export type Patient = {
   id: string;
   tenant_id: string;
   owner_id: string;
+  created_by_user_id?: string | null;
+  created_by_user?: UserTrace | null;
+  created_by_user_full_name?: string | null;
   name: string;
   species: string;
   breed: string | null;
@@ -82,6 +91,12 @@ export type Consultation = {
   id: string;
   tenant_id: string;
   patient_id: string;
+  created_by_user_id?: string | null;
+  attending_user_id?: string | null;
+  created_by_user?: UserTrace | null;
+  attending_user?: UserTrace | null;
+  created_by_user_full_name?: string | null;
+  attending_user_full_name?: string | null;
   visit_date: string;
   reason: string;
   anamnesis: string | null;
@@ -123,6 +138,9 @@ export type Exam = {
   tenant_id: string;
   patient_id: string;
   consultation_id: string | null;
+  requested_by_user_id?: string | null;
+  requested_by_user?: UserTrace | null;
+  requested_by_user_full_name?: string | null;
   exam_type: string;
   status: ExamStatus;
   requested_at: string;

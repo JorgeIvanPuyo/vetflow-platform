@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
+import { getTraceableUserName } from "@/lib/user-traceability";
 import { createExam } from "@/services/exams";
 import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
 import { getOwner, getOwners } from "@/services/owners";
@@ -556,6 +557,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   const { patient, consultations } = state.clinicalHistory;
+  const patientRegisteredBy = getTraceableUserName(patient, "created_by");
 
   return (
     <div className="page-stack patient-detail-page">
@@ -813,6 +815,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <div><dt>Alergias</dt><dd>{hasClinicalText(patient.allergies) ? patient.allergies : "Sin registros"}</dd></div>
           <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
           <div><dt>Fecha de creación</dt><dd>{formatDateTime(patient.created_at)}</dd></div>
+          {patientRegisteredBy ? (
+            <div><dt>Registrado por</dt><dd>{patientRegisteredBy}</dd></div>
+          ) : null}
         </dl>
       </section>
     );

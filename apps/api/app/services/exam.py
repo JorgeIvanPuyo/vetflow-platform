@@ -19,7 +19,13 @@ class ExamService:
         self.patient_repository = PatientRepository(db)
         self.consultation_repository = ConsultationRepository(db)
 
-    def create_exam(self, tenant_id: uuid.UUID, payload: ExamCreate) -> Exam:
+    def create_exam(
+        self,
+        tenant_id: uuid.UUID,
+        payload: ExamCreate,
+        *,
+        requested_by_user_id: uuid.UUID | None = None,
+    ) -> Exam:
         self._get_patient_for_tenant(tenant_id, payload.patient_id)
 
         if payload.consultation_id is not None:
@@ -36,6 +42,7 @@ class ExamService:
 
         exam = Exam(
             tenant_id=tenant_id,
+            requested_by_user_id=requested_by_user_id,
             status="requested",
             **payload.model_dump(),
         )

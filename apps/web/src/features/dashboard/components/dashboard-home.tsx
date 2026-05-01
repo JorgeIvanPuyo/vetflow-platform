@@ -106,10 +106,10 @@ export function DashboardHome() {
         />
         <KpiCard
           icon={<Stethoscope size={22} />}
-          label="Consultas semana"
+          label="Consultas de la clínica"
           value={state.isLoading ? "..." : String(state.patientCount)}
           tone="success"
-          helper="Referencia temporal por pacientes activos"
+          helper="Referencia temporal por pacientes de la clínica"
         />
         <KpiCard
           icon={<AlertCircle size={22} />}
@@ -120,10 +120,10 @@ export function DashboardHome() {
         />
         <KpiCard
           icon={<PawPrint size={22} />}
-          label="Venc. próximos"
+          label="Pacientes de la clínica"
           value={state.isLoading ? "..." : String(state.ownerCount)}
           tone="danger"
-          helper="Dato temporal del MVP"
+          helper="Propietarios vinculados en la clínica"
         />
       </section>
 

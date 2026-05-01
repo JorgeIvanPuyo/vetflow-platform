@@ -35,7 +35,12 @@ class ConsultationService:
         self.patient_repository = PatientRepository(db)
 
     def create_consultation(
-        self, tenant_id: uuid.UUID, payload: ConsultationCreate
+        self,
+        tenant_id: uuid.UUID,
+        payload: ConsultationCreate,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
+        attending_user_id: uuid.UUID | None = None,
     ) -> Consultation:
         patient = self.patient_repository.get_by_id(tenant_id, payload.patient_id)
         if patient is None:
@@ -52,7 +57,12 @@ class ConsultationService:
                 "Patient not found for the provided tenant",
             )
 
-        consultation = Consultation(tenant_id=tenant_id, **payload.model_dump())
+        consultation = Consultation(
+            tenant_id=tenant_id,
+            created_by_user_id=created_by_user_id,
+            attending_user_id=attending_user_id,
+            **payload.model_dump(),
+        )
         self.consultation_repository.create(consultation)
         self.db.commit()
         return consultation
