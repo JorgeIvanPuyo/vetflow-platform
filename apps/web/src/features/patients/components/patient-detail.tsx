@@ -29,6 +29,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
+import { exportClinicalHistoryPdf } from "@/services/clinical-history-export";
 import { createExam } from "@/services/exams";
 import {
   createPatientFileReference,
@@ -42,6 +43,7 @@ import { deletePatient, getPatientClinicalHistory, updatePatient } from "@/servi
 import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
   ClinicalHistory,
+  ClinicalHistoryPdfExportPayload,
   ClinicalHistoryTimelineItem,
   Consultation,
   CreateExamPayload,
@@ -67,6 +69,7 @@ type PatientDetailState = {
   isFileUploading: boolean;
   isFileDeleting: boolean;
   isFileOpening: boolean;
+  isPdfExporting: boolean;
   isPatientSaving: boolean;
   isPatientDeleting: boolean;
   clinicalHistory: ClinicalHistory | null;
@@ -110,6 +113,18 @@ type FileUploadFormState = {
   file_type: string;
   description: string;
   file: File | null;
+};
+
+type PdfExportFormState = {
+  date_from: string;
+  date_to: string;
+  detail_level: "summary" | "full";
+  include_patient_data: boolean;
+  include_owner_data: boolean;
+  include_consultations: boolean;
+  include_exams: boolean;
+  include_preventive_care: boolean;
+  include_file_references: boolean;
 };
 
 type PatientEditFormState = {
@@ -156,6 +171,18 @@ const initialFileUploadFormState: FileUploadFormState = {
   file: null,
 };
 
+const initialPdfExportFormState: PdfExportFormState = {
+  date_from: "",
+  date_to: "",
+  detail_level: "summary",
+  include_patient_data: true,
+  include_owner_data: true,
+  include_consultations: true,
+  include_exams: true,
+  include_preventive_care: true,
+  include_file_references: true,
+};
+
 const initialState: PatientDetailState = {
   isLoading: true,
   isSubmitting: false,
@@ -164,6 +191,7 @@ const initialState: PatientDetailState = {
   isFileUploading: false,
   isFileDeleting: false,
   isFileOpening: false,
+  isPdfExporting: false,
   isPatientSaving: false,
   isPatientDeleting: false,
   clinicalHistory: null,
@@ -230,6 +258,26 @@ const allowedClinicalFileTypes = [
   "image/webp",
 ];
 
+const pdfExportSectionOptions: Array<{
+  key: keyof Pick<
+    PdfExportFormState,
+    | "include_patient_data"
+    | "include_owner_data"
+    | "include_consultations"
+    | "include_exams"
+    | "include_preventive_care"
+    | "include_file_references"
+  >;
+  label: string;
+}> = [
+  { key: "include_patient_data", label: "Datos del paciente" },
+  { key: "include_owner_data", label: "Datos del propietario" },
+  { key: "include_consultations", label: "Consultas" },
+  { key: "include_exams", label: "Exámenes" },
+  { key: "include_preventive_care", label: "Vacunas/desparasitación" },
+  { key: "include_file_references", label: "Archivos adjuntos" },
+];
+
 const speciesOptions: Array<{ value: Exclude<SpeciesOption, "">; label: string; icon: ReactNode }> = [
   { value: "Canino", label: "Canino", icon: <Dog size={22} /> },
   { value: "Felino", label: "Felino", icon: <Cat size={22} /> },
@@ -244,6 +292,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
   const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
+  const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [fileReferenceToDelete, setFileReferenceToDelete] =
     useState<PatientFileReference | null>(null);
   const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
@@ -251,6 +300,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
   const [fileUploadFormState, setFileUploadFormState] =
     useState<FileUploadFormState>(initialFileUploadFormState);
+  const [pdfExportFormState, setPdfExportFormState] =
+    useState<PdfExportFormState>(initialPdfExportFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
   const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
   const [patientEditFormState, setPatientEditFormState] =
@@ -262,6 +313,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [fileDeleteConfirmation, setFileDeleteConfirmation] = useState("");
+  const [pdfExportError, setPdfExportError] = useState<string | null>(null);
 
   const loadPatientDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -600,6 +652,78 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     }
   }
 
+  function openPdfExportModal() {
+    setPdfExportFormState(initialPdfExportFormState);
+    setPdfExportError(null);
+    setIsPdfExportModalOpen(true);
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closePdfExportModal() {
+    if (state.isPdfExporting) {
+      return;
+    }
+
+    setIsPdfExportModalOpen(false);
+    setPdfExportError(null);
+  }
+
+  async function handleExportClinicalHistoryPdf(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const validationError = getPdfExportValidationError(pdfExportFormState);
+    if (validationError) {
+      setPdfExportError(validationError);
+      return;
+    }
+
+    const payload: ClinicalHistoryPdfExportPayload = {
+      include_patient_data: pdfExportFormState.include_patient_data,
+      include_owner_data: pdfExportFormState.include_owner_data,
+      include_consultations: pdfExportFormState.include_consultations,
+      include_exams: pdfExportFormState.include_exams,
+      include_preventive_care: pdfExportFormState.include_preventive_care,
+      include_file_references: pdfExportFormState.include_file_references,
+      detail_level: pdfExportFormState.detail_level,
+    };
+
+    if (pdfExportFormState.date_from) {
+      payload.date_from = pdfExportFormState.date_from;
+    }
+    if (pdfExportFormState.date_to) {
+      payload.date_to = pdfExportFormState.date_to;
+    }
+
+    setState((current) => ({
+      ...current,
+      isPdfExporting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+    setPdfExportError(null);
+
+    try {
+      const { blob, filename } = await exportClinicalHistoryPdf(patientId, payload);
+      downloadBlob(blob, filename ?? "historia-clinica.pdf");
+      setIsPdfExportModalOpen(false);
+      setState((current) => ({
+        ...current,
+        isPdfExporting: false,
+        successMessage: "PDF generado correctamente.",
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isPdfExporting: false,
+      }));
+      setPdfExportError(getPdfExportErrorMessage(error));
+    }
+  }
+
   function openPatientEditModal(patient: Patient) {
     setPatientEditFormState(toPatientEditFormState(patient));
     const speciesOption = getSpeciesOption(patient.species);
@@ -872,6 +996,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
       {isPatientEditOpen ? renderPatientEditModal() : null}
       {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
+      {isPdfExportModalOpen ? renderPdfExportModal() : null}
       {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
       {isFileUploadModalOpen ? renderFileUploadModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
@@ -951,14 +1076,19 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <h2>Historial completo</h2>
             <p>Consultas, exámenes, vacunas, desparasitación y archivos.</p>
           </div>
-          <label className="compact-filter">
-            <span className="sr-only">Filtrar historial</span>
-            <select value={timelineFilter} onChange={(event) => setTimelineFilter(event.target.value as TimelineFilter)}>
-              {timelineFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>{filter.label}</option>
-              ))}
-            </select>
-          </label>
+          <div className="history-header-actions">
+            <label className="compact-filter">
+              <span className="sr-only">Filtrar historial</span>
+              <select value={timelineFilter} onChange={(event) => setTimelineFilter(event.target.value as TimelineFilter)}>
+                {timelineFilters.map((filter) => (
+                  <option key={filter.value} value={filter.value}>{filter.label}</option>
+                ))}
+              </select>
+            </label>
+            <button className="secondary-button" type="button" onClick={openPdfExportModal}>
+              <Download aria-hidden="true" size={18} /> Exportar PDF
+            </button>
+          </div>
         </div>
 
         {timeline.length === 0 ? (
@@ -1500,6 +1630,141 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     );
   }
 
+  function renderPdfExportModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section
+          aria-labelledby="pdf-export-title"
+          aria-modal="true"
+          className="bottom-sheet"
+          role="dialog"
+        >
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Historial clínico</p>
+              <h2 id="pdf-export-title">Exportar historia clínica</h2>
+            </div>
+            <button
+              aria-label="Cancelar"
+              className="icon-button"
+              disabled={state.isPdfExporting}
+              onClick={closePdfExportModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          <p className="panel-note">Selecciona qué información quieres incluir en el PDF.</p>
+          {pdfExportError ? <div className="error-state">{pdfExportError}</div> : null}
+
+          <form className="entity-form" onSubmit={handleExportClinicalHistoryPdf}>
+            <fieldset className="choice-section">
+              <legend>Rango de fechas</legend>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Desde</span>
+                  <input
+                    type="date"
+                    value={pdfExportFormState.date_from}
+                    onChange={(event) =>
+                      setPdfExportFormState((current) => ({
+                        ...current,
+                        date_from: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>Hasta</span>
+                  <input
+                    type="date"
+                    value={pdfExportFormState.date_to}
+                    onChange={(event) =>
+                      setPdfExportFormState((current) => ({
+                        ...current,
+                        date_to: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="choice-section">
+              <legend>Nivel de detalle</legend>
+              <div className="choice-grid choice-grid--two">
+                <button
+                  aria-pressed={pdfExportFormState.detail_level === "summary"}
+                  className={getChoiceClass(pdfExportFormState.detail_level === "summary")}
+                  type="button"
+                  onClick={() =>
+                    setPdfExportFormState((current) => ({
+                      ...current,
+                      detail_level: "summary",
+                    }))
+                  }
+                >
+                  <span>Resumen</span>
+                  <small>Incluye datos principales.</small>
+                </button>
+                <button
+                  aria-pressed={pdfExportFormState.detail_level === "full"}
+                  className={getChoiceClass(pdfExportFormState.detail_level === "full")}
+                  type="button"
+                  onClick={() =>
+                    setPdfExportFormState((current) => ({
+                      ...current,
+                      detail_level: "full",
+                    }))
+                  }
+                >
+                  <span>Completa</span>
+                  <small>Incluye detalle clínico extendido.</small>
+                </button>
+              </div>
+            </fieldset>
+
+            <fieldset className="choice-section">
+              <legend>Secciones incluidas</legend>
+              <div className="checkbox-card-list">
+                {pdfExportSectionOptions.map((option) => (
+                  <label className="checkbox-row checkbox-row--card" key={option.key}>
+                    <input
+                      checked={pdfExportFormState[option.key]}
+                      type="checkbox"
+                      onChange={(event) =>
+                        setPdfExportFormState((current) => ({
+                          ...current,
+                          [option.key]: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                disabled={state.isPdfExporting}
+                onClick={closePdfExportModal}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={state.isPdfExporting} type="submit">
+                {state.isPdfExporting ? "Generando PDF..." : "Descargar PDF"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
   function renderPreventiveCareModal() {
     return (
       <div className="modal-backdrop" role="presentation">
@@ -1959,6 +2224,41 @@ function getSelectedFileValidationError(file: File) {
   }
 
   return null;
+}
+
+function getPdfExportValidationError(formState: PdfExportFormState) {
+  if (formState.date_from && formState.date_to && formState.date_from > formState.date_to) {
+    return "La fecha Desde debe ser anterior o igual a la fecha Hasta.";
+  }
+
+  if (!hasSelectedPdfExportSection(formState)) {
+    return "Selecciona al menos una sección para incluir en el PDF.";
+  }
+
+  return null;
+}
+
+function hasSelectedPdfExportSection(formState: PdfExportFormState) {
+  return pdfExportSectionOptions.some((option) => formState[option.key]);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function getPdfExportErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError && error.code === "invalid_date_range") {
+    return "El rango de fechas no es válido.";
+  }
+
+  return getApiErrorMessage(error);
 }
 
 function getFileUploadErrorMessage(error: unknown) {

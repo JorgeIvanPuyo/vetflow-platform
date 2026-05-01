@@ -5,6 +5,11 @@ type RequestOptions = {
   isMultipart?: boolean;
 };
 
+type BlobResponse = {
+  blob: Blob;
+  filename?: string;
+};
+
 type AuthTokenProvider = () => Promise<string | null>;
 
 class ApiClientError extends Error {
@@ -96,6 +101,70 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
+async function requestBlob(
+  path: string,
+  method: HttpMethod,
+  options: RequestOptions = {},
+): Promise<BlobResponse> {
+  const token = await waitForAuthToken();
+
+  if (!token) {
+    throw new ApiClientError(
+      "Tu sesión está cargando. Intenta nuevamente en unos segundos.",
+      0,
+      "auth_token_pending",
+    );
+  }
+
+  const headers = new Headers({
+    Accept: "application/pdf",
+    Authorization: `Bearer ${token}`,
+  });
+
+  if (!options.isMultipart) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetchWithTransientRetry(`${API_BASE_URL}${path}`, {
+    method,
+    headers,
+    cache: "no-store",
+    body: getRequestBody(options),
+  });
+
+  if (!response.ok) {
+    const fallbackMessage = `Request failed with status ${response.status}`;
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      try {
+        const errorBody = (await response.json()) as {
+          error?: { code?: string; message?: string };
+        };
+
+        throw new ApiClientError(
+          errorBody.error?.message ?? fallbackMessage,
+          response.status,
+          errorBody.error?.code ?? "request_failed",
+        );
+      } catch (error) {
+        if (error instanceof ApiClientError) {
+          throw error;
+        }
+      }
+    }
+
+    throw new ApiClientError(fallbackMessage, response.status);
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: getFilenameFromContentDisposition(
+      response.headers.get("content-disposition"),
+    ),
+  };
+}
+
 function getRequestBody(options: RequestOptions): BodyInit | undefined {
   if (!options.body) {
     return undefined;
@@ -158,6 +227,20 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getFilenameFromContentDisposition(value: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  const encodedFilename = value.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encodedFilename) {
+    return decodeURIComponent(encodedFilename.replaceAll('"', ""));
+  }
+
+  const filename = value.match(/filename="?([^";]+)"?/i)?.[1];
+  return filename;
+}
+
 function getApiErrorMessage(error: unknown) {
   if (!(error instanceof ApiClientError)) {
     return "Estamos cargando la información. Intenta nuevamente en unos segundos.";
@@ -192,6 +275,9 @@ export const api = {
   },
   postFormData<T>(path: string, body: FormData): Promise<T> {
     return request<T>(path, "POST", { body, isMultipart: true });
+  },
+  postBlob(path: string, body: unknown): Promise<BlobResponse> {
+    return requestBlob(path, "POST", { body });
   },
   patch<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, "PATCH", { body });

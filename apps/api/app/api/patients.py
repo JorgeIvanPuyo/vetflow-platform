@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.common import ListMeta
-from app.schemas.patient import PatientCreate, PatientRead, PatientUpdate
+from app.schemas.patient import (
+    ClinicalHistoryPdfExportRequest,
+    PatientCreate,
+    PatientRead,
+    PatientUpdate,
+)
+from app.services.clinical_history_pdf import ClinicalHistoryPdfService
 from app.services.patient import PatientService
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -87,3 +93,24 @@ def delete_patient(
 ) -> Response:
     PatientService(db).delete_patient(tenant.tenant_id, patient_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{patient_id}/clinical-history/export-pdf")
+def export_patient_clinical_history_pdf(
+    patient_id: uuid.UUID,
+    payload: ClinicalHistoryPdfExportRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    export = ClinicalHistoryPdfService(db).export_patient_history_pdf(
+        tenant.tenant_id,
+        patient_id,
+        payload,
+    )
+    return Response(
+        content=export.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{export.filename}"',
+        },
+    )

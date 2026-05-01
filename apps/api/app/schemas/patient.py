@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 
@@ -54,3 +55,15 @@ class PatientRead(PatientBase):
         if self.created_by_user_name or self.created_by_user_email:
             return value
         return None
+
+
+class ClinicalHistoryPdfExportRequest(BaseModel):
+    date_from: date | None = None
+    date_to: date | None = None
+    include_patient_data: bool = True
+    include_owner_data: bool = True
+    include_consultations: bool = True
+    include_exams: bool = True
+    include_preventive_care: bool = True
+    include_file_references: bool = True
+    detail_level: Literal["summary", "full"] = "summary"

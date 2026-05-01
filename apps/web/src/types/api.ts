@@ -228,6 +228,18 @@ export type ClinicalHistory = {
   owner?: Owner | null;
 };
 
+export type ClinicalHistoryPdfExportPayload = {
+  date_from?: string;
+  date_to?: string;
+  include_patient_data: boolean;
+  include_owner_data: boolean;
+  include_consultations: boolean;
+  include_exams: boolean;
+  include_preventive_care: boolean;
+  include_file_references: boolean;
+  detail_level: "summary" | "full";
+};
+
 export type CreateOwnerPayload = {
   full_name: string;
   phone: string;

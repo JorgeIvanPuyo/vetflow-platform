@@ -821,6 +821,18 @@ code {
   padding: 0 12px;
 }
 
+.history-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.history-header-actions .secondary-button {
+  min-height: 42px;
+  padding: 0 12px;
+}
+
 .record-card-list {
   display: grid;
   gap: 12px;
@@ -1076,6 +1088,19 @@ code {
   box-shadow: inset 0 0 0 1px rgba(78, 165, 141, 0.16);
 }
 
+.choice-card small {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.checkbox-card-list {
+  display: grid;
+  gap: 8px;
+}
+
 .clinical-toggle-card {
   display: grid;
   gap: 12px;
@@ -1097,6 +1122,14 @@ code {
   width: 18px;
   height: 18px;
   accent-color: var(--color-primary);
+}
+
+.checkbox-row--card {
+  min-height: 46px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface-soft);
+  padding: 10px 12px;
 }
 
 .clinical-section {
