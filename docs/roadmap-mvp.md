@@ -36,12 +36,16 @@ Goal:
 Completed:
 - Tenant model implemented.
 - User model implemented.
+- Tenant represents the clinic/organization.
+- Multiple veterinarians can belong to the same tenant.
 - Multi-tenancy implemented with `tenant_id`.
 - Firebase Authentication integrated.
 - Real tenant resolution from the authenticated user.
 - Frontend and backend authentication with Bearer tokens.
 - Temporary frontend `X-Tenant-Id` dependency removed from normal authenticated flows.
 - 3 pilot users can be supported manually through Firebase Auth and Supabase users.
+- Patients, owners, consultations, exams, preventive care, and file references are shared within the clinic.
+- User traceability implemented across clinical records.
 
 ### ✅ Completed - Slice 2 - Owners and Patients
 Goal:
@@ -67,6 +71,10 @@ Completed:
 - Basic clinical history implemented.
 - Patient clinical timeline implemented.
 - Timeline integrates consultations, exams, preventive care records, and file references.
+- Timeline includes user traceability where available:
+  - Created by.
+  - Attended by.
+  - Requested by.
 - Basic timeline filtering by type.
 - Patient detail page includes these sections:
   - Complete history.
@@ -74,30 +82,22 @@ Completed:
   - Vaccines and deworming.
   - File attachments.
 
-### 🟡 Partial - Slice 4 - Structured Consultations
+### ✅ Completed - Slice 4 - Structured Consultations
 Goal:
 - Make consultations the main structured clinical workflow.
 
-Already exists:
-- Base consultations backend.
-- Base consultations frontend.
-- Consultation creation.
-- Basic consultation editing.
+Completed:
+- Full consultation CRUD.
+- Multi-step workflow backend.
+- Multi-step frontend.
+- Draft status.
+- Completed status.
+- Progressive autosave.
+- Medication entries.
+- Study requests.
+- Safe consultation delete.
 - Clinical history integration.
-
-Pending:
-- Refine complete consultation CRUD in backend/frontend if any edge cases remain.
-- Improve the consultations frontend module.
-- Add safe confirmation before deleting a consultation.
-- Improve the clinical workflow for:
-  - Anamnesis.
-  - Clinical exam.
-  - Presumptive diagnosis.
-  - Diagnostic plan.
-  - Therapeutic plan.
-  - Final diagnosis.
-  - Indications.
-- Improve consultation visualization in patient detail and consultation detail views.
+- Consultation detail/edit flow.
 
 ### ✅ Completed - Slice 5 - Exams and Results
 Goal:
@@ -145,20 +145,22 @@ Pending:
 
 ## Partial Clinical Submodules
 
-### 🟡 Partial - Preventive Care
+### ✅ Completed - Preventive Care
 Scope:
 - Vaccines, deworming, and other preventive care records.
 
-Already exists:
+Completed:
 - Persistent backend support.
 - Frontend creation flow.
 - List view.
-- Clinical history integration.
+- Create preventive care records.
+- Edit preventive care records.
+- Delete preventive care records.
+- Safe delete confirmation.
+- Clinical history timeline integration.
+- User traceability.
 
-Pending:
-- Edit preventive care record.
-- Delete preventive care record with confirmation.
-- Improve module UX.
+Deferred:
 - Future reminder or next-dose workflow.
 
 ### 🟡 Partial - File Attachments
@@ -169,40 +171,20 @@ Already exists:
 - File reference metadata without real upload.
 - Patient association.
 - Clinical history integration.
+- User traceability.
 
 Pending:
-- Real PDF/image upload.
+- Real uploads.
 - Storage provider decision: S3, Firebase Storage, or Google Cloud Storage.
 - Secure tenant/patient file linking.
-- File visualization and download.
+- File preview.
+- File download.
+- Storage integration.
 - File type and size controls.
 
 ## Next Priority Slices
 
-### 🔜 Next Priority - Priority 1 - Consultations Complete CRUD
-Objective:
-- Complete consultations as the main clinical module.
-
-Tasks:
-- Create, edit, and delete consultations reliably.
-- Add safe confirmation before deletion.
-- Improve the mobile-first consultation UI.
-- Refine clinical forms.
-- Improve consultation detail view.
-- Maintain clinical history integration.
-
-### 🔜 Next Priority - Priority 2 - Preventive Care Complete CRUD
-Objective:
-- Complete vaccines and deworming workflows.
-
-Tasks:
-- Edit preventive care records.
-- Delete preventive care records.
-- Add safe confirmation before deletion.
-- Improve cards and list views.
-- Maintain timeline integration.
-
-### 🔜 Next Priority - Priority 3 - Real File Uploads
+### 🔜 Next Priority - Priority 1 - Real File Uploads
 Objective:
 - Allow real clinical document uploads.
 
@@ -217,7 +199,7 @@ Tasks:
 Suggested storage structure:
 - `tenant_id/patients/patient_id/files/file_id/filename`
 
-### 🔜 Next Priority - Priority 4 - Clinical History PDF Export
+### 🔜 Next Priority - Priority 2 - Clinical History PDF Export
 Objective:
 - Allow downloading patient clinical history as a professional PDF with configurable detail.
 
@@ -234,11 +216,29 @@ Tasks:
 - Generate a readable professional PDF.
 - Support summarized and complete clinical history exports.
 
+### 🔜 Next Priority - Priority 3 - Agenda / Scheduling
+Objective:
+- Add appointment scheduling for clinic workflows.
+
+Tasks:
+- Define MVP appointment model.
+- Create appointment list/calendar view.
+- Link appointments to owners/patients where applicable.
+- Maintain tenant-aware access.
+
+### 🔜 Next Priority - Priority 4 - Inventory / Medication Stock
+Objective:
+- Track medication and inventory stock for clinic operations.
+
+Tasks:
+- Define MVP inventory item model.
+- Track medication stock.
+- Register stock movements.
+- Maintain tenant-aware access.
+
 ## Post-MVP / Deferred
 
 ### 🧊 Deferred
-- Agenda / scheduling.
-- Inventory.
 - Advanced settings.
 - Roles and permissions.
 - Internal user management.
@@ -251,6 +251,10 @@ Tasks:
 ## Current Development Position
 The app is already deployed and connected end-to-end through Vercel, Cloud Run, and Supabase.
 
-It already supports authenticated Firebase users, real multi-tenant tenant resolution, and tenant-aware access to owners, patients, clinical history, consultations v1, exams v1, preventive care v1, and file references.
+It already supports authenticated Firebase users, real multi-tenant tenant resolution, and tenant-aware access to owners, patients, clinical history, structured consultations, exams v1, preventive care, and file references.
 
-The next development focus should be completing consultations, completing preventive care CRUD, implementing real file uploads, and adding clinical history PDF export.
+The current model supports a multi-veterinarian clinic workflow: Tenant represents the clinic, multiple veterinarians can belong to the same tenant, and patients are shared within the clinic while tenant isolation remains enforced.
+
+Structured consultations are completed, preventive care is completed, and user traceability is available across patient, consultation, exam, preventive care, file reference, and clinical history timeline records.
+
+The next development focus should be implementing real file uploads, adding clinical history PDF export, and then expanding into agenda/scheduling and inventory/medication stock.

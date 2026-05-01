@@ -31,6 +31,12 @@ class FileReferenceRead(FileReferenceBase):
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
+    bucket_name: str | None = None
+    object_path: str | None = None
+    original_filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
+    uploaded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -42,3 +48,8 @@ class FileReferenceRead(FileReferenceBase):
         if self.created_by_user_name or self.created_by_user_email:
             return value
         return None
+
+
+class FileDownloadUrlRead(BaseModel):
+    download_url: str
+    expires_in_seconds: int

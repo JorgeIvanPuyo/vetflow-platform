@@ -3,6 +3,7 @@ import type {
   ApiItemResponse,
   ApiListResponse,
   CreatePatientFileReferencePayload,
+  FileDownloadUrlResponse,
   PatientFileReference,
   UpdatePatientFileReferencePayload,
 } from "@/types/api";
@@ -20,6 +21,13 @@ export function createPatientFileReference(
   return api.post<ApiItemResponse<PatientFileReference>>(
     `/api/v1/patients/${patientId}/file-references`,
     payload,
+  );
+}
+
+export function uploadPatientFile(patientId: string, formData: FormData) {
+  return api.postFormData<ApiItemResponse<PatientFileReference>>(
+    `/api/v1/patients/${patientId}/files/upload`,
+    formData,
   );
 }
 
@@ -41,4 +49,10 @@ export function updatePatientFileReference(
 
 export function deletePatientFileReference(fileReferenceId: string) {
   return api.delete<void>(`/api/v1/file-references/${fileReferenceId}`);
+}
+
+export function getFileReferenceDownloadUrl(fileReferenceId: string) {
+  return api.get<ApiItemResponse<FileDownloadUrlResponse>>(
+    `/api/v1/file-references/${fileReferenceId}/download-url`,
+  );
 }

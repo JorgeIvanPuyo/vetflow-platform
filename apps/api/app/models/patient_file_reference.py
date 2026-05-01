@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -33,6 +34,15 @@ class PatientFileReference(BaseModel):
     file_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bucket_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    object_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploaded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     tenant: Mapped[Tenant] = relationship("Tenant")
     patient: Mapped[Patient] = relationship(

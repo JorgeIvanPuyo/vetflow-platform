@@ -19,6 +19,10 @@ class Settings:
         self.firebase_service_account_json_path = os.getenv(
             "FIREBASE_SERVICE_ACCOUNT_JSON_PATH"
         )
+        self.clinical_files_bucket_name = os.getenv("CLINICAL_FILES_BUCKET_NAME")
+        self.max_clinical_file_size_mb = int(
+            os.getenv("MAX_CLINICAL_FILE_SIZE_MB", "25")
+        )
         self.api_v1_prefix = "/api/v1"
 
 

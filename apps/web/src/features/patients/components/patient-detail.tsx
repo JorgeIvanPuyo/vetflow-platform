@@ -2,11 +2,14 @@
 
 import {
   Cat,
+  Download,
   Dog,
   Edit,
+  ExternalLink,
   FileText,
   FolderOpen,
   History,
+  Image as ImageIcon,
   Info,
   Mail,
   MapPin,
@@ -16,6 +19,7 @@ import {
   Stethoscope,
   Syringe,
   Trash2,
+  Upload,
   User,
   X,
 } from "lucide-react";
@@ -23,10 +27,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
 import { createExam } from "@/services/exams";
-import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
+import {
+  createPatientFileReference,
+  deletePatientFileReference,
+  getFileReferenceDownloadUrl,
+  getPatientFileReferences,
+  uploadPatientFile,
+} from "@/services/file-references";
 import { getOwner, getOwners } from "@/services/owners";
 import { deletePatient, getPatientClinicalHistory, updatePatient } from "@/services/patients";
 import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
@@ -54,6 +64,9 @@ type PatientDetailState = {
   isSubmitting: boolean;
   isPreventiveSubmitting: boolean;
   isFileSubmitting: boolean;
+  isFileUploading: boolean;
+  isFileDeleting: boolean;
+  isFileOpening: boolean;
   isPatientSaving: boolean;
   isPatientDeleting: boolean;
   clinicalHistory: ClinicalHistory | null;
@@ -90,6 +103,13 @@ type FileReferenceFormState = {
   file_type: string;
   description: string;
   external_url: string;
+};
+
+type FileUploadFormState = {
+  name: string;
+  file_type: string;
+  description: string;
+  file: File | null;
 };
 
 type PatientEditFormState = {
@@ -129,11 +149,21 @@ const initialFileReferenceFormState: FileReferenceFormState = {
   external_url: "",
 };
 
+const initialFileUploadFormState: FileUploadFormState = {
+  name: "",
+  file_type: "laboratory",
+  description: "",
+  file: null,
+};
+
 const initialState: PatientDetailState = {
   isLoading: true,
   isSubmitting: false,
   isPreventiveSubmitting: false,
   isFileSubmitting: false,
+  isFileUploading: false,
+  isFileDeleting: false,
+  isFileOpening: false,
   isPatientSaving: false,
   isPatientDeleting: false,
   clinicalHistory: null,
@@ -184,11 +214,20 @@ const preventiveCareTypeOptions: Array<{ value: PreventiveCareType; label: strin
 ];
 
 const fileTypeOptions = [
-  { value: "radiography", label: "Radiografía" },
   { value: "laboratory", label: "Laboratorio" },
+  { value: "radiography", label: "Radiografía" },
   { value: "ultrasound", label: "Ecografía" },
   { value: "clinical_photo", label: "Foto clínica" },
+  { value: "document", label: "PDF / Documento" },
   { value: "other", label: "Otro" },
+];
+
+const allowedClinicalFileExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"];
+const allowedClinicalFileTypes = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
 ];
 
 const speciesOptions: Array<{ value: Exclude<SpeciesOption, "">; label: string; icon: ReactNode }> = [
@@ -204,9 +243,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
+  const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
+  const [fileReferenceToDelete, setFileReferenceToDelete] =
+    useState<PatientFileReference | null>(null);
   const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
+  const [fileUploadFormState, setFileUploadFormState] =
+    useState<FileUploadFormState>(initialFileUploadFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
   const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
   const [patientEditFormState, setPatientEditFormState] =
@@ -217,6 +261,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [editHasNoKnownChronicConditions, setEditHasNoKnownChronicConditions] =
     useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [fileDeleteConfirmation, setFileDeleteConfirmation] = useState("");
 
   const loadPatientDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -387,6 +432,169 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       setState((current) => ({
         ...current,
         isFileSubmitting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleUploadPatientFile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const selectedFile = fileUploadFormState.file;
+    const name = fileUploadFormState.name.trim();
+
+    if (!selectedFile) {
+      setState((current) => ({
+        ...current,
+        errorMessage: "Selecciona un archivo clínico para subir.",
+        successMessage: null,
+      }));
+      return;
+    }
+
+    if (!name) {
+      setState((current) => ({
+        ...current,
+        errorMessage: "Escribe un nombre para identificar el archivo.",
+        successMessage: null,
+      }));
+      return;
+    }
+
+    const validationError = getSelectedFileValidationError(selectedFile);
+    if (validationError) {
+      setState((current) => ({
+        ...current,
+        errorMessage: validationError,
+        successMessage: null,
+      }));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("name", name);
+    formData.append("file_type", fileUploadFormState.file_type);
+
+    const description = fileUploadFormState.description.trim();
+    if (description) {
+      formData.append("description", description);
+    }
+
+    setState((current) => ({
+      ...current,
+      isFileUploading: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await uploadPatientFile(patientId, formData);
+      setFileUploadFormState(initialFileUploadFormState);
+      setIsFileUploadModalOpen(false);
+      setActiveSection("files");
+      setState((current) => ({
+        ...current,
+        isFileUploading: false,
+        successMessage: "Archivo subido correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isFileUploading: false,
+        errorMessage: getFileUploadErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleOpenFileReference(fileReference: PatientFileReference) {
+    if (state.isFileOpening) {
+      return;
+    }
+
+    if (fileReference.object_path) {
+      setState((current) => ({
+        ...current,
+        isFileOpening: true,
+        errorMessage: null,
+        successMessage: null,
+      }));
+
+      try {
+        const response = await getFileReferenceDownloadUrl(fileReference.id);
+        window.open(response.data.download_url, "_blank", "noopener,noreferrer");
+        setState((current) => ({ ...current, isFileOpening: false }));
+      } catch (error) {
+        setState((current) => ({
+          ...current,
+          isFileOpening: false,
+          errorMessage: getApiErrorMessage(error),
+        }));
+      }
+      return;
+    }
+
+    if (fileReference.external_url) {
+      window.open(fileReference.external_url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      errorMessage: "Este registro aún no tiene archivo descargable.",
+      successMessage: null,
+    }));
+  }
+
+  function openFileDeleteModal(fileReference: PatientFileReference) {
+    setFileReferenceToDelete(fileReference);
+    setFileDeleteConfirmation("");
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closeFileDeleteModal() {
+    if (state.isFileDeleting) {
+      return;
+    }
+
+    setFileReferenceToDelete(null);
+    setFileDeleteConfirmation("");
+  }
+
+  async function handleDeleteFileReference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!fileReferenceToDelete || fileDeleteConfirmation !== "ELIMINAR") {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isFileDeleting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await deletePatientFileReference(fileReferenceToDelete.id);
+      setFileReferenceToDelete(null);
+      setFileDeleteConfirmation("");
+      setActiveSection("files");
+      setState((current) => ({
+        ...current,
+        isFileDeleting: false,
+        successMessage: "Archivo adjunto eliminado correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isFileDeleting: false,
         errorMessage: getApiErrorMessage(error),
       }));
     }
@@ -665,7 +873,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {isPatientEditOpen ? renderPatientEditModal() : null}
       {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
       {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
+      {isFileUploadModalOpen ? renderFileUploadModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
+      {fileReferenceToDelete ? renderFileDeleteModal(fileReferenceToDelete) : null}
     </div>
   );
 
@@ -876,37 +1086,77 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       <section className="panel patient-detail-section">
         <div className="section-heading section-heading--row">
           <div>
-            <p className="eyebrow">Referencias</p>
+            <p className="eyebrow">Archivos clínicos</p>
             <h2>Archivos adjuntos</h2>
-            <p>Metadatos o enlaces externos, sin carga real de archivos.</p>
+            <p>Laboratorios, radiografías, fotos clínicas y documentos del paciente.</p>
           </div>
-          <button className="primary-button" type="button" onClick={() => setIsFileModalOpen(true)}>
-            <Plus aria-hidden="true" size={18} /> Agregar
-          </button>
+          <div className="detail-action-row">
+            <button className="primary-button" type="button" onClick={() => setIsFileUploadModalOpen(true)}>
+              <Upload aria-hidden="true" size={18} /> Subir archivo
+            </button>
+            <button className="secondary-button" type="button" onClick={() => setIsFileModalOpen(true)}>
+              <Plus aria-hidden="true" size={18} /> Agregar referencia
+            </button>
+          </div>
         </div>
 
         {state.fileReferences.length === 0 ? (
-          <div className="empty-state">No hay archivos registrados</div>
+          <div className="empty-state">
+            <strong>No hay archivos registrados</strong>
+            <span>Sube laboratorios, radiografías, fotos clínicas o documentos PDF.</span>
+          </div>
         ) : (
           <div className="record-card-list">
             {state.fileReferences.map((fileReference) => (
               <article className="record-card" key={fileReference.id}>
-                <span className="icon-bubble icon-bubble--blue"><FileText size={20} /></span>
+                <span className="icon-bubble icon-bubble--blue">
+                  {getFileReferenceIcon(fileReference)}
+                </span>
                 <div>
+                  <div className="record-card__title-row">
+                    <span className="badge badge--blue">
+                      {fileReference.object_path ? "Archivo cargado" : "Referencia"}
+                    </span>
+                  </div>
                   <h3>{fileReference.name}</h3>
                   <p>{getFileTypeLabel(fileReference.file_type)}</p>
                   {fileReference.description ? <p>{fileReference.description}</p> : null}
+                  {fileReference.original_filename ? (
+                    <p>Archivo original: {fileReference.original_filename}</p>
+                  ) : null}
+                  {fileReference.size_bytes ? <p>Tamaño: {formatFileSize(fileReference.size_bytes)}</p> : null}
+                  {fileReference.uploaded_at ? <p>Subido: {formatDateTime(fileReference.uploaded_at)}</p> : null}
                   {getTraceableUserName(fileReference, "created_by") ? (
                     <p className="traceability-meta traceability-meta--compact">
                       <strong>Registrado por:</strong>{" "}
                       {getTraceableUserName(fileReference, "created_by")}
                     </p>
                   ) : null}
-                  {fileReference.external_url ? (
-                    <a className="inline-link" href={fileReference.external_url} rel="noreferrer" target="_blank">
-                      Abrir referencia externa
-                    </a>
+                  {!fileReference.object_path && !fileReference.external_url ? (
+                    <p>Referencia sin archivo cargado</p>
                   ) : null}
+                  <div className="record-card__actions">
+                    <button
+                      className="secondary-button"
+                      disabled={state.isFileOpening || (!fileReference.object_path && !fileReference.external_url)}
+                      type="button"
+                      onClick={() => void handleOpenFileReference(fileReference)}
+                    >
+                      {fileReference.object_path ? (
+                        <Download aria-hidden="true" size={16} />
+                      ) : (
+                        <ExternalLink aria-hidden="true" size={16} />
+                      )}
+                      Ver / Descargar
+                    </button>
+                    <button
+                      className="secondary-button secondary-button--danger"
+                      type="button"
+                      onClick={() => openFileDeleteModal(fileReference)}
+                    >
+                      <Trash2 aria-hidden="true" size={16} /> Eliminar
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -1305,6 +1555,107 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     );
   }
 
+  function renderFileUploadModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section aria-labelledby="file-upload-title" aria-modal="true" className="bottom-sheet" role="dialog">
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Archivos adjuntos</p>
+              <h2 id="file-upload-title">Subir archivo</h2>
+            </div>
+            <button
+              aria-label="Cancelar"
+              className="icon-button"
+              disabled={state.isFileUploading}
+              onClick={() => {
+                setIsFileUploadModalOpen(false);
+                setFileUploadFormState(initialFileUploadFormState);
+              }}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
+
+          <form className="entity-form" onSubmit={handleUploadPatientFile}>
+            <label className="field">
+              <span>Archivo</span>
+              <input
+                required
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                type="file"
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0] ?? null;
+                  setFileUploadFormState((current) => ({
+                    ...current,
+                    file: selectedFile,
+                    name: current.name || getFilenameWithoutExtension(selectedFile?.name ?? ""),
+                  }));
+                }}
+              />
+            </label>
+
+            {fileUploadFormState.file ? (
+              <div className="selected-file-summary">
+                <span>{fileUploadFormState.file.name}</span>
+                <span>{formatFileSize(fileUploadFormState.file.size)}</span>
+              </div>
+            ) : null}
+
+            <div className="form-grid">
+              <label className="field">
+                <span>Nombre</span>
+                <input
+                  required
+                  value={fileUploadFormState.name}
+                  onChange={(event) => setFileUploadFormState((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span>Tipo</span>
+                <select
+                  value={fileUploadFormState.file_type}
+                  onChange={(event) => setFileUploadFormState((current) => ({ ...current, file_type: event.target.value }))}
+                >
+                  {fileTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <label className="field">
+              <span>Descripción</span>
+              <textarea
+                rows={3}
+                value={fileUploadFormState.description}
+                onChange={(event) => setFileUploadFormState((current) => ({ ...current, description: event.target.value }))}
+              />
+            </label>
+
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                disabled={state.isFileUploading}
+                onClick={() => {
+                  setIsFileUploadModalOpen(false);
+                  setFileUploadFormState(initialFileUploadFormState);
+                }}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={state.isFileUploading} type="submit">
+                {state.isFileUploading ? "Subiendo..." : "Subir archivo"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
   function renderFileReferenceModal() {
     return (
       <div className="modal-backdrop" role="presentation">
@@ -1319,7 +1670,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </button>
           </div>
 
-          <p className="panel-note">Por ahora solo se registra la referencia del archivo. La carga real de archivos se implementará en una próxima versión.</p>
+          <p className="panel-note">Registra un enlace externo o una referencia manual cuando el archivo no se subirá a Vetflow.</p>
 
           <form className="entity-form" onSubmit={handleCreateFileReference}>
             <div className="form-grid">
@@ -1346,6 +1697,68 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               <button className="secondary-button" onClick={() => setIsFileModalOpen(false)} type="button">Cancelar</button>
               <button className="primary-button" disabled={state.isFileSubmitting} type="submit">
                 {state.isFileSubmitting ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    );
+  }
+
+  function renderFileDeleteModal(fileReference: PatientFileReference) {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section aria-labelledby="delete-file-title" aria-modal="true" className="bottom-sheet" role="dialog">
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Acción irreversible</p>
+              <h2 id="delete-file-title">Eliminar archivo adjunto</h2>
+            </div>
+            <button
+              aria-label="Cancelar"
+              className="icon-button"
+              disabled={state.isFileDeleting}
+              onClick={closeFileDeleteModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          <div className="danger-callout" role="alert">
+            <strong>{fileReference.name}</strong>
+            <span>
+              Esta acción eliminará el archivo adjunto y su registro en la historia clínica.
+              Esta acción no se puede deshacer.
+            </span>
+          </div>
+
+          {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
+
+          <form className="entity-form" onSubmit={handleDeleteFileReference}>
+            <label className="field">
+              <span>Escribe ELIMINAR para confirmar</span>
+              <input
+                autoComplete="off"
+                value={fileDeleteConfirmation}
+                onChange={(event) => setFileDeleteConfirmation(event.target.value)}
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                className="secondary-button"
+                disabled={state.isFileDeleting}
+                onClick={closeFileDeleteModal}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="danger-button"
+                disabled={fileDeleteConfirmation !== "ELIMINAR" || state.isFileDeleting}
+                type="submit"
+              >
+                {state.isFileDeleting ? "Eliminando..." : "Confirmar eliminación"}
               </button>
             </div>
           </form>
@@ -1505,6 +1918,66 @@ function getPreventiveCareTypeLabel(type: PreventiveCareType) {
 
 function getFileTypeLabel(type: string) {
   return fileTypeOptions.find((option) => option.value === type)?.label ?? readableLabel(type);
+}
+
+function getFileReferenceIcon(fileReference: PatientFileReference) {
+  if (fileReference.content_type?.startsWith("image/")) {
+    return <ImageIcon size={20} />;
+  }
+
+  if (fileReference.file_type === "clinical_photo") {
+    return <ImageIcon size={20} />;
+  }
+
+  return <FileText size={20} />;
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+  }
+
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getFilenameWithoutExtension(filename: string) {
+  const lastDotIndex = filename.lastIndexOf(".");
+  if (lastDotIndex <= 0) {
+    return filename;
+  }
+
+  return filename.slice(0, lastDotIndex);
+}
+
+function getSelectedFileValidationError(file: File) {
+  const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+  const hasValidExtension = allowedClinicalFileExtensions.includes(extension);
+  const hasValidType = allowedClinicalFileTypes.includes(file.type);
+
+  if (!hasValidExtension || !hasValidType) {
+    return "Tipo de archivo no permitido. Usa PDF, JPG, PNG o WEBP.";
+  }
+
+  return null;
+}
+
+function getFileUploadErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.code === "invalid_file_type") {
+      return "Tipo de archivo no permitido. Usa PDF, JPG, PNG o WEBP.";
+    }
+    if (error.code === "file_too_large") {
+      return "El archivo supera el tamaño máximo permitido.";
+    }
+    if (error.code === "missing_file") {
+      return "Selecciona un archivo clínico para subir.";
+    }
+    if (error.code === "storage_not_configured") {
+      return "El almacenamiento de archivos aún no está configurado.";
+    }
+  }
+
+  return getApiErrorMessage(error);
 }
 
 function readableLabel(value: string) {

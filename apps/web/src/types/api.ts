@@ -192,8 +192,19 @@ export type PatientFileReference = {
   created_by_user_id?: string | null;
   created_by_user_name?: string | null;
   created_by_user_email?: string | null;
+  bucket_name?: string | null;
+  object_path?: string | null;
+  original_filename?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+  uploaded_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type FileDownloadUrlResponse = {
+  download_url: string;
+  expires_in_seconds: number;
 };
 
 export type ClinicalHistoryTimelineItem = {

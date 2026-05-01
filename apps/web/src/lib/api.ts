@@ -2,6 +2,7 @@ type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 type RequestOptions = {
   body?: unknown;
+  isMultipart?: boolean;
 };
 
 type AuthTokenProvider = () => Promise<string | null>;
@@ -47,15 +48,18 @@ async function request<T>(
 
   const headers = new Headers({
     Accept: "application/json",
-    "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   });
+
+  if (!options.isMultipart) {
+    headers.set("Content-Type", "application/json");
+  }
 
   const requestInit: RequestInit = {
     method,
     headers,
     cache: "no-store",
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: getRequestBody(options),
   };
 
   const response = await fetchWithTransientRetry(
@@ -90,6 +94,18 @@ async function request<T>(
   }
 
   return (await response.json()) as T;
+}
+
+function getRequestBody(options: RequestOptions): BodyInit | undefined {
+  if (!options.body) {
+    return undefined;
+  }
+
+  if (options.isMultipart) {
+    return options.body as FormData;
+  }
+
+  return JSON.stringify(options.body);
 }
 
 async function waitForAuthToken() {
@@ -173,6 +189,9 @@ export const api = {
   },
   post<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, "POST", { body });
+  },
+  postFormData<T>(path: string, body: FormData): Promise<T> {
+    return request<T>(path, "POST", { body, isMultipart: true });
   },
   patch<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, "PATCH", { body });
