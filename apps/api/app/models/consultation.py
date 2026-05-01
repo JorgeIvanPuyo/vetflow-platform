@@ -111,6 +111,30 @@ class Consultation(BaseModel):
         back_populates="consultation",
     )
 
+    @property
+    def created_by_user_name(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.full_name
+
+    @property
+    def created_by_user_email(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.email
+
+    @property
+    def attending_user_name(self) -> str | None:
+        if self.attending_user is None or self.attending_user.tenant_id != self.tenant_id:
+            return None
+        return self.attending_user.full_name
+
+    @property
+    def attending_user_email(self) -> str | None:
+        if self.attending_user is None or self.attending_user.tenant_id != self.tenant_id:
+            return None
+        return self.attending_user.email
+
 
 class ConsultationMedication(BaseModel):
     __tablename__ = "consultation_medications"

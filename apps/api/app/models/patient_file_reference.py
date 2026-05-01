@@ -23,6 +23,12 @@ class PatientFileReference(BaseModel):
         nullable=False,
         index=True,
     )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -33,3 +39,16 @@ class PatientFileReference(BaseModel):
         "Patient",
         back_populates="file_references",
     )
+    created_by_user: Mapped[User | None] = relationship("User")
+
+    @property
+    def created_by_user_name(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.full_name
+
+    @property
+    def created_by_user_email(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.email

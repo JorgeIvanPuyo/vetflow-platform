@@ -25,6 +25,8 @@ class PreventiveCareService:
         tenant_id: uuid.UUID,
         patient_id: uuid.UUID,
         payload: PreventiveCareCreate,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
     ) -> PatientPreventiveCare:
         self._get_patient_for_tenant(tenant_id, patient_id)
         self._validate_care_type(payload.care_type)
@@ -32,6 +34,7 @@ class PreventiveCareService:
         record = PatientPreventiveCare(
             tenant_id=tenant_id,
             patient_id=patient_id,
+            created_by_user_id=created_by_user_id,
             **payload.model_dump(),
         )
         self.preventive_care_repository.create(record)

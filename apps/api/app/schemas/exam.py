@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 EXAM_STATUSES = {"requested", "performed", "result_loaded"}
@@ -35,9 +35,20 @@ class ExamRead(ExamBase):
     patient_id: uuid.UUID
     consultation_id: uuid.UUID | None
     requested_by_user_id: uuid.UUID | None
+    requested_by_user_name: str | None = None
+    requested_by_user_email: str | None = None
     status: str
     performed_at: datetime | None
     result_summary: str | None
     result_detail: str | None
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("requested_by_user_id")
+    def serialize_requested_by_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.requested_by_user_name or self.requested_by_user_email:
+            return value
+        return None

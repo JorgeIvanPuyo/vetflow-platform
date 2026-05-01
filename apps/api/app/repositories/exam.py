@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.exam import Exam
 
@@ -20,7 +20,7 @@ class ExamRepository:
         statement = select(Exam).where(
             Exam.id == exam_id,
             Exam.tenant_id == tenant_id,
-        )
+        ).options(selectinload(Exam.requested_by_user))
         return self.db.scalar(statement)
 
     def list_by_patient(
@@ -32,6 +32,7 @@ class ExamRepository:
                 Exam.tenant_id == tenant_id,
                 Exam.patient_id == patient_id,
             )
+            .options(selectinload(Exam.requested_by_user))
             .order_by(Exam.requested_at.desc())
         )
         exams = list(self.db.scalars(statement).all())
@@ -52,6 +53,7 @@ class ExamRepository:
                 Exam.tenant_id == tenant_id,
                 Exam.consultation_id == consultation_id,
             )
+            .options(selectinload(Exam.requested_by_user))
             .order_by(Exam.requested_at.desc())
         )
         exams = list(self.db.scalars(statement).all())

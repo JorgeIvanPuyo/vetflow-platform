@@ -527,13 +527,21 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
               Condiciones: {patient?.chronic_conditions}
             </span>
           ) : null}
-          {attendingUserName ? (
-            <span className="badge">Atendido por: {attendingUserName}</span>
-          ) : null}
-          {registeredByName ? (
-            <span className="badge">Registrado por: {registeredByName}</span>
-          ) : null}
         </div>
+        {attendingUserName || registeredByName ? (
+          <div className="traceability-meta">
+            {attendingUserName ? (
+              <span>
+                <strong>Atendido por:</strong> {attendingUserName}
+              </span>
+            ) : null}
+            {registeredByName ? (
+              <span>
+                <strong>Registrado por:</strong> {registeredByName}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {props.mode === "new" ? (
           <p className="panel-note">Esta consulta quedará registrada con tu usuario.</p>
         ) : null}

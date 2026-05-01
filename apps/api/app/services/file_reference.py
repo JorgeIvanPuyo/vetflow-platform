@@ -21,12 +21,15 @@ class FileReferenceService:
         tenant_id: uuid.UUID,
         patient_id: uuid.UUID,
         payload: FileReferenceCreate,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
     ) -> PatientFileReference:
         self._get_patient_for_tenant(tenant_id, patient_id)
 
         file_reference = PatientFileReference(
             tenant_id=tenant_id,
             patient_id=patient_id,
+            created_by_user_id=created_by_user_id,
             **payload.model_dump(),
         )
         self.file_reference_repository.create(file_reference)

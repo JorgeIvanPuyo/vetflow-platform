@@ -57,3 +57,15 @@ class Patient(BaseModel):
         "PatientFileReference",
         back_populates="patient",
     )
+
+    @property
+    def created_by_user_name(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.full_name
+
+    @property
+    def created_by_user_email(self) -> str | None:
+        if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.created_by_user.email

@@ -61,6 +61,8 @@ def test_two_users_in_same_tenant_share_patients_and_trace_creator(
     patient = patient_response.json()["data"]
     assert patient["tenant_id"] == str(tenant.id)
     assert patient["created_by_user_id"] == str(creator.id)
+    assert patient["created_by_user_name"] == "Creator Vet"
+    assert patient["created_by_user_email"] == "creator@example.com"
 
     colleague_detail = client.get(
         f"/api/v1/patients/{patient['id']}",
@@ -128,7 +130,14 @@ def test_authenticated_consultation_and_exam_record_user_traceability(
     assert consultation_response.status_code == 201
     consultation = consultation_response.json()["data"]
     assert consultation["created_by_user_id"] == str(vet.id)
+    assert consultation["created_by_user_name"] == "Tracing Vet"
+    assert consultation["created_by_user_email"] == "vet@example.com"
     assert consultation["attending_user_id"] == str(vet.id)
+    assert consultation["attending_user_name"] == "Tracing Vet"
+    assert consultation["attending_user_email"] == "vet@example.com"
 
     assert exam_response.status_code == 201
-    assert exam_response.json()["data"]["requested_by_user_id"] == str(vet.id)
+    exam = exam_response.json()["data"]
+    assert exam["requested_by_user_id"] == str(vet.id)
+    assert exam["requested_by_user_name"] == "Tracing Vet"
+    assert exam["requested_by_user_email"] == "vet@example.com"

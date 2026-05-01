@@ -203,13 +203,14 @@ export function ExamDetail({ examId }: ExamDetailProps) {
                 : "No indicado"}
             </dd>
           </div>
-          {requestedByName ? (
-            <div>
-              <dt>Solicitado por</dt>
-              <dd>{requestedByName}</dd>
-            </div>
-          ) : null}
         </dl>
+        {requestedByName ? (
+          <div className="traceability-meta">
+            <span>
+              <strong>Solicitado por:</strong> {requestedByName}
+            </span>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">

@@ -58,3 +58,21 @@ class Exam(BaseModel):
         back_populates="exams",
     )
     requested_by_user: Mapped[User | None] = relationship("User")
+
+    @property
+    def requested_by_user_name(self) -> str | None:
+        if (
+            self.requested_by_user is None
+            or self.requested_by_user.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.requested_by_user.full_name
+
+    @property
+    def requested_by_user_email(self) -> str | None:
+        if (
+            self.requested_by_user is None
+            or self.requested_by_user.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.requested_by_user.email

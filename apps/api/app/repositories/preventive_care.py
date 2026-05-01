@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.patient_preventive_care import PatientPreventiveCare
 
@@ -22,7 +22,7 @@ class PreventiveCareRepository:
         statement = select(PatientPreventiveCare).where(
             PatientPreventiveCare.id == record_id,
             PatientPreventiveCare.tenant_id == tenant_id,
-        )
+        ).options(selectinload(PatientPreventiveCare.created_by_user))
         return self.db.scalar(statement)
 
     def list_by_patient(
@@ -34,6 +34,7 @@ class PreventiveCareRepository:
                 PatientPreventiveCare.tenant_id == tenant_id,
                 PatientPreventiveCare.patient_id == patient_id,
             )
+            .options(selectinload(PatientPreventiveCare.created_by_user))
             .order_by(PatientPreventiveCare.applied_at.desc())
         )
         records = list(self.db.scalars(statement).all())

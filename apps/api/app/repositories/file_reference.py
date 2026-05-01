@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.patient_file_reference import PatientFileReference
 
@@ -22,7 +22,7 @@ class FileReferenceRepository:
         statement = select(PatientFileReference).where(
             PatientFileReference.id == file_reference_id,
             PatientFileReference.tenant_id == tenant_id,
-        )
+        ).options(selectinload(PatientFileReference.created_by_user))
         return self.db.scalar(statement)
 
     def list_by_patient(
@@ -34,6 +34,7 @@ class FileReferenceRepository:
                 PatientFileReference.tenant_id == tenant_id,
                 PatientFileReference.patient_id == patient_id,
             )
+            .options(selectinload(PatientFileReference.created_by_user))
             .order_by(PatientFileReference.created_at.desc())
         )
         file_references = list(self.db.scalars(statement).all())

@@ -36,7 +36,9 @@ export type Owner = {
 };
 
 export type UserTrace = {
+  id?: string | null;
   full_name?: string | null;
+  email?: string | null;
   display_name?: string | null;
   name?: string | null;
 };
@@ -48,6 +50,8 @@ export type Patient = {
   created_by_user_id?: string | null;
   created_by_user?: UserTrace | null;
   created_by_user_full_name?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
   name: string;
   species: string;
   breed: string | null;
@@ -97,6 +101,10 @@ export type Consultation = {
   attending_user?: UserTrace | null;
   created_by_user_full_name?: string | null;
   attending_user_full_name?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  attending_user_name?: string | null;
+  attending_user_email?: string | null;
   visit_date: string;
   reason: string;
   anamnesis: string | null;
@@ -141,6 +149,8 @@ export type Exam = {
   requested_by_user_id?: string | null;
   requested_by_user?: UserTrace | null;
   requested_by_user_full_name?: string | null;
+  requested_by_user_name?: string | null;
+  requested_by_user_email?: string | null;
   exam_type: string;
   status: ExamStatus;
   requested_at: string;
@@ -164,6 +174,9 @@ export type PreventiveCare = {
   next_due_at: string | null;
   lot_number: string | null;
   notes: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -176,6 +189,9 @@ export type PatientFileReference = {
   file_type: string;
   description: string | null;
   external_url: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -186,6 +202,9 @@ export type ClinicalHistoryTimelineItem = {
   date: string;
   title: string;
   summary: string;
+  created_by?: UserTrace | null;
+  attended_by?: UserTrace | null;
+  requested_by?: UserTrace | null;
 };
 
 export type ClinicalHistory = {

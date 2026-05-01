@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
@@ -123,11 +123,39 @@ class ConsultationRead(ConsultationBase):
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
     created_by_user_id: uuid.UUID | None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
     attending_user_id: uuid.UUID | None
+    attending_user_name: str | None = None
+    attending_user_email: str | None = None
     created_at: datetime
     updated_at: datetime
     medications: list[ConsultationMedicationRead] = Field(default_factory=list)
     study_requests: list[ConsultationStudyRequestRead] = Field(default_factory=list)
+
+    @field_serializer("created_by_user_id")
+    def serialize_created_by_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.created_by_user_name or self.created_by_user_email:
+            return value
+        return None
+
+    @field_serializer("attending_user_id")
+    def serialize_attending_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.attending_user_name or self.attending_user_email:
+            return value
+        return None
+
+
+class TimelineUserTrace(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
 
 
 class ClinicalHistoryTimelineItem(BaseModel):
@@ -136,6 +164,9 @@ class ClinicalHistoryTimelineItem(BaseModel):
     date: datetime
     title: str
     summary: str
+    created_by: TimelineUserTrace | None = None
+    attended_by: TimelineUserTrace | None = None
+    requested_by: TimelineUserTrace | None = None
 
 
 class ClinicalHistoryRead(BaseModel):

@@ -848,6 +848,29 @@ code {
   line-height: 1.45;
 }
 
+.traceability-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.traceability-meta strong {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.traceability-meta--compact {
+  margin-top: 6px;
+}
+
+.traceability-meta--timeline {
+  margin-top: 2px;
+}
+
 .detail-action-row {
   display: flex;
   flex-wrap: wrap;

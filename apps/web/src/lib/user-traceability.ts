@@ -18,6 +18,8 @@ export function getTraceableUserName(
     record[`${relation}_full_name`],
     record[`${relation}_user_name`],
     record[`${relation}_name`],
+    record[`${relation}_user_email`],
+    record[`${relation}_email`],
   ]);
 
   if (directName) {
@@ -29,7 +31,18 @@ export function getTraceableUserName(
     return null;
   }
 
-  return firstReadableName(nameFields.map((field) => nestedUser[field]));
+  return getUserTraceLabel(nestedUser);
+}
+
+export function getUserTraceLabel(trace: unknown) {
+  if (!isRecord(trace)) {
+    return null;
+  }
+
+  return firstReadableName([
+    ...nameFields.map((field) => trace[field]),
+    trace.email,
+  ]);
 }
 
 function firstReadableName(values: unknown[]) {

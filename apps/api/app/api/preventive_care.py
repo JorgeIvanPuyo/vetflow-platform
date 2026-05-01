@@ -30,6 +30,7 @@ def create_preventive_care(
         tenant.tenant_id,
         patient_id,
         payload,
+        created_by_user_id=tenant.user_id,
     )
     return {
         "data": PreventiveCareRead.model_validate(record).model_dump(mode="json"),

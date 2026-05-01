@@ -24,7 +24,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
-import { getTraceableUserName } from "@/lib/user-traceability";
+import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
 import { createExam } from "@/services/exams";
 import { createPatientFileReference, getPatientFileReferences } from "@/services/file-references";
 import { getOwner, getOwners } from "@/services/owners";
@@ -814,11 +814,17 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
           <div><dt>Alergias</dt><dd>{hasClinicalText(patient.allergies) ? patient.allergies : "Sin registros"}</dd></div>
           <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
-          <div><dt>Fecha de creación</dt><dd>{formatDateTime(patient.created_at)}</dd></div>
-          {patientRegisteredBy ? (
-            <div><dt>Registrado por</dt><dd>{patientRegisteredBy}</dd></div>
-          ) : null}
         </dl>
+        <div className="traceability-meta">
+          <span>
+            <strong>Fecha de creación:</strong> {formatDateTime(patient.created_at)}
+          </span>
+          {patientRegisteredBy ? (
+            <span>
+              <strong>Registrado por:</strong> {patientRegisteredBy}
+            </span>
+          ) : null}
+        </div>
       </section>
     );
   }
@@ -850,6 +856,12 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                   {record.next_due_at ? <p>Próxima dosis: {formatDateTime(record.next_due_at)}</p> : null}
                   {record.lot_number ? <p>Lote: {record.lot_number}</p> : null}
                   {record.notes ? <p>{record.notes}</p> : null}
+                  {getTraceableUserName(record, "created_by") ? (
+                    <p className="traceability-meta traceability-meta--compact">
+                      <strong>Registrado por:</strong>{" "}
+                      {getTraceableUserName(record, "created_by")}
+                    </p>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -884,6 +896,12 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                   <h3>{fileReference.name}</h3>
                   <p>{getFileTypeLabel(fileReference.file_type)}</p>
                   {fileReference.description ? <p>{fileReference.description}</p> : null}
+                  {getTraceableUserName(fileReference, "created_by") ? (
+                    <p className="traceability-meta traceability-meta--compact">
+                      <strong>Registrado por:</strong>{" "}
+                      {getTraceableUserName(fileReference, "created_by")}
+                    </p>
+                  ) : null}
                   {fileReference.external_url ? (
                     <a className="inline-link" href={fileReference.external_url} rel="noreferrer" target="_blank">
                       Abrir referencia externa
@@ -1344,9 +1362,57 @@ function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: b
       <time dateTime={item.date}>{formatDateTime(item.date)}</time>
       <h3>{item.title}</h3>
       <p>{item.summary}</p>
+      {renderTimelineTraceability(item)}
       {isNavigable ? <span className="inline-link">Ver</span> : null}
     </>
   );
+}
+
+function renderTimelineTraceability(item: ClinicalHistoryTimelineItem) {
+  const traceabilityLines = getTimelineTraceabilityLines(item);
+
+  if (traceabilityLines.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="traceability-meta traceability-meta--timeline">
+      {traceabilityLines.map((line) => (
+        <span key={`${line.label}-${line.value}`}>
+          <strong>{line.label}:</strong> {line.value}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getTimelineTraceabilityLines(item: ClinicalHistoryTimelineItem) {
+  const createdBy = getUserTraceLabel(item.created_by);
+  const attendedBy = getUserTraceLabel(item.attended_by);
+  const requestedBy = getUserTraceLabel(item.requested_by);
+
+  if (item.type === "consultation") {
+    const lines: Array<{ label: string; value: string }> = [];
+
+    if (attendedBy) {
+      lines.push({ label: "Atendido por", value: attendedBy });
+    }
+    if (createdBy && createdBy !== attendedBy) {
+      lines.push({ label: "Registrado por", value: createdBy });
+    }
+
+    return lines;
+  }
+
+  if (item.type === "exam" && requestedBy) {
+    return [{ label: "Solicitado por", value: requestedBy }];
+  }
+
+  if ((item.type === "preventive_care" || item.type === "file_reference") && createdBy) {
+    return [{ label: "Registrado por", value: createdBy }];
+  }
+
+  return [];
 }
 
 function toDateTimeLocalValue(date: Date | string) {
@@ -1373,6 +1439,16 @@ function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryT
     date: consultation.visit_date,
     title: consultation.reason,
     summary: getConsultationSummary(consultation),
+    created_by: getTraceableUserName(consultation, "created_by")
+      ? {
+          full_name: getTraceableUserName(consultation, "created_by"),
+        }
+      : null,
+    attended_by: getTraceableUserName(consultation, "attending")
+      ? {
+          full_name: getTraceableUserName(consultation, "attending"),
+        }
+      : null,
   }));
 }
 

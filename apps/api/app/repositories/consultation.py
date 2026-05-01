@@ -27,6 +27,8 @@ class ConsultationRepository:
             Consultation.id == consultation_id,
             Consultation.tenant_id == tenant_id,
         ).options(
+            selectinload(Consultation.created_by_user),
+            selectinload(Consultation.attending_user),
             selectinload(Consultation.medications),
             selectinload(Consultation.study_requests),
         )
@@ -42,6 +44,8 @@ class ConsultationRepository:
                 Consultation.patient_id == patient_id,
             )
             .options(
+                selectinload(Consultation.created_by_user),
+                selectinload(Consultation.attending_user),
                 selectinload(Consultation.medications),
                 selectinload(Consultation.study_requests),
             )

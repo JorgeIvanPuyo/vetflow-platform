@@ -17,6 +17,7 @@ from app.schemas.consultation import (
     ConsultationStudyRequestCreate,
     ConsultationStudyRequestRead,
     ConsultationUpdate,
+    TimelineUserTrace,
 )
 from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
@@ -226,6 +227,8 @@ def get_patient_clinical_history(
                 date=consultation.visit_date,
                 title=consultation.reason,
                 summary=_consultation_summary(consultation),
+                created_by=_user_trace(consultation.created_by_user, tenant.tenant_id),
+                attended_by=_user_trace(consultation.attending_user, tenant.tenant_id),
             )
             for consultation in consultations
         ],
@@ -236,6 +239,7 @@ def get_patient_clinical_history(
                 date=exam.requested_at,
                 title=exam.exam_type,
                 summary=_exam_summary(exam.status),
+                requested_by=_user_trace(exam.requested_by_user, tenant.tenant_id),
             )
             for exam in exams
         ],
@@ -246,6 +250,7 @@ def get_patient_clinical_history(
                 date=record.applied_at,
                 title=record.name,
                 summary=_preventive_care_summary(record),
+                created_by=_user_trace(record.created_by_user, tenant.tenant_id),
             )
             for record in preventive_care
         ],
@@ -256,6 +261,10 @@ def get_patient_clinical_history(
                 date=file_reference.created_at,
                 title=file_reference.name,
                 summary=file_reference.file_type,
+                created_by=_user_trace(
+                    file_reference.created_by_user,
+                    tenant.tenant_id,
+                ),
             )
             for file_reference in file_references
         ],
@@ -278,7 +287,13 @@ def get_patient_clinical_history(
         ],
         timeline=timeline,
     )
-    return {"data": clinical_history.model_dump(mode="json"), "meta": {}}
+    body = clinical_history.model_dump(mode="json")
+    for item in body["timeline"]:
+        for key in ("created_by", "attended_by", "requested_by"):
+            if item.get(key) is None:
+                item.pop(key, None)
+
+    return {"data": body, "meta": {}}
 
 
 def _consultation_summary(consultation) -> str:
@@ -308,4 +323,18 @@ def _preventive_care_summary(record) -> str:
     return record.lot_number or record.notes or care_type_labels.get(
         record.care_type,
         record.care_type,
+    )
+
+
+def _user_trace(user, tenant_id: uuid.UUID) -> TimelineUserTrace | None:
+    if user is None or user.tenant_id != tenant_id:
+        return None
+
+    if not user.full_name and not user.email:
+        return None
+
+    return TimelineUserTrace(
+        id=user.id,
+        full_name=user.full_name,
+        email=user.email,
     )

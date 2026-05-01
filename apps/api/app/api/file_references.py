@@ -30,6 +30,7 @@ def create_file_reference(
         tenant.tenant_id,
         patient_id,
         payload,
+        created_by_user_id=tenant.user_id,
     )
     return {
         "data": FileReferenceRead.model_validate(file_reference).model_dump(
