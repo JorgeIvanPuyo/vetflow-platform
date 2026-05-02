@@ -53,6 +53,18 @@ export function getInventoryItems(filters: InventoryListFilters = {}) {
   );
 }
 
+export function searchInventoryMedications(q: string) {
+  return getInventoryItems({
+    q: q.trim() || undefined,
+    category: "medication",
+    status: "active",
+    page: 1,
+    page_size: 10,
+    sort_by: "name",
+    sort_order: "asc",
+  });
+}
+
 export function getInventoryItem(itemId: string) {
   return api.get<ApiItemResponse<InventoryItem>>(`/api/v1/inventory/items/${itemId}`);
 }

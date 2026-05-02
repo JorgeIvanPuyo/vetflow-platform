@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FlaskConical,
+  Package,
   Pill,
   Save,
   Stethoscope,
@@ -26,8 +27,14 @@ import {
   useState,
 } from "react";
 
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { getTraceableUserName } from "@/lib/user-traceability";
+import {
+  formatInventoryCurrency,
+  formatInventoryQuantity,
+  getInventoryCategoryLabel,
+  getInventoryUnitLabel,
+} from "@/features/inventory/components/inventory-helpers";
 import {
   createConsultation,
   createConsultationMedication,
@@ -39,6 +46,7 @@ import {
   updateConsultation,
   updateConsultationStep,
 } from "@/services/consultations";
+import { searchInventoryMedications } from "@/services/inventory";
 import { getPatientClinicalHistory } from "@/services/patients";
 import type {
   Consultation,
@@ -47,6 +55,7 @@ import type {
   ConsultationStudyRequestType,
   CreateMedicationPayload,
   CreateStudyRequestPayload,
+  InventoryItem,
   Patient,
   StepUpdatePayload,
 } from "@/types/api";
@@ -97,6 +106,15 @@ type StudyFormState = {
 
 type MedicationFormState = {
   medication_name: string;
+  dose_or_quantity: string;
+  instructions: string;
+};
+
+type MedicationMode = "manual" | "inventory";
+
+type InventoryMedicationFormState = {
+  search: string;
+  quantity_used: string;
   dose_or_quantity: string;
   instructions: string;
 };
@@ -155,6 +173,13 @@ const initialMedicationFormState: MedicationFormState = {
   instructions: "",
 };
 
+const initialInventoryMedicationFormState: InventoryMedicationFormState = {
+  search: "",
+  quantity_used: "",
+  dose_or_quantity: "",
+  instructions: "",
+};
+
 const mucousMembraneOptions = ["Rosadas", "Pálidas", "Congestivas", "Cianóticas", "Ictéricas"];
 const hydrationOptions = ["Normal", "Leve deshidratación", "Moderada", "Severa"];
 
@@ -172,6 +197,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const [formState, setFormState] = useState<FormState>(initialFormState);
   const [studyFormState, setStudyFormState] = useState<StudyFormState>(initialStudyFormState);
   const [medicationFormState, setMedicationFormState] = useState<MedicationFormState>(initialMedicationFormState);
+  const [medicationMode, setMedicationMode] = useState<MedicationMode>("manual");
+  const [inventoryMedicationFormState, setInventoryMedicationFormState] =
+    useState<InventoryMedicationFormState>(initialInventoryMedicationFormState);
+  const [inventoryResults, setInventoryResults] = useState<InventoryItem[]>([]);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
+  const [isSearchingInventory, setIsSearchingInventory] = useState(false);
+  const [inventoryMedicationMessage, setInventoryMedicationMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -261,6 +293,40 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
 
     saveLocalStep(localStorageKeyPrefix, activeStep, formState);
   }, [activeStep, formState, isLoading, localStorageKeyPrefix]);
+
+  useEffect(() => {
+    if (medicationMode !== "inventory") {
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = window.setTimeout(async () => {
+      setIsSearchingInventory(true);
+      setInventoryMedicationMessage(null);
+
+      try {
+        const response = await searchInventoryMedications(
+          inventoryMedicationFormState.search,
+        );
+        if (isCurrent) {
+          setInventoryResults(response.data);
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setInventoryMedicationMessage(getApiErrorMessage(error));
+        }
+      } finally {
+        if (isCurrent) {
+          setIsSearchingInventory(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      isCurrent = false;
+      window.clearTimeout(timer);
+    };
+  }, [inventoryMedicationFormState.search, medicationMode]);
 
   const completedUntil = useMemo(() => {
     const current = consultation?.current_step ?? activeStep;
@@ -435,7 +501,78 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     }
   }
 
+  async function handleAddInventoryMedication(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!consultation || !selectedInventoryItem) {
+      setInventoryMedicationMessage("Selecciona un medicamento del inventario.");
+      return;
+    }
+
+    const quantityUsed = Number(inventoryMedicationFormState.quantity_used);
+    const currentStock = Number(selectedInventoryItem.current_stock);
+
+    if (Number.isNaN(quantityUsed) || quantityUsed <= 0) {
+      setInventoryMedicationMessage("Ingresa una cantidad mayor a cero.");
+      return;
+    }
+
+    if (quantityUsed > currentStock) {
+      setInventoryMedicationMessage("No hay stock suficiente para esta cantidad.");
+      return;
+    }
+
+    const payload: CreateMedicationPayload = {
+      inventory_item_id: selectedInventoryItem.id,
+      medication_name: selectedInventoryItem.name,
+      quantity_used: inventoryMedicationFormState.quantity_used,
+      dose_or_quantity: inventoryMedicationFormState.dose_or_quantity.trim() || null,
+      instructions: inventoryMedicationFormState.instructions.trim() || null,
+      supplied_by_clinic: true,
+    };
+
+    setIsAddingMedication(true);
+    setInventoryMedicationMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const response = await createConsultationMedication(consultation.id, payload);
+      setConsultation((current) =>
+        current
+          ? {
+              ...current,
+              medications: [...current.medications, response.data],
+            }
+          : current,
+      );
+      setInventoryMedicationFormState(initialInventoryMedicationFormState);
+      setSelectedInventoryItem(null);
+      const searchResponse = await searchInventoryMedications("");
+      setInventoryResults(searchResponse.data);
+    } catch (error) {
+      if (error instanceof ApiClientError && error.code === "insufficient_stock") {
+        setInventoryMedicationMessage(
+          "No hay stock suficiente. El inventario pudo haber cambiado.",
+        );
+        return;
+      }
+
+      setInventoryMedicationMessage(getApiErrorMessage(error));
+    } finally {
+      setIsAddingMedication(false);
+    }
+  }
+
   async function handleDeleteMedication(medication: ConsultationMedication) {
+    if (
+      medication.supplied_by_clinic &&
+      !window.confirm(
+        "Eliminar este medicamento no restaura el stock. Si necesitas corregir inventario, registra un ajuste.",
+      )
+    ) {
+      return;
+    }
+
     setErrorMessage(null);
     try {
       await deleteConsultationMedication(medication.id);
@@ -919,55 +1056,215 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           eyebrow="Paso 5"
           icon={<Pill aria-hidden="true" size={20} />}
           title="Plan terapéutico"
-          description="Medicamentos como registros de texto, sin inventario."
+          description="Registra medicamentos manuales o descuenta stock desde inventario."
         />
-        <form className="consultation-inline-form" onSubmit={handleAddMedication}>
-          <div className="form-grid">
-            <label className="field">
-              <span>Medicamento</span>
-              <input
-                required
-                placeholder="Nombre del medicamento"
-                value={medicationFormState.medication_name}
-                onChange={(event) =>
-                  setMedicationFormState((current) => ({
-                    ...current,
-                    medication_name: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label className="field">
-              <span>Dosis o cantidad</span>
-              <input
-                placeholder="Ej. 250 mg"
-                value={medicationFormState.dose_or_quantity}
-                onChange={(event) =>
-                  setMedicationFormState((current) => ({
-                    ...current,
-                    dose_or_quantity: event.target.value,
-                  }))
-                }
-              />
-            </label>
-          </div>
-          <label className="field">
-            <span>Instrucciones</span>
-            <textarea
-              rows={3}
-              value={medicationFormState.instructions}
-              onChange={(event) =>
-                setMedicationFormState((current) => ({
-                  ...current,
-                  instructions: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <button className="secondary-button" disabled={isAddingMedication} type="submit">
-            {isAddingMedication ? "Agregando..." : "Agregar"}
+        <div className="choice-grid choice-grid--two consultation-medication-mode">
+          <button
+            type="button"
+            className={`choice-card${medicationMode === "inventory" ? " choice-card--selected" : ""}`}
+            onClick={() => setMedicationMode("inventory")}
+          >
+            <Package size={20} />
+            <span>Medicamento de inventario</span>
+            <small>Descuenta stock de la clínica</small>
           </button>
-        </form>
+          <button
+            type="button"
+            className={`choice-card${medicationMode === "manual" ? " choice-card--selected" : ""}`}
+            onClick={() => setMedicationMode("manual")}
+          >
+            <Pill size={20} />
+            <span>Otro medicamento</span>
+            <small>Registro libre sin inventario</small>
+          </button>
+        </div>
+
+        {medicationMode === "manual" ? (
+          <form className="consultation-inline-form" onSubmit={handleAddMedication}>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nombre del medicamento</span>
+                <input
+                  required
+                  placeholder="Nombre del medicamento"
+                  value={medicationFormState.medication_name}
+                  onChange={(event) =>
+                    setMedicationFormState((current) => ({
+                      ...current,
+                      medication_name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Dosis o cantidad</span>
+                <input
+                  placeholder="Ej. 250 mg"
+                  value={medicationFormState.dose_or_quantity}
+                  onChange={(event) =>
+                    setMedicationFormState((current) => ({
+                      ...current,
+                      dose_or_quantity: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Indicaciones</span>
+              <textarea
+                rows={3}
+                value={medicationFormState.instructions}
+                onChange={(event) =>
+                  setMedicationFormState((current) => ({
+                    ...current,
+                    instructions: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button className="secondary-button" disabled={isAddingMedication} type="submit">
+              {isAddingMedication ? "Agregando..." : "Agregar medicamento"}
+            </button>
+          </form>
+        ) : (
+          <form className="consultation-inline-form" onSubmit={handleAddInventoryMedication}>
+            <label className="field">
+              <span>Buscar medicamento</span>
+              <input
+                placeholder="Buscar por nombre o proveedor..."
+                value={inventoryMedicationFormState.search}
+                onChange={(event) =>
+                  setInventoryMedicationFormState((current) => ({
+                    ...current,
+                    search: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <div className="inventory-medication-results">
+              {isSearchingInventory ? (
+                <div className="loading-card" aria-label="Buscando inventario" />
+              ) : null}
+              {!isSearchingInventory && inventoryResults.length === 0 ? (
+                <div className="empty-state">No hay medicamentos de inventario para mostrar.</div>
+              ) : null}
+              {!isSearchingInventory
+                ? inventoryResults.map((item) => {
+                    const isOutOfStock = Number(item.current_stock) <= 0;
+                    const isSelected = selectedInventoryItem?.id === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`inventory-medication-card${
+                          isSelected ? " inventory-medication-card--selected" : ""
+                        }`}
+                        disabled={isOutOfStock}
+                        onClick={() => {
+                          setSelectedInventoryItem(item);
+                          setInventoryMedicationMessage(null);
+                        }}
+                      >
+                        <span className="inventory-medication-card__icon" aria-hidden="true">
+                          <Pill size={18} />
+                        </span>
+                        <span className="inventory-medication-card__body">
+                          <strong>{item.name}</strong>
+                          <span>
+                            {getInventoryCategoryLabel(item.category)} ·{" "}
+                            {formatInventoryQuantity(item.current_stock, item.unit)}
+                          </span>
+                          <span>{formatInventoryCurrency(item.sale_price_ars)}</span>
+                        </span>
+                        <span className="timeline-card__badges">
+                          {isOutOfStock ? (
+                            <span className="badge badge--danger">Sin stock</span>
+                          ) : item.is_low_stock ? (
+                            <span className="badge badge--warning">Bajo stock</span>
+                          ) : null}
+                        </span>
+                      </button>
+                    );
+                  })
+                : null}
+            </div>
+
+            {selectedInventoryItem ? (
+              <div className="clinical-section inventory-medication-selected">
+                <strong>{selectedInventoryItem.name}</strong>
+                <span>
+                  Disponible:{" "}
+                  {formatInventoryQuantity(
+                    selectedInventoryItem.current_stock,
+                    selectedInventoryItem.unit,
+                  )}
+                </span>
+              </div>
+            ) : null}
+
+            <div className="form-grid">
+              <label className="field">
+                <span>Cantidad usada *</span>
+                <input
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={inventoryMedicationFormState.quantity_used}
+                  onChange={(event) =>
+                    setInventoryMedicationFormState((current) => ({
+                      ...current,
+                      quantity_used: event.target.value,
+                    }))
+                  }
+                />
+                <small>
+                  {selectedInventoryItem
+                    ? `Disponible: ${formatInventoryQuantity(
+                        selectedInventoryItem.current_stock,
+                        selectedInventoryItem.unit,
+                      )}`
+                    : "Selecciona un medicamento para ver stock disponible."}
+                </small>
+              </label>
+              <label className="field">
+                <span>Dosis o cantidad visible</span>
+                <input
+                  placeholder="Ej. 1 comprimido cada 12 horas"
+                  value={inventoryMedicationFormState.dose_or_quantity}
+                  onChange={(event) =>
+                    setInventoryMedicationFormState((current) => ({
+                      ...current,
+                      dose_or_quantity: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Indicaciones</span>
+              <textarea
+                rows={3}
+                value={inventoryMedicationFormState.instructions}
+                onChange={(event) =>
+                  setInventoryMedicationFormState((current) => ({
+                    ...current,
+                    instructions: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            {inventoryMedicationMessage ? (
+              <div className="error-state">{inventoryMedicationMessage}</div>
+            ) : null}
+            <button className="secondary-button" disabled={isAddingMedication} type="submit">
+              {isAddingMedication ? "Agregando..." : "Agregar desde inventario"}
+            </button>
+          </form>
+        )}
         <RecordList
           emptyText="No hay medicamentos agregados."
           items={consultation?.medications ?? []}
@@ -975,9 +1272,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             <RecordRow
               key={medication.id}
               title={medication.medication_name}
-              subtitle={[medication.dose_or_quantity, medication.instructions]
-                .filter(Boolean)
-                .join(" · ")}
+              subtitle={getMedicationSubtitle(medication)}
+              badge={medication.supplied_by_clinic ? "Inventario" : "Manual"}
+              warning={
+                medication.supplied_by_clinic
+                  ? "Stock descontado automáticamente"
+                  : undefined
+              }
               onDelete={() => void handleDeleteMedication(medication)}
             />
           )}
@@ -1190,6 +1491,26 @@ function NumberField({
   );
 }
 
+function getMedicationSubtitle(medication: ConsultationMedication) {
+  const detailParts = [medication.dose_or_quantity, medication.instructions].filter(Boolean);
+
+  if (!medication.supplied_by_clinic) {
+    return detailParts.join(" · ");
+  }
+
+  const inventoryParts = [
+    medication.quantity_used && medication.inventory_unit
+      ? `${medication.quantity_used} ${getInventoryUnitLabel(medication.inventory_unit)}`
+      : null,
+    medication.total_sale_price_ars
+      ? `Total: ${formatInventoryCurrency(medication.total_sale_price_ars)}`
+      : null,
+    ...detailParts,
+  ].filter(Boolean);
+
+  return inventoryParts.join(" · ");
+}
+
 function RecordList<T>({
   emptyText,
   items,
@@ -1209,17 +1530,25 @@ function RecordList<T>({
 function RecordRow({
   title,
   subtitle,
+  badge,
+  warning,
   onDelete,
 }: {
   title: string;
   subtitle: string;
+  badge?: string;
+  warning?: string;
   onDelete: () => void;
 }) {
   return (
     <article className="consultation-record-row">
       <div>
-        <h3>{title}</h3>
+        <div className="consultation-record-row__title">
+          <h3>{title}</h3>
+          {badge ? <span className="badge badge--blue">{badge}</span> : null}
+        </div>
         {subtitle ? <p>{subtitle}</p> : null}
+        {warning ? <small>{warning}</small> : null}
       </div>
       <button
         aria-label={`Eliminar ${title}`}

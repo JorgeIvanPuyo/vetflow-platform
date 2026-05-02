@@ -2244,14 +2244,96 @@ code {
   margin: 0;
 }
 
+.consultation-record-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .consultation-record-row h3 {
   font-size: 1rem;
 }
 
-.consultation-record-row p {
+.consultation-record-row p,
+.consultation-record-row small {
   margin-top: 4px;
   color: var(--color-text-muted);
   line-height: 1.45;
+}
+
+.consultation-record-row small {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.consultation-medication-mode .choice-card {
+  text-align: center;
+}
+
+.inventory-medication-results {
+  display: grid;
+  gap: 10px;
+}
+
+.inventory-medication-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inventory-medication-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.inventory-medication-card--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.inventory-medication-card__icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+.inventory-medication-card__body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.inventory-medication-card__body strong {
+  overflow-wrap: anywhere;
+}
+
+.inventory-medication-card__body span {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.inventory-medication-card .timeline-card__badges {
+  grid-column: 1 / -1;
+}
+
+.inventory-medication-selected {
+  display: grid;
+  gap: 4px;
 }
 
 .consultation-toggle {

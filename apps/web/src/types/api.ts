@@ -74,6 +74,14 @@ export type ConsultationMedication = {
   medication_name: string;
   dose_or_quantity: string | null;
   instructions: string | null;
+  inventory_item_id?: string | null;
+  inventory_item_name?: string | null;
+  inventory_movement_id?: string | null;
+  supplied_by_clinic?: boolean;
+  quantity_used?: string | null;
+  inventory_unit?: InventoryUnit | null;
+  unit_sale_price_ars?: string | null;
+  total_sale_price_ars?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -762,9 +770,12 @@ export type UpdateConsultationPayload = Partial<
 export type StepUpdatePayload = UpdateConsultationPayload;
 
 export type CreateMedicationPayload = {
-  medication_name: string;
+  medication_name?: string;
   dose_or_quantity?: string | null;
   instructions?: string | null;
+  inventory_item_id?: string;
+  quantity_used?: string;
+  supplied_by_clinic?: boolean;
 };
 
 export type CreateStudyRequestPayload = {

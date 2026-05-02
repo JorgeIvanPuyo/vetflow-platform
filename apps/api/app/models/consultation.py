@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     JSON,
+    Numeric,
     String,
     Text,
     Uuid,
@@ -154,11 +156,56 @@ class ConsultationMedication(BaseModel):
     medication_name: Mapped[str] = mapped_column(String(255), nullable=False)
     dose_or_quantity: Mapped[str | None] = mapped_column(String(255), nullable=True)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    inventory_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("inventory_items.id"),
+        nullable=True,
+        index=True,
+    )
+    inventory_movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("inventory_movements.id"),
+        nullable=True,
+        index=True,
+    )
+    supplied_by_clinic: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    quantity_used: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     consultation: Mapped[Consultation] = relationship(
         "Consultation",
         back_populates="medications",
     )
+    inventory_item: Mapped[InventoryItem | None] = relationship("InventoryItem")
+    inventory_movement: Mapped[InventoryMovement | None] = relationship("InventoryMovement")
+
+    @property
+    def inventory_item_name(self) -> str | None:
+        if self.inventory_item is None or self.inventory_item.tenant_id != self.tenant_id:
+            return None
+        return self.inventory_item.name
+
+    @property
+    def inventory_unit(self) -> str | None:
+        if self.inventory_item is None or self.inventory_item.tenant_id != self.tenant_id:
+            return None
+        return self.inventory_item.unit
+
+    @property
+    def unit_sale_price_ars(self) -> Decimal | None:
+        if self.inventory_movement is None or self.inventory_movement.tenant_id != self.tenant_id:
+            return None
+        return self.inventory_movement.unit_sale_price_ars
+
+    @property
+    def total_sale_price_ars(self) -> Decimal | None:
+        if self.inventory_movement is None or self.inventory_movement.tenant_id != self.tenant_id:
+            return None
+        return self.inventory_movement.total_sale_price_ars
 
 
 class ConsultationStudyRequest(BaseModel):

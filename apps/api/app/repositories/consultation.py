@@ -29,7 +29,12 @@ class ConsultationRepository:
         ).options(
             selectinload(Consultation.created_by_user),
             selectinload(Consultation.attending_user),
-            selectinload(Consultation.medications),
+            selectinload(Consultation.medications).selectinload(
+                ConsultationMedication.inventory_item,
+            ),
+            selectinload(Consultation.medications).selectinload(
+                ConsultationMedication.inventory_movement,
+            ),
             selectinload(Consultation.study_requests),
         )
         return self.db.scalar(statement)
@@ -46,7 +51,12 @@ class ConsultationRepository:
             .options(
                 selectinload(Consultation.created_by_user),
                 selectinload(Consultation.attending_user),
-                selectinload(Consultation.medications),
+                selectinload(Consultation.medications).selectinload(
+                    ConsultationMedication.inventory_item,
+                ),
+                selectinload(Consultation.medications).selectinload(
+                    ConsultationMedication.inventory_movement,
+                ),
                 selectinload(Consultation.study_requests),
             )
             .order_by(Consultation.visit_date.desc())
@@ -90,6 +100,9 @@ class ConsultationRepository:
         statement = select(ConsultationMedication).where(
             ConsultationMedication.id == medication_id,
             ConsultationMedication.tenant_id == tenant_id,
+        ).options(
+            selectinload(ConsultationMedication.inventory_item),
+            selectinload(ConsultationMedication.inventory_movement),
         )
         return self.db.scalar(statement)
 

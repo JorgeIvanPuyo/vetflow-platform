@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +11,7 @@ from app.models.consultation import (
 )
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
+from app.models.inventory_movement import InventoryMovement
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.patient import Patient
@@ -17,6 +19,7 @@ from app.repositories.consultation import ConsultationRepository
 from app.repositories.exam import ExamRepository
 from app.repositories.file_reference import FileReferenceRepository
 from app.repositories.follow_up import FollowUpRepository
+from app.repositories.inventory import InventoryRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.preventive_care import PreventiveCareRepository
 from app.schemas.consultation import (
@@ -35,6 +38,7 @@ class ConsultationService:
         self.preventive_care_repository = PreventiveCareRepository(db)
         self.file_reference_repository = FileReferenceRepository(db)
         self.follow_up_repository = FollowUpRepository(db)
+        self.inventory_repository = InventoryRepository(db)
         self.patient_repository = PatientRepository(db)
 
     def create_consultation(
@@ -133,11 +137,69 @@ class ConsultationService:
         consultation_id: uuid.UUID,
         payload: ConsultationMedicationCreate,
     ) -> ConsultationMedication:
-        self.get_consultation(tenant_id, consultation_id)
+        consultation = self.get_consultation(tenant_id, consultation_id)
+        medication_data = payload.model_dump()
+
+        if payload.inventory_item_id is not None:
+            item = self.inventory_repository.get_item_by_id(
+                tenant_id,
+                payload.inventory_item_id,
+            )
+            if item is None:
+                raise AppError(
+                    404,
+                    "inventory_item_not_found",
+                    "Inventory item not found",
+                )
+            if payload.quantity_used is None or payload.quantity_used <= Decimal("0"):
+                raise AppError(
+                    422,
+                    "invalid_stock_quantity",
+                    "quantity_used is required when inventory_item_id is provided",
+                )
+            if item.current_stock - payload.quantity_used < Decimal("0"):
+                raise AppError(
+                    409,
+                    "insufficient_stock",
+                    "Insufficient stock for this medication",
+                )
+
+            unit_sale_price = item.sale_price_ars
+            total_sale_price = (
+                self._quantize_money(unit_sale_price * payload.quantity_used)
+                if unit_sale_price is not None
+                else None
+            )
+            movement = InventoryMovement(
+                tenant_id=tenant_id,
+                inventory_item_id=item.id,
+                movement_type="exit",
+                reason="consultation_use",
+                quantity=payload.quantity_used,
+                unit_sale_price_ars=unit_sale_price,
+                total_sale_price_ars=total_sale_price,
+                related_patient_id=consultation.patient_id,
+                related_consultation_id=consultation.id,
+                notes=f"Uso en consulta: {consultation.reason}",
+            )
+            self.inventory_repository.create_movement(movement)
+            self.inventory_repository.update_item(
+                item,
+                {"current_stock": item.current_stock - payload.quantity_used},
+            )
+
+            medication_data["medication_name"] = (
+                payload.medication_name or item.name
+            )
+            medication_data["supplied_by_clinic"] = True
+            medication_data["inventory_movement_id"] = movement.id
+        else:
+            medication_data["supplied_by_clinic"] = bool(payload.supplied_by_clinic)
+
         medication = ConsultationMedication(
             tenant_id=tenant_id,
             consultation_id=consultation_id,
-            **payload.model_dump(),
+            **medication_data,
         )
         self.consultation_repository.create_medication(medication)
         self.db.commit()
@@ -254,3 +316,6 @@ class ConsultationService:
                     "validation_error",
                     f"{field} cannot be negative",
                 )
+
+    def _quantize_money(self, value: Decimal) -> Decimal:
+        return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

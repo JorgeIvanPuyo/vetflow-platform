@@ -1,8 +1,9 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
@@ -86,9 +87,18 @@ class ConsultationStepUpdate(ConsultationUpdate):
 
 
 class ConsultationMedicationCreate(BaseModel):
-    medication_name: str
+    medication_name: str | None = None
     dose_or_quantity: str | None = None
     instructions: str | None = None
+    inventory_item_id: uuid.UUID | None = None
+    quantity_used: Decimal | None = Field(default=None, gt=0)
+    supplied_by_clinic: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_medication_source(self) -> "ConsultationMedicationCreate":
+        if self.inventory_item_id is None and not self.medication_name:
+            raise ValueError("medication_name is required when inventory_item_id is not provided")
+        return self
 
 
 class ConsultationMedicationRead(ConsultationMedicationCreate):
@@ -97,6 +107,15 @@ class ConsultationMedicationRead(ConsultationMedicationCreate):
     id: uuid.UUID
     tenant_id: uuid.UUID
     consultation_id: uuid.UUID
+    medication_name: str
+    inventory_item_id: uuid.UUID | None = None
+    inventory_item_name: str | None = None
+    inventory_movement_id: uuid.UUID | None = None
+    supplied_by_clinic: bool = False
+    quantity_used: Decimal | None = None
+    inventory_unit: str | None = None
+    unit_sale_price_ars: Decimal | None = None
+    total_sale_price_ars: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 

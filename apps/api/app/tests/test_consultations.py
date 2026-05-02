@@ -41,6 +41,25 @@ def _create_consultation(client, tenant, patient_id, **overrides):
     return response.json()["data"]
 
 
+def _create_inventory_item(client, tenant, **overrides):
+    payload = {
+        "name": "Amoxicilina stock",
+        "category": "medication",
+        "unit": "tablet",
+        "current_stock": "10",
+        "minimum_stock": "2",
+        "sale_price_ars": "1500",
+    }
+    payload.update(overrides)
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json=payload,
+    )
+    assert response.status_code == 201
+    return response.json()["data"]
+
+
 def test_create_and_get_consultation(client, tenant):
     owner = _create_owner(client, tenant)
     patient = _create_patient(client, tenant, owner["id"])
@@ -287,6 +306,163 @@ def test_add_and_delete_medication_entry(client, tenant):
     )
     assert missing_response.status_code == 404
     assert missing_response.json()["error"]["code"] == "consultation_medication_not_found"
+
+
+def test_add_medication_from_inventory_creates_movement_and_decreases_stock(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    item = _create_inventory_item(client, tenant, current_stock="10", sale_price_ars="1200")
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "inventory_item_id": item["id"],
+            "quantity_used": "3",
+            "dose_or_quantity": "3 comprimidos",
+            "instructions": "Cada 12 horas",
+        },
+    )
+
+    assert response.status_code == 201
+    medication = response.json()["data"]
+    assert medication["medication_name"] == "Amoxicilina stock"
+    assert medication["inventory_item_id"] == item["id"]
+    assert medication["inventory_item_name"] == "Amoxicilina stock"
+    assert medication["inventory_movement_id"] is not None
+    assert medication["supplied_by_clinic"] is True
+    assert medication["quantity_used"] == "3.00"
+    assert medication["inventory_unit"] == "tablet"
+    assert medication["unit_sale_price_ars"] == "1200.00"
+    assert medication["total_sale_price_ars"] == "3600.00"
+
+    item_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert item_response.status_code == 200
+    assert item_response.json()["data"]["current_stock"] == "7.00"
+
+    movements_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}/movements",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert movements_response.status_code == 200
+    movement = movements_response.json()["data"][0]
+    assert movement["id"] == medication["inventory_movement_id"]
+    assert movement["movement_type"] == "exit"
+    assert movement["reason"] == "consultation_use"
+    assert movement["quantity"] == "3.00"
+    assert movement["related_patient_id"] == patient["id"]
+    assert movement["related_consultation_id"] == consultation["id"]
+
+
+def test_add_inventory_medication_allows_manual_name_override(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    item = _create_inventory_item(client, tenant, name="Meloxicam frasco")
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "inventory_item_id": item["id"],
+            "medication_name": "Meloxicam dosis clínica",
+            "quantity_used": "1",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["medication_name"] == "Meloxicam dosis clínica"
+
+
+def test_inventory_medication_rejects_insufficient_stock(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    item = _create_inventory_item(client, tenant, current_stock="2")
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={"inventory_item_id": item["id"], "quantity_used": "5"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "insufficient_stock"
+
+
+def test_inventory_medication_requires_quantity_used(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    item = _create_inventory_item(client, tenant)
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={"inventory_item_id": item["id"]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_stock_quantity"
+
+
+def test_inventory_medication_rejects_item_from_another_tenant(
+    client,
+    tenant,
+    other_tenant,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    foreign_item = _create_inventory_item(client, other_tenant)
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={"inventory_item_id": foreign_item["id"], "quantity_used": "1"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "inventory_item_not_found"
+
+
+def test_deleting_inventory_medication_preserves_movement_and_stock(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    item = _create_inventory_item(client, tenant, current_stock="10")
+
+    create_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={"inventory_item_id": item["id"], "quantity_used": "4"},
+    )
+    assert create_response.status_code == 201
+    medication = create_response.json()["data"]
+
+    delete_response = client.delete(
+        f"/api/v1/consultation-medications/{medication['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert delete_response.status_code == 204
+
+    movements_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}/movements",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert movements_response.status_code == 200
+    assert movements_response.json()["data"][0]["id"] == medication["inventory_movement_id"]
+
+    item_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert item_response.status_code == 200
+    assert item_response.json()["data"]["current_stock"] == "6.00"
 
 
 def test_complete_consultation_with_status_completed(client, tenant):
