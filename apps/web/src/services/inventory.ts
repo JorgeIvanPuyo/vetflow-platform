@@ -40,7 +40,7 @@ export function getInventoryItems(filters: InventoryListFilters = {}) {
   const params = new URLSearchParams();
 
   Object.entries(filters).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") {
+    if (value === undefined || value === null) {
       return;
     }
 
