@@ -1,117 +1,140 @@
 # MVP Roadmap
 
-## Development Strategy
-The MVP is being built through vertical slices. Each slice should remain useful end-to-end, but the roadmap now reflects the real current state of the platform rather than the original plan only.
+This roadmap is the current source of truth for the Vetflow MVP. It preserves the original vertical-slice history while reflecting what is actually implemented in the repository today.
 
 Status labels:
 - ✅ Completed
-- 🟡 Partial
-- ⏳ Pending
-- 🔜 Next Priority
-- 🧊 Deferred
+- 🟡 In Progress
+- ⏳ Next
+- 🔵 Planned
+- ⚪ Deferred
 
-## MVP Status By Slice
+## Current State
+
+Vetflow is a multi-tenant veterinary clinical platform where each tenant represents a clinic. Users within the same clinic share owners, patients, consultations, exams, preventive care, file references, appointments, follow-ups, inventory, and dashboard data through tenant-scoped backend access.
+
+The MVP currently supports the core clinical workflow end to end: authenticated clinic access, owner and patient management, expanded patient detail, unified clinical history, structured consultations, exams/results, preventive care, clinical files in storage, agenda, follow-ups, dashboard, clinic profile, and MVP inventory.
+
+The main active gap is the consultation therapeutic plan frontend integration with inventory-backed medications. The backend inventory deduction path exists; the remaining MVP work is the user-facing therapeutic plan inventory selector flow.
+
+## Chronological MVP Slices
 
 ### ✅ Completed - Slice 0 - Project Foundation
+
 Goal:
 - Establish the technical foundation for local development, deployment, documentation, and database evolution.
 
 Completed:
 - Monorepo configured.
-- Backend FastAPI application implemented.
-- Frontend Next.js application implemented.
-- Base Codex guidance documentation created.
+- FastAPI backend implemented.
+- Next.js frontend implemented.
+- Base Codex/project documentation created.
 - Local Docker environment available.
-- Local and remote PostgreSQL support available.
-- Supabase configured as the current production database.
+- PostgreSQL support available.
 - Alembic configured for migrations.
 - Backend CI/CD configured.
-- Backend deployed to Cloud Run.
-- Frontend deployed to Vercel.
+- Backend deployment path to Cloud Run established.
+- Frontend deployment path to Vercel established.
 
 ### ✅ Completed - Slice 1 - Multi-Tenant Foundation
+
 Goal:
-- Support pilot clinics with strict tenant isolation and real authentication.
+- Support pilot clinics with tenant isolation and authenticated clinic-scoped access.
 
 Completed:
 - Tenant model implemented.
 - User model implemented.
 - Tenant represents the clinic/organization.
 - Multiple veterinarians can belong to the same tenant.
+- Clinic users share patients and clinical records within the same tenant.
 - Multi-tenancy implemented with `tenant_id`.
+- Tenant-aware repositories/services across business modules.
 - Firebase Authentication integrated.
-- Real tenant resolution from the authenticated user.
-- Frontend and backend authentication with Bearer tokens.
-- Temporary frontend `X-Tenant-Id` dependency removed from normal authenticated flows.
-- 3 pilot users can be supported manually through Firebase Auth and Supabase users.
-- Patients, owners, consultations, exams, preventive care, and file references are shared within the clinic.
+- Bearer-token authenticated frontend/backend flow.
+- Real tenant resolution from authenticated user context.
 - User traceability implemented across clinical records.
 
 ### ✅ Completed - Slice 2 - Owners and Patients
+
 Goal:
 - Provide complete owner and patient management with tenant-aware data isolation.
 
 Completed:
-- Full CRUD for owners.
-- Full CRUD for patients.
-- Owner-patient relationship implemented.
-- Owner detail view implemented.
-- Patient detail view implemented.
+- Owners CRUD.
+- Patients CRUD.
+- Owner-patient relationship.
+- Owner detail view.
+- Patient detail fully expanded.
 - Safe owner creation, editing, and deletion flows.
 - Safe patient creation, editing, and deletion flows.
 - Controlled cascade deletion for dependent clinical data.
-- Mobile-first UI/UX improvements for owners and patients.
-- Allergy and relevant chronic condition alerts.
+- Mobile-first owner and patient screens.
+- Allergy and chronic condition alerts.
 
-### ✅ Completed - Slice 3 - Clinical History
+### ✅ Completed - Slice 3 - Clinical History Core
+
 Goal:
-- Provide a chronological clinical timeline for each patient.
+- Provide a complete chronological clinical timeline for each patient.
 
 Completed:
-- Basic clinical history implemented.
-- Patient clinical timeline implemented.
-- Timeline integrates consultations, exams, preventive care records, and file references.
-- Timeline includes user traceability where available:
-  - Created by.
-  - Attended by.
-  - Requested by.
-- Basic timeline filtering by type.
-- Patient detail page includes these sections:
-  - Complete history.
-  - Information.
-  - Vaccines and deworming.
-  - File attachments.
+- Patient clinical history backend.
+- Unified clinical history timeline.
+- Timeline integration for:
+  - consultations
+  - exams/results
+  - preventive care records
+  - file references
+  - follow-ups
+- User traceability in timeline records where available.
+- Patient detail sections for:
+  - complete history
+  - information
+  - vaccines and deworming
+  - file attachments
+- Timeline filtering by type.
+- PDF export of clinical history with filters.
+- Clinic branding integrated in clinical history PDF.
 
-### ✅ Completed - Slice 4 - Structured Consultations
+### 🟡 In Progress - Slice 4 - Structured Consultations
+
 Goal:
 - Make consultations the main structured clinical workflow.
 
 Completed:
 - Full consultation CRUD.
-- Multi-step workflow backend.
-- Multi-step frontend.
-- Draft status.
-- Completed status.
-- Progressive autosave.
-- Medication entries.
+- Stepper consultation flow.
+- Draft persistence.
+- Step save flow.
+- Completed consultation state.
+- Medication support.
 - Study requests.
-- Safe consultation delete.
 - Clinical history integration.
 - Consultation detail/edit flow.
+- Safe consultation delete.
+- Consultation medication to inventory integration in the backend.
+- Inventory-backed therapeutic plan support in the backend.
+- Backend stock validation and automatic inventory exit movement creation for inventory-backed medications.
+
+Pending:
+- Frontend therapeutic plan inventory selector integration.
+- Stock validation and stock deduction feedback in the consultation UI.
+- User-facing visual flow for automatic stock deduction from therapeutic plan medication use.
 
 ### ✅ Completed - Slice 5 - Exams and Results
+
 Goal:
-- Request exams, register text results, and connect them to clinical history.
+- Request exams, register results, and connect them to clinical history.
 
 Completed:
-- Exams v1 implemented.
-- Text-based results implemented.
-- Exams associated with patients and consultations.
-- Frontend exams view implemented.
-- Result editing implemented.
+- Exams CRUD v1.
+- Text-based result registration/editing.
+- Exams associated with patients.
+- Exams can be associated with consultations.
+- Frontend exams view and detail flow.
 - Exams integrated into clinical history.
 
 ### ✅ Completed - Slice 6 - Global Search
+
 Goal:
 - Provide fast access to owners and patients.
 
@@ -123,138 +146,177 @@ Completed:
 - Search by patient name.
 - Navigation from search results.
 
-### 🟡 Partial - Slice 7 - Hardening
+### ✅ Completed - Slice 7 - Preventive Care
+
 Goal:
-- Stabilize the MVP for pilot usage.
-
-Already exists:
-- Mobile-first UI.
-- Initial design system.
-- Login UI.
-- Mobile menu.
-- Bottom navigation.
-- Public deployment is functional.
-- End-to-end deployment path is working: Vercel → Cloud Run → Supabase.
-
-Pending:
-- Broader validation pass across edge cases.
-- Additional frontend and backend test coverage.
-- Accessibility review.
-- Production observability and operational checklist.
-- Pilot release checklist.
-
-## Partial Clinical Submodules
-
-### ✅ Completed - Preventive Care
-Scope:
-- Vaccines, deworming, and other preventive care records.
+- Track vaccines, deworming, and other preventive care records.
 
 Completed:
-- Persistent backend support.
-- Frontend creation flow.
-- List view.
-- Create preventive care records.
-- Edit preventive care records.
-- Delete preventive care records.
+- Preventive care backend records.
+- Preventive care frontend creation flow.
+- List, create, edit, and delete flows.
 - Safe delete confirmation.
 - Clinical history timeline integration.
 - User traceability.
 
-Deferred:
-- Future reminder or next-dose workflow.
+### ✅ Completed - Slice 8 - Clinical Files
 
-### 🟡 Partial - File Attachments
-Scope:
-- Patient file references and future real file uploads.
+Goal:
+- Store clinical files securely and keep file references connected to patient history.
 
-Already exists:
-- File reference metadata without real upload.
-- Patient association.
-- Clinical history integration.
+Completed:
+- Patient file references.
+- File uploads to Google Cloud Storage.
+- Storage metadata persistence.
+- Signed download URLs.
+- Delete with storage cleanup.
+- Tenant/patient file association.
+- Clinical history timeline integration.
 - User traceability.
+- File type and size validation.
 
-Pending:
-- Real uploads.
-- Storage provider decision: S3, Firebase Storage, or Google Cloud Storage.
-- Secure tenant/patient file linking.
-- File preview.
-- File download.
-- Storage integration.
-- File type and size controls.
+### ✅ Completed - Slice 9 - Agenda / Appointments
 
-## Next Priority Slices
+Goal:
+- Schedule clinic appointments and assign them to team members.
 
-### 🔜 Next Priority - Priority 1 - Real File Uploads
-Objective:
-- Allow real clinical document uploads.
+Completed:
+- Appointment CRUD.
+- Assignment by veterinarian/team member.
+- Date, patient, owner, status, type, and assigned-user filters.
+- Clinic team integration.
+- Frontend agenda list/detail flow.
 
-Tasks:
-- Define storage provider: S3, Firebase Storage, or Google Cloud Storage.
-- Design tenant/patient storage structure.
-- Upload PDFs and images.
-- Store metadata in `patient_file_references`.
-- Allow file preview/download.
-- Maintain tenant-aware security.
+### ✅ Completed - Slice 10 - Follow-ups
 
-Suggested storage structure:
-- `tenant_id/patients/patient_id/files/file_id/filename`
+Goal:
+- Track clinical follow-ups and connect them to patient workflows.
 
-### 🔜 Next Priority - Priority 2 - Clinical History PDF Export
-Objective:
-- Allow downloading patient clinical history as a professional PDF with configurable detail.
+Completed:
+- Follow-up CRUD.
+- Follow-up status updates.
+- Cancel and complete flows.
+- Optional appointment creation.
+- Assignment by veterinarian/team member.
+- Patient/owner/date/status/type filters.
+- Clinical history integration.
 
-Tasks:
-- Add a simple export selector.
-- Add date range filters.
-- Add include/exclude options for:
-  - Consultations.
-  - Exams.
-  - Vaccines/deworming.
-  - Files/references.
-  - Owner data.
-  - Complete patient data.
-- Generate a readable professional PDF.
-- Support summarized and complete clinical history exports.
+### ✅ Completed - Slice 11 - Dashboard
 
-### 🔜 Next Priority - Priority 3 - Agenda / Scheduling
-Objective:
-- Add appointment scheduling for clinic workflows.
+Goal:
+- Show operational clinic metrics using real application data.
 
-Tasks:
-- Define MVP appointment model.
-- Create appointment list/calendar view.
-- Link appointments to owners/patients where applicable.
-- Maintain tenant-aware access.
+Completed:
+- Real dashboard backend.
+- Real dashboard frontend.
+- Operational metrics for appointments, follow-ups, consultations, and current clinic activity.
+- Dashboard filters for date range, assigned user, and completed records.
 
-### 🔜 Next Priority - Priority 4 - Inventory / Medication Stock
-Objective:
-- Track medication and inventory stock for clinic operations.
+### ✅ Completed - Slice 12 - Clinic Profile
 
-Tasks:
-- Define MVP inventory item model.
-- Track medication stock.
-- Register stock movements.
-- Maintain tenant-aware access.
+Goal:
+- Let each clinic manage visible clinic identity and team context.
 
-## Post-MVP / Deferred
+Completed:
+- Clinic profile endpoint and frontend screen.
+- Clinic team listing.
+- Clinic branding fields.
+- Clinic logo upload to storage.
+- Clinic logo delete flow.
+- Clinic branding consumed by clinical history PDF export.
 
-### 🧊 Deferred
-- Advanced settings.
-- Roles and permissions.
-- Internal user management.
-- Advanced dashboard.
-- Reports.
-- Reminders.
-- Prescriptions.
+### ✅ Completed - Slice 13 - Inventory (MVP Core)
+
+Goal:
+- Track clinic inventory and medication stock for MVP operations.
+
+Completed:
+- Inventory backend CRUD.
+- Inventory item create, list, detail, edit, and deactivate/delete flows.
+- Inventory summary.
+- Inventory alerts for low stock, expiring soon, and expired items.
+- Stock entry registration.
+- Stock exit registration.
+- Inventory movement history.
+- Tenant-aware inventory filtering.
+- Inventory frontend module:
+  - list
+  - summary
+  - create
+  - detail
+  - edit
+  - deactivate
+  - movement registration
+  - movement history
+
+## Next Priorities
+
+### ⏳ Next - Priority 1 - Consultation Therapeutic Plan Inventory Frontend
+
+Goal:
+- Complete the user-facing consultation flow for inventory-backed therapeutic plan medications.
+
+Includes:
+- Inventory medication selector.
+- Stock validation in the consultation UI.
+- Automatic stock deduction visual flow.
+- Clear feedback when stock changes or is insufficient.
+
+### 🔵 Planned - Priority 2 - Prescriptions Module
+
+Goal:
+- Generate prescriptions from clinical work.
+
+Includes:
+- Prescription generation.
+- Printable/exportable prescription.
+- Consultation integration.
+
+### 🔵 Planned - Priority 3 - Notifications / Reminders
+
+Goal:
+- Turn follow-up and preventive care dates into user-facing reminders.
+
+Includes:
+- Follow-up reminders.
+- Vaccine reminders.
+- Appointment reminders.
+
+### 🔵 Planned - Priority 4 - Advanced Settings / Clinic Administration
+
+Goal:
+- Harden clinic administration for real multi-user clinic operations.
+
+Includes:
+- User invitation flow.
+- Role management.
+- Clinic settings hardening.
+
+### 🔵 Planned - Priority 5 - Hardening / Pilot Stabilization
+
+Goal:
+- Stabilize the MVP for pilot usage.
+
+Includes:
+- UX polish.
+- Bug fixes.
+- Edge cases.
+- Better validations.
+- Broader frontend and backend test coverage.
+- Accessibility review.
+- Production observability and operational checklist.
+- Pilot release checklist.
+
+## Post-MVP
+
+### ⚪ Deferred
+
 - Native mobile app.
-
-## Current Development Position
-The app is already deployed and connected end-to-end through Vercel, Cloud Run, and Supabase.
-
-It already supports authenticated Firebase users, real multi-tenant tenant resolution, and tenant-aware access to owners, patients, clinical history, structured consultations, exams v1, preventive care, and file references.
-
-The current model supports a multi-veterinarian clinic workflow: Tenant represents the clinic, multiple veterinarians can belong to the same tenant, and patients are shared within the clinic while tenant isolation remains enforced.
-
-Structured consultations are completed, preventive care is completed, and user traceability is available across patient, consultation, exam, preventive care, file reference, and clinical history timeline records.
-
-The next development focus should be implementing real file uploads, adding clinical history PDF export, and then expanding into agenda/scheduling and inventory/medication stock.
+- Advanced analytics.
+- Financial reporting.
+- Supplier module.
+- Purchase orders.
+- Barcode scanning.
+- Advanced inventory valuation.
+- WhatsApp notifications.
+- Google Calendar sync.
