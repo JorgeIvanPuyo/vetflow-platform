@@ -55,6 +55,8 @@ import {
 } from "@/services/inventory";
 import type { InventoryItem, InventoryMovementType } from "@/types/api";
 
+type MovementFilter = Extract<InventoryMovementType, "entry" | "exit"> | "all";
+
 type InventoryDetailProps = {
   itemId: string;
 };
@@ -109,7 +111,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const router = useRouter();
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
-  const [movementFilter, setMovementFilter] = useState<InventoryMovementType | "all">("all");
+  const [movementFilter, setMovementFilter] = useState<MovementFilter>("all");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isEntryOpen, setIsEntryOpen] = useState(false);
@@ -143,7 +145,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   }, [itemId]);
 
   const loadMovements = useCallback(
-    async (page: number, filter: InventoryMovementType | "all") => {
+    async (page: number, filter: MovementFilter) => {
       setMovementState((current) => ({
         ...current,
         isLoading: true,
@@ -176,7 +178,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   );
 
   const refreshDetail = useCallback(
-    async (page: number, filter: InventoryMovementType | "all") => {
+    async (page: number, filter: MovementFilter) => {
       setState((current) => ({
         ...current,
         isLoading: true,
