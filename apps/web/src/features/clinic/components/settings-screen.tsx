@@ -1,14 +1,16 @@
 "use client";
 
-import { Mail, Stethoscope, Users, X } from "lucide-react";
+import { Image as ImageIcon, Mail, Trash2, Upload, Users, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import { getApiErrorMessage } from "@/lib/api";
 import {
+  deleteClinicLogo,
   getClinicProfile,
   getClinicTeam,
   updateClinicProfile,
+  uploadClinicLogo,
 } from "@/services/clinic";
 import type {
   ClinicProfile,
@@ -19,11 +21,14 @@ import type {
 type SettingsState = {
   isLoading: boolean;
   isSaving: boolean;
+  isLogoUploading: boolean;
+  isLogoDeleting: boolean;
   profile: ClinicProfile | null;
   team: ClinicTeamMember[];
   errorMessage: string | null;
   successMessage: string | null;
   flowMessage: string | null;
+  logoMessage: string | null;
 };
 
 type ClinicProfileFormState = {
@@ -32,17 +37,19 @@ type ClinicProfileFormState = {
   email: string;
   address: string;
   notes: string;
-  logo_url: string;
 };
 
 const initialState: SettingsState = {
   isLoading: true,
   isSaving: false,
+  isLogoUploading: false,
+  isLogoDeleting: false,
   profile: null,
   team: [],
   errorMessage: null,
   successMessage: null,
   flowMessage: null,
+  logoMessage: null,
 };
 
 const initialFormState: ClinicProfileFormState = {
@@ -51,14 +58,19 @@ const initialFormState: ClinicProfileFormState = {
   email: "",
   address: "",
   notes: "",
-  logo_url: "",
 };
+
+const allowedLogoTypes = ["image/png", "image/jpeg", "image/webp"];
+const maxLogoSizeBytes = 5 * 1024 * 1024;
 
 export function SettingsScreen() {
   const { refreshProfile } = useClinic();
   const [state, setState] = useState<SettingsState>(initialState);
   const [formState, setFormState] = useState<ClinicProfileFormState>(initialFormState);
+  const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [isTeamOpen, setIsTeamOpen] = useState(false);
+  const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
 
   async function loadSettings() {
     setState((current) => ({
@@ -92,6 +104,18 @@ export function SettingsScreen() {
   useEffect(() => {
     void loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (!selectedLogoFile) {
+      setLogoPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedLogoFile);
+    setLogoPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedLogoFile]);
 
   function resetForm() {
     if (state.profile) {
@@ -142,6 +166,87 @@ export function SettingsScreen() {
     }
   }
 
+  function handleLogoSelection(file: File | null) {
+    if (!file) {
+      setSelectedLogoFile(null);
+      setState((current) => ({ ...current, logoMessage: null }));
+      return;
+    }
+
+    const validationMessage = validateLogoFile(file);
+    if (validationMessage) {
+      setSelectedLogoFile(null);
+      setState((current) => ({ ...current, logoMessage: validationMessage }));
+      return;
+    }
+
+    setSelectedLogoFile(file);
+    setState((current) => ({ ...current, logoMessage: null, successMessage: null }));
+  }
+
+  async function handleUploadLogo() {
+    if (!selectedLogoFile) {
+      setState((current) => ({
+        ...current,
+        logoMessage: "Selecciona un archivo de logo para subir.",
+      }));
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isLogoUploading: true,
+      logoMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      const response = await uploadClinicLogo(selectedLogoFile);
+      setSelectedLogoFile(null);
+      setState((current) => ({
+        ...current,
+        isLogoUploading: false,
+        profile: response.data,
+        successMessage: "Logo de clínica actualizado.",
+      }));
+      await refreshProfile();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isLogoUploading: false,
+        logoMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleDeleteLogo() {
+    setState((current) => ({
+      ...current,
+      isLogoDeleting: true,
+      logoMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      const response = await deleteClinicLogo();
+      setSelectedLogoFile(null);
+      setIsLogoDeleteOpen(false);
+      setState((current) => ({
+        ...current,
+        isLogoDeleting: false,
+        profile: response.data,
+        successMessage: "Logo de clínica eliminado.",
+      }));
+      await refreshProfile();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isLogoDeleting: false,
+        logoMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
   return (
     <div className="page-stack settings-layout">
       <section className="screen-heading">
@@ -163,19 +268,86 @@ export function SettingsScreen() {
                 <h2>Perfil de clínica</h2>
                 <p>Datos visibles para documentos, agenda y futuras comunicaciones.</p>
               </div>
-              <span className="brand__mark" aria-hidden="true">
-                {state.profile.logo_url ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img alt="" src={state.profile.logo_url} />
-                  </>
-                ) : (
-                  <Stethoscope size={20} />
-                )}
-              </span>
             </div>
 
             {state.flowMessage ? <div className="error-state">{state.flowMessage}</div> : null}
+
+            <section className="clinic-logo-manager" aria-label="Logo de clínica">
+              <div className="clinic-logo-preview">
+                {logoPreviewUrl || state.profile.logo_url ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      alt="Logo de la clínica"
+                      src={logoPreviewUrl ?? state.profile.logo_url ?? ""}
+                    />
+                  </>
+                ) : (
+                  <span className="clinic-logo-placeholder" aria-hidden="true">
+                    <ImageIcon size={30} />
+                  </span>
+                )}
+              </div>
+
+              <div className="clinic-logo-manager__body">
+                <div>
+                  <p className="eyebrow">Branding</p>
+                  <h3>Logo de la clínica</h3>
+                  <p className="muted-text">
+                    Usa PNG, JPG o WebP. Tamaño máximo: 5 MB.
+                  </p>
+                </div>
+
+                {selectedLogoFile ? (
+                  <div className="selected-file-summary">
+                    <span>{selectedLogoFile.name}</span>
+                    <span>{formatLogoSize(selectedLogoFile.size)}</span>
+                  </div>
+                ) : null}
+
+                {state.logoMessage ? <div className="error-state">{state.logoMessage}</div> : null}
+
+                <div className="clinic-logo-actions">
+                  <label className="secondary-button clinic-logo-file-button">
+                    <Upload aria-hidden="true" size={17} />
+                    {state.profile.logo_url ? "Reemplazar logo" : "Subir logo"}
+                    <input
+                      accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                      className="sr-only"
+                      type="file"
+                      onChange={(event) => {
+                        handleLogoSelection(event.target.files?.[0] ?? null);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+
+                  <button
+                    className="primary-button"
+                    disabled={!selectedLogoFile || state.isLogoUploading}
+                    onClick={() => void handleUploadLogo()}
+                    type="button"
+                  >
+                    {state.isLogoUploading ? "Subiendo logo..." : "Guardar logo"}
+                  </button>
+
+                  {state.profile.logo_url ? (
+                    <button
+                      className="secondary-button secondary-button--danger"
+                      disabled={state.isLogoDeleting}
+                      onClick={() => {
+                        setState((current) => ({ ...current, logoMessage: null }));
+                        setIsLogoDeleteOpen(true);
+                      }}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={17} />
+                      Eliminar logo
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </section>
 
             <form className="entity-form" onSubmit={handleSaveProfile}>
               <div className="form-grid">
@@ -220,19 +392,6 @@ export function SettingsScreen() {
                   />
                 </label>
 
-                <label className="field">
-                  <span>Logo URL</span>
-                  <input
-                    value={formState.logo_url}
-                    placeholder="https://..."
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        logo_url: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
               </div>
 
               <label className="field">
@@ -343,6 +502,43 @@ export function SettingsScreen() {
           </section>
         </div>
       ) : null}
+
+      {isLogoDeleteOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <section aria-labelledby="delete-logo-title" aria-modal="true" className="bottom-sheet" role="dialog">
+            <div className="bottom-sheet__header">
+              <div>
+                <p className="eyebrow">Logo</p>
+                <h2 id="delete-logo-title">Eliminar logo</h2>
+              </div>
+              <button aria-label="Cerrar" className="icon-button" onClick={() => setIsLogoDeleteOpen(false)} type="button">
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+
+            <div className="danger-callout">
+              <strong>Esta acción eliminará el logo de la clínica.</strong>
+              <span>El encabezado volverá a usar el ícono predeterminado.</span>
+            </div>
+
+            {state.logoMessage ? <div className="error-state">{state.logoMessage}</div> : null}
+
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={() => setIsLogoDeleteOpen(false)} type="button">
+                Cancelar
+              </button>
+              <button
+                className="danger-button"
+                disabled={state.isLogoDeleting}
+                onClick={() => void handleDeleteLogo()}
+                type="button"
+              >
+                {state.isLogoDeleting ? "Eliminando..." : "Eliminar logo"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -354,7 +550,6 @@ function profileToFormState(profile: ClinicProfile): ClinicProfileFormState {
     email: profile.email ?? "",
     address: profile.address ?? "",
     notes: profile.notes ?? "",
-    logo_url: profile.logo_url ?? "",
   };
 }
 
@@ -367,7 +562,6 @@ function buildProfilePayload(
     email: normalizeNullable(formState.email),
     address: normalizeNullable(formState.address),
     notes: normalizeNullable(formState.notes),
-    logo_url: normalizeNullable(formState.logo_url),
   };
 }
 
@@ -378,4 +572,24 @@ function normalizeNullable(value: string) {
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateLogoFile(file: File) {
+  if (!allowedLogoTypes.includes(file.type)) {
+    return "El logo debe ser una imagen PNG, JPG o WebP.";
+  }
+
+  if (file.size > maxLogoSizeBytes) {
+    return "El logo no puede superar 5 MB.";
+  }
+
+  return null;
+}
+
+function formatLogoSize(sizeBytes: number) {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
 }

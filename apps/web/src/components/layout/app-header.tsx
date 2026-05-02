@@ -32,7 +32,7 @@ const menuItems = [
 
 export function AppHeader() {
   const { logout, user } = useAuth();
-  const { displayName, profile } = useClinic();
+  const { displayName, profile, refreshProfile } = useClinic();
   const pathname = usePathname();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -100,7 +100,7 @@ export function AppHeader() {
             onClick={() => setIsMenuOpen(false)}
             aria-label={`Ir al dashboard de ${displayName}`}
           >
-            <ClinicBrandMark logoUrl={profile?.logo_url} />
+            <ClinicBrandMark logoUrl={profile?.logo_url} onLogoError={refreshProfile} />
             <span>{displayName}</span>
           </Link>
           <button
@@ -161,7 +161,7 @@ export function AppHeader() {
         </button>
 
         <Link className="brand" href="/" aria-label={`Ir al dashboard de ${displayName}`}>
-          <ClinicBrandMark logoUrl={profile?.logo_url} />
+          <ClinicBrandMark logoUrl={profile?.logo_url} onLogoError={refreshProfile} />
           <span>{displayName}</span>
         </Link>
 
@@ -213,12 +213,31 @@ export function AppHeader() {
   );
 }
 
-function ClinicBrandMark({ logoUrl }: { logoUrl?: string | null }) {
-  if (logoUrl) {
+function ClinicBrandMark({
+  logoUrl,
+  onLogoError,
+}: {
+  logoUrl?: string | null;
+  onLogoError: () => Promise<void>;
+}) {
+  const [hasLogoError, setHasLogoError] = useState(false);
+
+  useEffect(() => {
+    setHasLogoError(false);
+  }, [logoUrl]);
+
+  if (logoUrl && !hasLogoError) {
     return (
       <span className="brand__mark brand__mark--image" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt="" src={logoUrl} />
+        <img
+          alt=""
+          src={logoUrl}
+          onError={() => {
+            setHasLogoError(true);
+            void onLogoError();
+          }}
+        />
       </span>
     );
   }

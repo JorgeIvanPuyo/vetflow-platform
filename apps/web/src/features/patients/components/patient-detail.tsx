@@ -31,7 +31,6 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
 import { exportClinicalHistoryPdf } from "@/services/clinical-history-export";
-import { createExam } from "@/services/exams";
 import {
   createPatientFileReference,
   deletePatientFileReference,
@@ -47,7 +46,6 @@ import type {
   ClinicalHistoryPdfExportPayload,
   ClinicalHistoryTimelineItem,
   Consultation,
-  CreateExamPayload,
   CreatePatientFileReferencePayload,
   CreatePreventiveCarePayload,
   Owner,
@@ -64,7 +62,6 @@ type PatientDetailProps = {
 
 type PatientDetailState = {
   isLoading: boolean;
-  isSubmitting: boolean;
   isPreventiveSubmitting: boolean;
   isFileSubmitting: boolean;
   isFileUploading: boolean;
@@ -80,18 +77,10 @@ type PatientDetailState = {
   fileReferences: PatientFileReference[];
   errorMessage: string | null;
   successMessage: string | null;
-  showExamForm: boolean;
 };
 
 type PatientDetailSection = "history" | "info" | "preventive" | "files";
 type TimelineFilter = "all" | "consultation" | "exam" | "preventive_care" | "file_reference";
-
-type ExamFormState = {
-  exam_type: string;
-  requested_at: string;
-  consultation_id: string;
-  observations: string;
-};
 
 type PreventiveCareFormState = {
   name: string;
@@ -142,13 +131,6 @@ type PatientEditFormState = {
 
 type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
 
-const initialExamFormState: ExamFormState = {
-  exam_type: "",
-  requested_at: toDateTimeLocalValue(new Date()),
-  consultation_id: "",
-  observations: "",
-};
-
 const initialPreventiveCareFormState: PreventiveCareFormState = {
   name: "",
   care_type: "vaccine",
@@ -186,7 +168,6 @@ const initialPdfExportFormState: PdfExportFormState = {
 
 const initialState: PatientDetailState = {
   isLoading: true,
-  isSubmitting: false,
   isPreventiveSubmitting: false,
   isFileSubmitting: false,
   isFileUploading: false,
@@ -202,7 +183,6 @@ const initialState: PatientDetailState = {
   fileReferences: [],
   errorMessage: null,
   successMessage: null,
-  showExamForm: false,
 };
 
 const initialPatientEditFormState: PatientEditFormState = {
@@ -296,7 +276,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [fileReferenceToDelete, setFileReferenceToDelete] =
     useState<PatientFileReference | null>(null);
-  const [examFormState, setExamFormState] = useState<ExamFormState>(initialExamFormState);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
   const [fileUploadFormState, setFileUploadFormState] =
@@ -371,43 +350,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   useEffect(() => {
     void loadPatientDetail();
   }, [loadPatientDetail]);
-
-  async function handleCreateExam(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const payload: CreateExamPayload = {
-      patient_id: patientId,
-      exam_type: examFormState.exam_type.trim(),
-      requested_at: new Date(examFormState.requested_at).toISOString(),
-      consultation_id: examFormState.consultation_id || null,
-      observations: examFormState.observations.trim() || null,
-    };
-
-    setState((current) => ({
-      ...current,
-      isSubmitting: true,
-      errorMessage: null,
-      successMessage: null,
-    }));
-
-    try {
-      await createExam(payload);
-      setExamFormState({ ...initialExamFormState, requested_at: toDateTimeLocalValue(new Date()) });
-      setState((current) => ({
-        ...current,
-        isSubmitting: false,
-        successMessage: "Solicitud de examen creada correctamente.",
-        showExamForm: false,
-      }));
-      await loadPatientDetail();
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        isSubmitting: false,
-        errorMessage: getApiErrorMessage(error),
-      }));
-    }
-  }
 
   async function handleCreatePreventiveCare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -889,7 +831,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     return <div className="empty-state">Paciente no encontrado.</div>;
   }
 
-  const { patient, consultations } = state.clinicalHistory;
+  const { patient } = state.clinicalHistory;
   const patientRegisteredBy = getTraceableUserName(patient, "created_by");
 
   return (
@@ -927,20 +869,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <CalendarDays aria-hidden="true" size={18} />
             Agendar turno
           </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() =>
-              setState((current) => ({
-                ...current,
-                showExamForm: !current.showExamForm,
-                successMessage: null,
-              }))
-            }
-          >
-            <FileText aria-hidden="true" size={18} />
-            {state.showExamForm ? "Cerrar examen" : "Nuevo examen"}
-          </button>
         </div>
       </section>
 
@@ -976,8 +904,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         </section>
       </section>
 
-      {state.showExamForm ? renderExamForm(consultations) : null}
-
       {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
       {state.errorMessage && !state.isLoading ? <p className="error-state">{state.errorMessage}</p> : null}
       {state.isLoading ? <div className="panel-note">Actualizando datos del paciente...</div> : null}
@@ -1012,69 +938,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {fileReferenceToDelete ? renderFileDeleteModal(fileReferenceToDelete) : null}
     </div>
   );
-
-  function renderExamForm(consultations: Consultation[]) {
-    return (
-      <section className="panel clinical-form-card">
-        <div className="section-heading">
-          <p className="eyebrow">Exámenes</p>
-          <h2>Nuevo examen</h2>
-          <p>Solicitud de examen en texto para este paciente.</p>
-        </div>
-
-        <form className="entity-form" onSubmit={handleCreateExam}>
-          <div className="form-grid">
-            <label className="field">
-              <span>Tipo de examen</span>
-              <input
-                required
-                value={examFormState.exam_type}
-                onChange={(event) => setExamFormState((current) => ({ ...current, exam_type: event.target.value }))}
-              />
-            </label>
-
-            <label className="field">
-              <span>Solicitado el</span>
-              <input
-                required
-                type="datetime-local"
-                value={examFormState.requested_at}
-                onChange={(event) => setExamFormState((current) => ({ ...current, requested_at: event.target.value }))}
-              />
-            </label>
-          </div>
-
-          <label className="field">
-            <span>Consulta</span>
-            <select
-              value={examFormState.consultation_id}
-              onChange={(event) => setExamFormState((current) => ({ ...current, consultation_id: event.target.value }))}
-            >
-              <option value="">Sin consulta vinculada</option>
-              {consultations.map((consultation) => (
-                <option key={consultation.id} value={consultation.id}>
-                  {formatDateTime(consultation.visit_date)} - {consultation.reason}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Observaciones</span>
-            <textarea
-              rows={3}
-              value={examFormState.observations}
-              onChange={(event) => setExamFormState((current) => ({ ...current, observations: event.target.value }))}
-            />
-          </label>
-
-          <button className="primary-button" disabled={state.isSubmitting} type="submit">
-            {state.isSubmitting ? "Guardando..." : "Crear solicitud de examen"}
-          </button>
-        </form>
-      </section>
-    );
-  }
 
   function renderHistorySection(timeline: ClinicalHistoryTimelineItem[]) {
     return (

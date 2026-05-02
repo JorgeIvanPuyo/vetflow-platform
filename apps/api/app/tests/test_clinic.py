@@ -3,10 +3,79 @@ import uuid
 from app.models.user import User
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.clinical_history_pdf import ClinicalHistoryPdfService
+from app.services.storage import get_storage_service
+
+
+class FakeStorageService:
+    def __init__(self, bucket_name: str | None = "clinic-test-bucket") -> None:
+        self.bucket_name = bucket_name
+        self.uploads: list[dict] = []
+        self.deletes: list[dict] = []
+        self.signed_urls: list[dict] = []
+
+    def upload_clinical_file(
+        self,
+        *,
+        object_path: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        self.uploads.append(
+            {
+                "object_path": object_path,
+                "content": content,
+                "content_type": content_type,
+            }
+        )
+
+    def delete_clinical_file(self, *, bucket_name: str, object_path: str) -> None:
+        self.deletes.append(
+            {
+                "bucket_name": bucket_name,
+                "object_path": object_path,
+            }
+        )
+
+    def generate_signed_download_url(
+        self,
+        *,
+        bucket_name: str,
+        object_path: str,
+        expires_in_seconds: int,
+    ) -> str:
+        self.signed_urls.append(
+            {
+                "bucket_name": bucket_name,
+                "object_path": object_path,
+                "expires_in_seconds": expires_in_seconds,
+            }
+        )
+        return f"https://signed.example/{object_path}?expires={expires_in_seconds}"
+
+
+class FailingUploadStorageService(FakeStorageService):
+    def upload_clinical_file(
+        self,
+        *,
+        object_path: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        raise RuntimeError("upload failed")
+
+
+class FailingDeleteStorageService(FakeStorageService):
+    def delete_clinical_file(self, *, bucket_name: str, object_path: str) -> None:
+        raise RuntimeError("delete failed")
 
 
 def _headers(tenant) -> dict[str, str]:
     return {"X-Tenant-Id": str(tenant.id)}
+
+
+def _override_storage(client, storage: FakeStorageService) -> FakeStorageService:
+    client.app.dependency_overrides[get_storage_service] = lambda: storage
+    return storage
 
 
 def _create_user(
@@ -204,3 +273,150 @@ def test_pdf_export_includes_clinic_branding_when_configured(
     assert "Teléfono de la clínica: 555-3000" in export.text_lines
     assert "Correo de la clínica: contacto@vetcentral.test" in export.text_lines
     assert "Dirección de la clínica: Avenida Principal 123" in export.text_lines
+
+
+def test_upload_clinic_logo_success(client, db_session, tenant):
+    storage = _override_storage(client, FakeStorageService())
+
+    response = client.post(
+        "/api/v1/clinic/logo",
+        headers=_headers(tenant),
+        files={"file": ("logo.png", b"logo-bytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["data"]
+    assert profile["logo_url"].startswith(
+        f"https://signed.example/tenants/{tenant.id}/branding/logo/"
+    )
+    assert len(storage.uploads) == 1
+    upload = storage.uploads[0]
+    assert upload["object_path"] == (
+        f"tenants/{tenant.id}/branding/logo/{tenant.id}-logo.png"
+    )
+    assert upload["content"] == b"logo-bytes"
+    assert upload["content_type"] == "image/png"
+
+    db_session.refresh(tenant)
+    assert tenant.logo_url == f"gs://clinic-test-bucket/{upload['object_path']}"
+    assert tenant.logo_object_path == upload["object_path"]
+
+
+def test_upload_clinic_logo_rejects_invalid_mime_type(client, tenant):
+    storage = _override_storage(client, FakeStorageService())
+
+    response = client.post(
+        "/api/v1/clinic/logo",
+        headers=_headers(tenant),
+        files={"file": ("logo.gif", b"gif", "image/gif")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "invalid_logo_type"
+    assert storage.uploads == []
+
+
+def test_upload_clinic_logo_rejects_oversize_file(client, tenant):
+    storage = _override_storage(client, FakeStorageService())
+
+    response = client.post(
+        "/api/v1/clinic/logo",
+        headers=_headers(tenant),
+        files={"file": ("logo.png", b"x" * (5 * 1024 * 1024 + 1), "image/png")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "logo_too_large"
+    assert storage.uploads == []
+
+
+def test_upload_clinic_logo_replaces_old_logo(client, db_session, tenant):
+    storage = _override_storage(client, FakeStorageService())
+    tenant.logo_url = "gs://clinic-test-bucket/tenants/old/logo.png"
+    tenant.logo_object_path = "tenants/old/logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/clinic/logo",
+        headers=_headers(tenant),
+        files={"file": ("new-logo.webp", b"webp", "image/webp")},
+    )
+
+    assert response.status_code == 200
+    assert storage.deletes == [
+        {
+            "bucket_name": "clinic-test-bucket",
+            "object_path": "tenants/old/logo.png",
+        }
+    ]
+    assert storage.uploads[0]["object_path"] == (
+        f"tenants/{tenant.id}/branding/logo/{tenant.id}-new-logo.webp"
+    )
+
+
+def test_delete_clinic_logo(client, db_session, tenant):
+    storage = _override_storage(client, FakeStorageService())
+    tenant.logo_url = "gs://clinic-test-bucket/tenants/tenant/logo.png"
+    tenant.logo_object_path = "tenants/tenant/logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+
+    response = client.delete("/api/v1/clinic/logo", headers=_headers(tenant))
+
+    assert response.status_code == 200
+    profile = response.json()["data"]
+    assert profile["logo_url"] is None
+    assert storage.deletes == [
+        {
+            "bucket_name": "clinic-test-bucket",
+            "object_path": "tenants/tenant/logo.png",
+        }
+    ]
+    db_session.refresh(tenant)
+    assert tenant.logo_url is None
+    assert tenant.logo_object_path is None
+
+
+def test_clinic_profile_returns_signed_logo_url(client, db_session, tenant):
+    storage = _override_storage(client, FakeStorageService())
+    tenant.logo_url = "gs://clinic-test-bucket/tenants/tenant/logo.png"
+    tenant.logo_object_path = "tenants/tenant/logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+
+    response = client.get("/api/v1/clinic/profile", headers=_headers(tenant))
+
+    assert response.status_code == 200
+    assert response.json()["data"]["logo_url"] == (
+        "https://signed.example/tenants/tenant/logo.png?expires=900"
+    )
+    assert storage.signed_urls == [
+        {
+            "bucket_name": "clinic-test-bucket",
+            "object_path": "tenants/tenant/logo.png",
+            "expires_in_seconds": 900,
+        }
+    ]
+
+
+def test_clinic_logo_tenant_isolation(client, db_session, tenant, other_tenant):
+    storage = _override_storage(client, FakeStorageService())
+
+    upload_response = client.post(
+        "/api/v1/clinic/logo",
+        headers=_headers(tenant),
+        files={"file": ("logo.jpg", b"jpeg", "image/jpeg")},
+    )
+    assert upload_response.status_code == 200
+
+    other_profile_response = client.get(
+        "/api/v1/clinic/profile",
+        headers=_headers(other_tenant),
+    )
+
+    assert other_profile_response.status_code == 200
+    assert other_profile_response.json()["data"]["logo_url"] is None
+    db_session.refresh(other_tenant)
+    assert other_tenant.logo_object_path is None
+    assert len(storage.uploads) == 1

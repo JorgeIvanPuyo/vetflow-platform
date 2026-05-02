@@ -17,6 +17,20 @@ export function updateClinicProfile(payload: UpdateClinicProfilePayload) {
   );
 }
 
+export function uploadClinicLogo(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return api.postFormData<ApiItemResponse<ClinicProfile>>(
+    "/api/v1/clinic/logo",
+    formData,
+  );
+}
+
+export function deleteClinicLogo() {
+  return api.delete<ApiItemResponse<ClinicProfile>>("/api/v1/clinic/logo");
+}
+
 export function getClinicTeam() {
   return api.get<{ data: ClinicTeamMember[]; meta: Record<string, never> }>(
     "/api/v1/clinic/team",
