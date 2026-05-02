@@ -21,6 +21,8 @@ import type {
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
+export type InventoryMovementFilter = Extract<InventoryMovementType, "entry" | "exit"> | "all";
+
 export const inventoryCategoryOptions: Array<{
   value: InventoryCategory;
   label: string;
@@ -69,7 +71,7 @@ export const inventoryStatusOptions: Array<{
 ];
 
 export const inventoryMovementFilterOptions: Array<{
-  value: InventoryMovementType | "all";
+  value: InventoryMovementFilter;
   label: string;
 }> = [
   { value: "all", label: "Todos" },

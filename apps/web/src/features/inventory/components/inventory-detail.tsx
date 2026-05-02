@@ -39,6 +39,7 @@ import {
   validateInventoryEntryForm,
   validateInventoryExitForm,
   validateInventoryForm,
+  InventoryMovementFilter,
   inventoryFormToUpdatePayload,
   InventoryEntryFormState,
   InventoryExitFormState,
@@ -53,9 +54,7 @@ import {
   getInventoryMovements,
   updateInventoryItem,
 } from "@/services/inventory";
-import type { InventoryItem, InventoryMovementType } from "@/types/api";
-
-type MovementFilter = Extract<InventoryMovementType, "entry" | "exit"> | "all";
+import type { InventoryItem } from "@/types/api";
 
 type InventoryDetailProps = {
   itemId: string;
