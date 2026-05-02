@@ -580,6 +580,176 @@ code {
   gap: 10px;
 }
 
+.dashboard-filters-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-heading-row,
+.dashboard-section .section-heading--row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.dashboard-filters {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-period-filter,
+.dashboard-vet-filter {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-filter-label {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.dashboard-refresh-button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.dashboard-spin {
+  animation: dashboard-spin 1s linear infinite;
+}
+
+.dashboard-kpi-link {
+  min-height: 164px;
+}
+
+.dashboard-sections-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-section {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-primary-dark);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dashboard-list,
+.dashboard-activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-row {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-soft);
+}
+
+.dashboard-row__main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-row__main h3,
+.dashboard-activity-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.dashboard-row__main p,
+.dashboard-empty,
+.dashboard-activity-card p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.dashboard-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-row__time,
+.dashboard-row__badge {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.dashboard-row__badge {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.dashboard-empty {
+  padding: 12px 0 4px;
+}
+
+.dashboard-activity-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-soft);
+}
+
+.dashboard-activity-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-activity-card__icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+}
+
+.dashboard-activity-card__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-activity-card__stats div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(228, 222, 211, 0.9);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.dashboard-activity-card__stats strong {
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-activity-card__stats span {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
 .quick-action {
   display: grid;
   gap: 10px;
@@ -1950,6 +2120,15 @@ code {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
+  .dashboard-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+    align-items: end;
+  }
+
+  .dashboard-sections-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .detail-hero {
     grid-template-columns: 1fr auto;
     align-items: end;
@@ -2172,6 +2351,10 @@ code {
     align-items: start;
   }
 
+  .dashboard-refresh-button {
+    justify-self: end;
+  }
+
   .agenda-date-card {
     grid-template-columns: auto 1fr auto auto;
   }
@@ -2191,6 +2374,11 @@ code {
   .appointment-card {
     grid-template-columns: 150px 1fr auto;
     align-items: center;
+  }
+
+  .dashboard-row {
+    grid-template-columns: 1fr auto;
+    align-items: flex-start;
   }
 
   .appointment-card__time {
@@ -2216,6 +2404,22 @@ code {
 
   .modal-actions--three .primary-button {
     justify-self: end;
+  }
+}
+
+@media (min-width: 1040px) {
+  .dashboard-page .kpi-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@keyframes dashboard-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 

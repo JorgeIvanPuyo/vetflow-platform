@@ -1,185 +1,612 @@
 "use client";
 
 import {
-  AlertCircle,
-  CalendarPlus,
-  ClipboardPlus,
-  PackagePlus,
-  PawPrint,
+  ArrowRight,
+  RefreshCw,
   Stethoscope,
 } from "lucide-react";
 import Link from "next/link";
-import { ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  buildDashboardSummaryFilters,
+  dashboardQuickPeriods,
+  DashboardQuickPeriod,
+  formatDashboardDate,
+  formatDashboardDateTime,
+  formatDashboardTime,
+  getConsultationStatusClass,
+  getConsultationStatusLabel,
+  getDashboardAppointmentStatusClass,
+  getDashboardAppointmentStatusLabel,
+  getDashboardAppointmentTypeLabel,
+  getDashboardCardHelper,
+  getDashboardCardLabel,
+  getDashboardFollowUpStatusClass,
+  getDashboardFollowUpStatusLabel,
+  getDashboardFollowUpTypeClass,
+  getDashboardFollowUpTypeLabel,
+  getDashboardFileTypeLabel,
+  getKpiIcon,
+  getPreventiveCareBadgeClass,
+  getPreventiveCareLabel,
+} from "@/features/dashboard/components/dashboard-helpers";
 import { getApiErrorMessage } from "@/lib/api";
-import { getOwners } from "@/services/owners";
-import { getPatients } from "@/services/patients";
-import { getBackendHealth } from "@/services/system";
+import { getClinicTeam } from "@/services/clinic";
+import { getDashboardSummary } from "@/services/dashboard";
+import type {
+  ClinicTeamMember,
+  DashboardAppointmentItem,
+  DashboardConsultationItem,
+  DashboardFileItem,
+  DashboardFollowUpItem,
+  DashboardPreventiveCareItem,
+  DashboardSummary,
+  DashboardVeterinarianActivityItem,
+} from "@/types/api";
 
 type DashboardState = {
   isLoading: boolean;
-  backendStatus: string | null;
-  ownerCount: number;
-  patientCount: number;
+  isRefreshing: boolean;
+  summary: DashboardSummary | null;
+  team: ClinicTeamMember[];
   errorMessage: string | null;
 };
 
 const initialState: DashboardState = {
   isLoading: true,
-  backendStatus: null,
-  ownerCount: 0,
-  patientCount: 0,
+  isRefreshing: false,
+  summary: null,
+  team: [],
   errorMessage: null,
 };
 
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
+  const [periodFilter, setPeriodFilter] = useState<DashboardQuickPeriod>("today");
+  const [assignedUserId, setAssignedUserId] = useState("all");
+  const hasLoadedRef = useRef(false);
+
+  const requestFilters = useMemo(
+    () => buildDashboardSummaryFilters(periodFilter, assignedUserId),
+    [assignedUserId, periodFilter],
+  );
+
+  const criticalFollowUps = useMemo(() => {
+    const overdue = state.summary?.overdue_follow_ups ?? [];
+    const upcoming = state.summary?.upcoming_follow_ups ?? [];
+
+    return [...overdue.slice(0, 3), ...upcoming.slice(0, Math.max(0, 5 - overdue.length))];
+  }, [state.summary]);
+
+  const loadDashboard = useCallback(async () => {
+    const isFirstLoad = !hasLoadedRef.current;
+
+    setState((current) => ({
+      ...current,
+      isLoading: isFirstLoad,
+      isRefreshing: !isFirstLoad,
+      errorMessage: null,
+    }));
+
+    try {
+      const [summaryResult, teamResult] = await Promise.allSettled([
+        getDashboardSummary(requestFilters),
+        getClinicTeam(),
+      ]);
+
+      if (summaryResult.status === "rejected") {
+        throw summaryResult.reason;
+      }
+
+      hasLoadedRef.current = true;
+      setState((current) => ({
+        ...current,
+        isLoading: false,
+        isRefreshing: false,
+        summary: summaryResult.value.data,
+        team:
+          teamResult.status === "fulfilled" ? teamResult.value.data : current.team,
+        errorMessage: null,
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isLoading: false,
+        isRefreshing: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }, [requestFilters]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadDashboard() {
-      try {
-        const [health, owners, patients] = await Promise.all([
-          getBackendHealth(),
-          getOwners(),
-          getPatients(),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setState({
-          isLoading: false,
-          backendStatus: health.status,
-          ownerCount: owners.meta.total,
-          patientCount: patients.meta.total,
-          errorMessage: null,
-        });
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
-        const message =
-          getApiErrorMessage(error);
-
-        setState({
-          isLoading: false,
-          backendStatus: null,
-          ownerCount: 0,
-          patientCount: 0,
-          errorMessage: message,
-        });
-      }
-    }
-
     void loadDashboard();
+  }, [loadDashboard]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const showVetFilter = state.team.length > 0;
+  const summary = state.summary;
 
   return (
     <div className="page-stack dashboard-page">
       <section className="screen-heading">
-        <p className="eyebrow">VetClinic</p>
-        <h1>Dashboard</h1>
-        <p>Resumen de tu clínica veterinaria</p>
+        <div className="screen-heading--with-action dashboard-heading-row">
+          <div>
+            <p className="eyebrow">Clínica</p>
+            <h1>Dashboard</h1>
+            <p>Resumen operativo de la clínica</p>
+          </div>
+          <button
+            className="secondary-button dashboard-refresh-button"
+            type="button"
+            onClick={() => void loadDashboard()}
+            disabled={state.isLoading || state.isRefreshing}
+          >
+            <RefreshCw
+              size={16}
+              className={state.isRefreshing ? "dashboard-spin" : undefined}
+            />
+            <span>{state.isRefreshing ? "Actualizando..." : "Actualizar"}</span>
+          </button>
+        </div>
       </section>
 
-      {state.errorMessage ? (
-        <section className="error-state">
-          <strong>Error de conexión:</strong> {state.errorMessage}
+      <section className="panel dashboard-filters-panel">
+        <div className="section-heading">
+          <p className="eyebrow">Filtros</p>
+          <h2>Vista operativa</h2>
+        </div>
+
+        <div className="dashboard-filters">
+          <div className="dashboard-period-filter">
+            <span className="dashboard-filter-label">Periodo</span>
+            <div className="tab-list" role="tablist" aria-label="Periodo del dashboard">
+              {dashboardQuickPeriods.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`tab-pill${periodFilter === option.value ? " tab-pill--active" : ""}`}
+                  onClick={() => setPeriodFilter(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {showVetFilter ? (
+            <label className="compact-filter dashboard-vet-filter">
+              <span className="dashboard-filter-label">Veterinario</span>
+              <select
+                value={assignedUserId}
+                onChange={(event) => setAssignedUserId(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {state.team.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.full_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      </section>
+
+      {state.isLoading && !summary ? (
+        <section className="panel empty-state">
+          <strong>Cargando resumen de la clínica...</strong>
+          <span>Estamos trayendo turnos, seguimientos y actividad reciente.</span>
         </section>
       ) : null}
 
-      <section className="kpi-grid" aria-label="Indicadores principales">
-        <KpiCard
-          icon={<CalendarPlus size={22} />}
-          label="Turnos hoy"
-          value="0"
-          tone="blue"
-          helper="Módulo agenda pendiente"
-        />
-        <KpiCard
-          icon={<Stethoscope size={22} />}
-          label="Consultas de la clínica"
-          value={state.isLoading ? "..." : String(state.patientCount)}
-          tone="success"
-          helper="Referencia temporal por pacientes de la clínica"
-        />
-        <KpiCard
-          icon={<AlertCircle size={22} />}
-          label="Alertas stock"
-          value="0"
-          tone="warning"
-          helper="Inventario en construcción"
-        />
-        <KpiCard
-          icon={<PawPrint size={22} />}
-          label="Pacientes de la clínica"
-          value={state.isLoading ? "..." : String(state.ownerCount)}
-          tone="danger"
-          helper="Propietarios vinculados en la clínica"
-        />
-      </section>
+      {state.errorMessage && !summary ? (
+        <section className="error-state">
+          <strong>No pudimos cargar el dashboard.</strong> {state.errorMessage}
+          <button className="secondary-button secondary-button--full" type="button" onClick={() => void loadDashboard()}>
+            Reintentar
+          </button>
+        </section>
+      ) : null}
 
-      <section className="panel quick-actions-card">
-        <div className="section-heading section-heading--row">
-          <div>
-            <p className="eyebrow">Acciones rápidas</p>
-            <h2>Atajos clínicos</h2>
+      {summary ? (
+        <>
+          {state.errorMessage ? (
+            <section className="error-state">
+              <strong>Mostrando la última información disponible.</strong> {state.errorMessage}
+            </section>
+          ) : null}
+
+          <section className="kpi-grid" aria-label="Indicadores principales">
+            <DashboardKpiCard
+              href="/agenda"
+              icon={getKpiIcon("appointments")}
+              label={getDashboardCardLabel(periodFilter, "Turnos hoy", "Turnos del período")}
+              value={summary.cards.appointments_today}
+              helper={getDashboardCardHelper(
+                periodFilter,
+                "Agenda programada para hoy",
+                "Turnos encontrados en el período seleccionado",
+              )}
+              tone="blue"
+            />
+            <DashboardKpiCard
+              href="/follow-ups"
+              icon={getKpiIcon("upcoming_follow_ups")}
+              label="Seguimientos próximos"
+              value={summary.cards.follow_ups_upcoming}
+              helper="Controles y recordatorios próximos"
+              tone="success"
+            />
+            <DashboardKpiCard
+              href="/follow-ups"
+              icon={getKpiIcon("overdue_follow_ups")}
+              label="Seguimientos vencidos"
+              value={summary.cards.follow_ups_overdue}
+              helper="Casos que necesitan atención"
+              tone="warning"
+            />
+            <DashboardKpiCard
+              href={summary.recent_consultations[0] ? `/consultations/${summary.recent_consultations[0].id}` : "/patients"}
+              icon={getKpiIcon("consultations")}
+              label="Consultas recientes"
+              value={summary.cards.consultations_recent}
+              helper="Actividad clínica registrada"
+              tone="success"
+            />
+            <DashboardKpiCard
+              href={summary.upcoming_preventive_care[0] ? `/patients/${summary.upcoming_preventive_care[0].patient_id}` : "/patients"}
+              icon={getKpiIcon("preventive_care")}
+              label="Vacunas próximas"
+              value={summary.cards.preventive_care_upcoming}
+              helper="Próximas vacunas y desparasitaciones"
+              tone="blue"
+            />
+            <DashboardKpiCard
+              href={summary.recent_files[0] ? `/patients/${summary.recent_files[0].patient_id}` : "/patients"}
+              icon={getKpiIcon("files")}
+              label="Archivos recientes"
+              value={summary.cards.files_recent}
+              helper="Documentos y estudios cargados"
+              tone="danger"
+            />
+          </section>
+
+          <div className="dashboard-sections-grid">
+            <DashboardSection
+              title={getDashboardCardLabel(periodFilter, "Turnos de hoy", "Turnos del período")}
+              subtitle="Primeros turnos registrados en agenda"
+              actionHref="/agenda"
+              actionLabel="Ver agenda"
+            >
+              {summary.appointments_today.length > 0 ? (
+                <div className="dashboard-list">
+                  {summary.appointments_today.slice(0, 5).map((appointment) => (
+                    <DashboardAppointmentRow key={appointment.id} appointment={appointment} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  {periodFilter === "today"
+                    ? "No hay turnos programados para hoy."
+                    : "No hay turnos registrados para este período."}
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
+
+            <DashboardSection
+              title="Seguimientos críticos"
+              subtitle="Vencidos primero, luego próximos"
+              actionHref="/follow-ups"
+              actionLabel="Ver seguimientos"
+            >
+              {criticalFollowUps.length > 0 ? (
+                <div className="dashboard-list">
+                  {criticalFollowUps.map((followUp) => (
+                    <DashboardFollowUpRow key={`${followUp.id}-${followUp.status}`} followUp={followUp} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  No hay seguimientos pendientes.
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
+
+            <DashboardSection
+              title="Consultas recientes"
+              subtitle="Últimos registros clínicos"
+            >
+              {summary.recent_consultations.length > 0 ? (
+                <div className="dashboard-list">
+                  {summary.recent_consultations.slice(0, 5).map((consultation) => (
+                    <DashboardConsultationRow key={consultation.id} consultation={consultation} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  No hay consultas recientes.
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
+
+            <DashboardSection
+              title="Próximas vacunas y desparasitaciones"
+              subtitle="Preventivos con vencimiento cercano"
+            >
+              {summary.upcoming_preventive_care.length > 0 ? (
+                <div className="dashboard-list">
+                  {summary.upcoming_preventive_care.slice(0, 5).map((record) => (
+                    <DashboardPreventiveCareRow key={record.id} record={record} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  No hay vacunas o desparasitaciones próximas.
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
+
+            <DashboardSection
+              title="Archivos recientes"
+              subtitle="Documentos y resultados subidos a la historia clínica"
+            >
+              {summary.recent_files.length > 0 ? (
+                <div className="dashboard-list">
+                  {summary.recent_files.slice(0, 5).map((file) => (
+                    <DashboardFileRow key={file.id} file={file} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  No hay archivos recientes.
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
+
+            <DashboardSection
+              title="Actividad por veterinario"
+              subtitle="Resumen de carga operativa del equipo"
+            >
+              {summary.activity_by_veterinarian.length > 0 ? (
+                <div className="dashboard-activity-list">
+                  {summary.activity_by_veterinarian.map((activity) => (
+                    <DashboardActivityRow key={activity.user_id} activity={activity} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>
+                  No hay actividad registrada.
+                </DashboardEmptyMessage>
+              )}
+            </DashboardSection>
           </div>
-          <span className={`status-pill ${state.backendStatus ? "status-pill--ok" : "status-pill--loading"}`}>
-            API {state.backendStatus ?? "..."}
-          </span>
-        </div>
-
-        <div className="quick-actions-grid">
-          <Link className="quick-action" href="/patients">
-            <span className="icon-bubble"><PawPrint size={22} /></span>
-            <span>Nuevo paciente</span>
-          </Link>
-          <Link className="quick-action" href="/patients">
-            <span className="icon-bubble icon-bubble--blue"><ClipboardPlus size={22} /></span>
-            <span>Nueva consulta</span>
-          </Link>
-          <Link className="quick-action" href="/inventario">
-            <span className="icon-bubble icon-bubble--warning"><PackagePlus size={22} /></span>
-            <span>Registrar compra</span>
-          </Link>
-          <Link className="quick-action" href="/agenda">
-            <span className="icon-bubble icon-bubble--danger"><CalendarPlus size={22} /></span>
-            <span>Crear turno</span>
-          </Link>
-        </div>
-      </section>
+        </>
+      ) : null}
     </div>
   );
 }
 
-function KpiCard({
+function DashboardKpiCard({
+  href,
   icon,
   label,
   value,
   helper,
   tone,
 }: {
+  href: string;
   icon: ReactNode;
   label: string;
-  value: string;
+  value: number;
   helper: string;
   tone: "blue" | "success" | "warning" | "danger";
 }) {
   return (
-    <article className={`kpi-card kpi-card--${tone}`}>
+    <Link className={`kpi-card kpi-card--${tone} dashboard-kpi-link`} href={href}>
       <span className="kpi-card__icon">{icon}</span>
       <span className="kpi-card__value">{value}</span>
       <h2>{label}</h2>
       <p>{helper}</p>
+    </Link>
+  );
+}
+
+function DashboardSection({
+  title,
+  subtitle,
+  actionHref,
+  actionLabel,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  actionHref?: string;
+  actionLabel?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="panel dashboard-section">
+      <div className="section-heading section-heading--row">
+        <div>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        {actionHref && actionLabel ? (
+          <Link className="dashboard-section-link" href={actionHref}>
+            <span>{actionLabel}</span>
+            <ArrowRight size={14} />
+          </Link>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DashboardAppointmentRow({
+  appointment,
+}: {
+  appointment: DashboardAppointmentItem;
+}) {
+  return (
+    <Link className="dashboard-row" href={`/agenda/${appointment.id}`}>
+      <div className="dashboard-row__main">
+        <div className="dashboard-row__meta">
+          <span className="dashboard-row__time">
+            {formatDashboardTime(appointment.start_at)} - {formatDashboardTime(appointment.end_at)}
+          </span>
+          <span className={getDashboardAppointmentStatusClass(appointment.status)}>
+            {getDashboardAppointmentStatusLabel(appointment.status)}
+          </span>
+        </div>
+        <h3>{appointment.title}</h3>
+        <p>
+          {appointment.patient_name || "Paciente por confirmar"}
+          {appointment.assigned_user_name ? ` · ${appointment.assigned_user_name}` : ""}
+        </p>
+      </div>
+      <span className="dashboard-row__badge">
+        {getDashboardAppointmentTypeLabel(appointment.appointment_type)}
+      </span>
+    </Link>
+  );
+}
+
+function DashboardFollowUpRow({
+  followUp,
+}: {
+  followUp: DashboardFollowUpItem;
+}) {
+  return (
+    <Link className="dashboard-row" href={`/follow-ups/${followUp.id}`}>
+      <div className="dashboard-row__main">
+        <div className="dashboard-row__meta">
+          <span className="dashboard-row__time">{formatDashboardDateTime(followUp.due_at)}</span>
+          <span className={getDashboardFollowUpStatusClass(followUp.status)}>
+            {getDashboardFollowUpStatusLabel(followUp.status)}
+          </span>
+        </div>
+        <h3>{followUp.title}</h3>
+        <p>
+          {followUp.patient_name || "Paciente sin nombre"}
+          {followUp.assigned_user_name ? ` · ${followUp.assigned_user_name}` : ""}
+        </p>
+      </div>
+      <span className={getDashboardFollowUpTypeClass(followUp.follow_up_type)}>
+        {getDashboardFollowUpTypeLabel(followUp.follow_up_type)}
+      </span>
+    </Link>
+  );
+}
+
+function DashboardConsultationRow({
+  consultation,
+}: {
+  consultation: DashboardConsultationItem;
+}) {
+  const veterinarian =
+    consultation.attending_user_name || consultation.created_by_user_name || null;
+
+  return (
+    <Link className="dashboard-row" href={`/consultations/${consultation.id}`}>
+      <div className="dashboard-row__main">
+        <div className="dashboard-row__meta">
+          <span className="dashboard-row__time">{formatDashboardDateTime(consultation.visit_date)}</span>
+          <span className={getConsultationStatusClass(consultation.status)}>
+            {getConsultationStatusLabel(consultation.status)}
+          </span>
+        </div>
+        <h3>{consultation.patient_name || "Paciente sin nombre"}</h3>
+        <p>
+          {consultation.reason}
+          {veterinarian ? ` · ${veterinarian}` : ""}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function DashboardPreventiveCareRow({
+  record,
+}: {
+  record: DashboardPreventiveCareItem;
+}) {
+  return (
+    <Link className="dashboard-row" href={`/patients/${record.patient_id}`}>
+      <div className="dashboard-row__main">
+        <div className="dashboard-row__meta">
+          <span className="dashboard-row__time">{formatDashboardDate(record.next_due_at)}</span>
+          <span className={getPreventiveCareBadgeClass(record.care_type)}>
+            {getPreventiveCareLabel(record.care_type)}
+          </span>
+        </div>
+        <h3>{record.name}</h3>
+        <p>
+          {record.patient_name || "Paciente sin nombre"}
+          {record.created_by_user_name ? ` · ${record.created_by_user_name}` : ""}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function DashboardFileRow({
+  file,
+}: {
+  file: DashboardFileItem;
+}) {
+  return (
+    <Link className="dashboard-row" href={`/patients/${file.patient_id}`}>
+      <div className="dashboard-row__main">
+        <div className="dashboard-row__meta">
+          <span className="dashboard-row__time">{formatDashboardDateTime(file.uploaded_at)}</span>
+          <span className="badge badge--blue">{getDashboardFileTypeLabel(file.file_type)}</span>
+        </div>
+        <h3>{file.name}</h3>
+        <p>
+          {file.patient_name || "Paciente sin nombre"}
+          {file.created_by_user_name ? ` · ${file.created_by_user_name}` : ""}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function DashboardActivityRow({
+  activity,
+}: {
+  activity: DashboardVeterinarianActivityItem;
+}) {
+  return (
+    <article className="dashboard-activity-card">
+      <div className="dashboard-activity-card__header">
+        <span className="dashboard-activity-card__icon">
+          <Stethoscope size={18} />
+        </span>
+        <div>
+          <h3>{activity.full_name}</h3>
+          <p>{activity.email}</p>
+        </div>
+      </div>
+
+      <div className="dashboard-activity-card__stats">
+        <div>
+          <strong>{activity.appointments_today_count}</strong>
+          <span>Turnos hoy</span>
+        </div>
+        <div>
+          <strong>{activity.consultations_recent_count}</strong>
+          <span>Consultas</span>
+        </div>
+        <div>
+          <strong>{activity.follow_ups_pending_count}</strong>
+          <span>Seguimientos</span>
+        </div>
+      </div>
     </article>
   );
+}
+
+function DashboardEmptyMessage({ children }: { children: ReactNode }) {
+  return <div className="dashboard-empty">{children}</div>;
 }

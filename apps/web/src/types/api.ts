@@ -275,6 +275,102 @@ export type ClinicTeamMember = {
   is_active: boolean;
 };
 
+export type DashboardPeriod = {
+  date_from: string;
+  date_to: string;
+};
+
+export type DashboardCards = {
+  appointments_today: number;
+  follow_ups_upcoming: number;
+  follow_ups_overdue: number;
+  consultations_recent: number;
+  preventive_care_upcoming: number;
+  files_recent: number;
+};
+
+export type DashboardAppointmentItem = {
+  id: string;
+  title: string;
+  appointment_type: AppointmentType;
+  status: AppointmentStatus;
+  start_at: string;
+  end_at: string;
+  patient_name?: string | null;
+  owner_name?: string | null;
+  assigned_user_name?: string | null;
+};
+
+export type DashboardFollowUpItem = {
+  id: string;
+  title: string;
+  follow_up_type: FollowUpType;
+  status: FollowUpStatus;
+  due_at: string;
+  patient_name?: string | null;
+  owner_name?: string | null;
+  assigned_user_name?: string | null;
+};
+
+export type DashboardConsultationItem = {
+  id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  reason: string;
+  status: ConsultationStatus;
+  visit_date: string;
+  attending_user_name?: string | null;
+  created_by_user_name?: string | null;
+};
+
+export type DashboardPreventiveCareItem = {
+  id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  name: string;
+  care_type: PreventiveCareType;
+  next_due_at: string;
+  created_by_user_name?: string | null;
+};
+
+export type DashboardFileItem = {
+  id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  name: string;
+  file_type: string;
+  uploaded_at: string;
+  created_by_user_name?: string | null;
+};
+
+export type DashboardVeterinarianActivityItem = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  appointments_today_count: number;
+  consultations_recent_count: number;
+  follow_ups_pending_count: number;
+};
+
+export type DashboardSummary = {
+  period: DashboardPeriod;
+  cards: DashboardCards;
+  appointments_today: DashboardAppointmentItem[];
+  upcoming_follow_ups: DashboardFollowUpItem[];
+  overdue_follow_ups: DashboardFollowUpItem[];
+  recent_consultations: DashboardConsultationItem[];
+  upcoming_preventive_care: DashboardPreventiveCareItem[];
+  recent_files: DashboardFileItem[];
+  activity_by_veterinarian: DashboardVeterinarianActivityItem[];
+};
+
+export type DashboardSummaryFilters = {
+  date_from?: string;
+  date_to?: string;
+  assigned_user_id?: string;
+  include_completed?: boolean;
+};
+
 export type AppointmentType =
   | "consultation"
   | "follow_up"
