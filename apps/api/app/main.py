@@ -10,6 +10,7 @@ from app.api.exams import router as exams_router
 from app.api.follow_ups import router as follow_ups_router
 from app.api.file_references import router as file_references_router
 from app.api.health import router as health_router
+from app.api.inventory import router as inventory_router
 from app.api.owners import router as owners_router
 from app.api.patients import router as patients_router
 from app.api.preventive_care import router as preventive_care_router
@@ -47,6 +48,7 @@ api_v1_router.include_router(file_references_router)
 api_v1_router.include_router(search_router)
 api_v1_router.include_router(appointments_router)
 api_v1_router.include_router(clinic_router)
+api_v1_router.include_router(inventory_router)
 
 app.include_router(health_router)
 app.include_router(api_v1_router)

@@ -33,3 +33,11 @@ class Tenant(BaseModel):
         "FollowUp",
         back_populates="tenant",
     )
+    inventory_items: Mapped[list[InventoryItem]] = relationship(
+        "InventoryItem",
+        back_populates="tenant",
+    )
+    inventory_movements: Mapped[list[InventoryMovement]] = relationship(
+        "InventoryMovement",
+        back_populates="tenant",
+    )

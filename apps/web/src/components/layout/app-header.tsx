@@ -26,7 +26,7 @@ const menuItems = [
   { href: "/owners", label: "Propietarios", icon: Users },
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
-  { href: "/inventario", label: "Inventario", icon: Package },
+  { href: "/inventory", label: "Inventario", icon: Package },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
@@ -77,6 +77,9 @@ export function AppHeader() {
   }, []);
 
   function isActive(href: string) {
+    if (href === "/inventory") {
+      return pathname.startsWith("/inventory") || pathname.startsWith("/inventario");
+    }
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
 

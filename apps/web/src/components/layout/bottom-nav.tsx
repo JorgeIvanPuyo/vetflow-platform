@@ -8,7 +8,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
-  { href: "/inventario", label: "Inventario", icon: Package },
+  { href: "/inventory", label: "Inventario", icon: Package },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
@@ -26,6 +26,8 @@ export function BottomNav() {
         const isActive =
           item.href === "/agenda"
             ? pathname.startsWith("/agenda") || pathname.startsWith("/follow-ups")
+            : item.href === "/inventory"
+              ? pathname.startsWith("/inventory") || pathname.startsWith("/inventario")
             : item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);

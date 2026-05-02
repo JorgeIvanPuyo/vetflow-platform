@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from "@/features/placeholders/components/module-placeholder";
+import { redirect } from "next/navigation";
 
-export default function InventoryPage() {
-  return <ModulePlaceholder moduleName="Inventario" />;
+export default function LegacyInventoryPage() {
+  redirect("/inventory");
 }

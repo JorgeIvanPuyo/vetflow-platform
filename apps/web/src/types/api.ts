@@ -371,6 +371,167 @@ export type DashboardSummaryFilters = {
   include_completed?: boolean;
 };
 
+export type InventoryCategory =
+  | "medication"
+  | "vaccine"
+  | "supply"
+  | "food"
+  | "other";
+
+export type InventoryUnit =
+  | "unit"
+  | "tablet"
+  | "capsule"
+  | "ampoule"
+  | "dose"
+  | "pipette"
+  | "bottle"
+  | "vial"
+  | "syringe"
+  | "ml"
+  | "liter"
+  | "gram"
+  | "kg"
+  | "pair"
+  | "box"
+  | "package"
+  | "other";
+
+export type InventoryStatusFilter =
+  | "low_stock"
+  | "expiring_soon"
+  | "expired"
+  | "active"
+  | "inactive";
+
+export type InventorySortBy =
+  | "name"
+  | "current_stock"
+  | "expiration_date"
+  | "created_at"
+  | "updated_at";
+
+export type InventorySortOrder = "asc" | "desc";
+
+export type InventoryItem = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  category: InventoryCategory;
+  subcategory: string | null;
+  unit: InventoryUnit;
+  supplier: string | null;
+  lot_number: string | null;
+  expiration_date: string | null;
+  current_stock: string;
+  minimum_stock: string;
+  purchase_price_ars: string | null;
+  profit_margin_percentage: string;
+  sale_price_ars: string | null;
+  round_sale_price: boolean;
+  notes: string | null;
+  is_active: boolean;
+  is_low_stock: boolean;
+  is_expiring_soon: boolean;
+  is_expired: boolean;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InventorySummary = {
+  total_items: number;
+  low_stock_count: number;
+  expiring_soon_count: number;
+  expired_count: number;
+};
+
+export type CreateInventoryItemPayload = {
+  name: string;
+  category: InventoryCategory;
+  subcategory?: string | null;
+  unit: InventoryUnit;
+  supplier?: string | null;
+  lot_number?: string | null;
+  expiration_date?: string | null;
+  current_stock?: number;
+  minimum_stock?: number;
+  purchase_price_ars?: number | null;
+  profit_margin_percentage?: number;
+  sale_price_ars?: number | null;
+  round_sale_price?: boolean;
+  notes?: string | null;
+  is_active?: boolean;
+};
+
+export type UpdateInventoryItemPayload = Partial<
+  Omit<CreateInventoryItemPayload, "current_stock">
+>;
+
+export type InventoryListFilters = {
+  q?: string;
+  category?: InventoryCategory;
+  supplier?: string;
+  status?: InventoryStatusFilter;
+  page?: number;
+  page_size?: number;
+  sort_by?: InventorySortBy;
+  sort_order?: InventorySortOrder;
+};
+
+export type InventoryMovementType = "entry" | "exit" | "adjustment";
+
+export type InventoryExitReason =
+  | "sale"
+  | "consultation_use"
+  | "inventory_adjustment"
+  | "expired_discard"
+  | "damaged"
+  | "other";
+
+export type InventoryMovement = {
+  id: string;
+  inventory_item_id: string;
+  movement_type: InventoryMovementType;
+  reason: InventoryExitReason | null;
+  quantity: string;
+  unit_cost_ars: string | null;
+  total_cost_ars: string | null;
+  unit_sale_price_ars: string | null;
+  total_sale_price_ars: string | null;
+  supplier: string | null;
+  notes: string | null;
+  related_patient_id: string | null;
+  related_consultation_id: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+};
+
+export type CreateInventoryEntryPayload = {
+  quantity: number;
+  total_cost_ars?: number | null;
+  unit_cost_ars?: number | null;
+  supplier?: string | null;
+  notes?: string | null;
+};
+
+export type CreateInventoryExitPayload = {
+  quantity: number;
+  reason: InventoryExitReason;
+  unit_sale_price_ars?: number | null;
+  notes?: string | null;
+  related_patient_id?: string | null;
+  related_consultation_id?: string | null;
+};
+
+export type InventoryMovementsFilters = {
+  page?: number;
+  page_size?: number;
+  movement_type?: Extract<InventoryMovementType, "entry" | "exit">;
+};
+
 export type AppointmentType =
   | "consultation"
   | "follow_up"
