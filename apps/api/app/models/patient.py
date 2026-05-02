@@ -57,6 +57,10 @@ class Patient(BaseModel):
         "PatientFileReference",
         back_populates="patient",
     )
+    follow_ups: Mapped[list[FollowUp]] = relationship(
+        "FollowUp",
+        back_populates="patient",
+    )
 
     @property
     def created_by_user_name(self) -> str | None:

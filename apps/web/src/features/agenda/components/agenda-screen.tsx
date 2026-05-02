@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  CheckCircle2,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock,
   Plus,
   Stethoscope,
+  Syringe,
   X,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -17,6 +20,12 @@ import { getApiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/features/auth/auth-context";
 import { createAppointment, getAppointments } from "@/services/appointments";
 import { getClinicTeam } from "@/services/clinic";
+import {
+  cancelFollowUp,
+  completeFollowUp,
+  createFollowUp,
+  getFollowUps,
+} from "@/services/follow-ups";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import type {
@@ -25,9 +34,29 @@ import type {
   AppointmentType,
   ClinicTeamMember,
   CreateAppointmentPayload,
+  FollowUp,
+  FollowUpStatus,
+  FollowUpType,
   Owner,
   Patient,
 } from "@/types/api";
+import { FollowUpFormModal } from "@/features/follow-ups/components/follow-up-form-modal";
+import {
+  FollowUpFormState,
+  buildFollowUpPayload,
+  followUpStatusOptions,
+  followUpTypeOptions,
+  getDefaultAssignedUserId as getDefaultFollowUpAssignedUserId,
+  getFollowUpUserName,
+  getFollowUpIcon,
+  getFollowUpStatusBadgeClass,
+  getFollowUpStatusLabel,
+  getFollowUpTypeBadgeClass,
+  getFollowUpTypeLabel,
+  getInitialFollowUpFormState,
+  getPatientOwnerId,
+  validateFollowUpForm,
+} from "@/features/follow-ups/components/follow-up-helpers";
 
 import {
   AppointmentFormState,
@@ -47,10 +76,13 @@ import {
   toDateInputValue,
 } from "./agenda-helpers";
 
+type AgendaTab = "appointments" | "follow_ups";
+
 type AgendaState = {
   isLoading: boolean;
   isSubmitting: boolean;
   appointments: Appointment[];
+  followUps: FollowUp[];
   patients: Patient[];
   owners: Owner[];
   team: ClinicTeamMember[];
@@ -63,6 +95,7 @@ const initialState: AgendaState = {
   isLoading: true,
   isSubmitting: false,
   appointments: [],
+  followUps: [],
   patients: [],
   owners: [],
   team: [],
@@ -71,18 +104,39 @@ const initialState: AgendaState = {
   successMessage: null,
 };
 
-export function AgendaScreen() {
+export function AgendaScreen({
+  initialTab = "appointments",
+}: {
+  initialTab?: AgendaTab;
+}) {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const requestedPatientId = searchParams.get("patient_id") ?? "";
+  const requestedTab = searchParams.get("tab");
   const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date()));
+  const [activeTab, setActiveTab] = useState<AgendaTab>(
+    requestedTab === "follow_ups" ? "follow_ups" : initialTab,
+  );
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<AppointmentType | "all">("all");
   const [vetFilter, setVetFilter] = useState<string>("all");
+  const [followUpStatusFilter, setFollowUpStatusFilter] = useState<FollowUpStatus | "all">(
+    "all",
+  );
+  const [followUpTypeFilter, setFollowUpTypeFilter] = useState<FollowUpType | "all">(
+    "all",
+  );
+  const [followUpVetFilter, setFollowUpVetFilter] = useState<string>("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isFollowUpCreateOpen, setIsFollowUpCreateOpen] = useState(false);
   const [formState, setFormState] = useState<AppointmentFormState>(
     getInitialAppointmentFormState(),
   );
+  const [followUpFormState, setFollowUpFormState] = useState<FollowUpFormState>(
+    getInitialFollowUpFormState(),
+  );
+  const [followUpToCancel, setFollowUpToCancel] = useState<FollowUp | null>(null);
+  const [followUpCancelNotes, setFollowUpCancelNotes] = useState("");
   const [state, setState] = useState<AgendaState>(initialState);
 
   const loadAgenda = useCallback(async (dateValue: string) => {
@@ -93,9 +147,16 @@ export function AgendaScreen() {
     }));
 
     try {
-      const [appointmentsResponse, patientsResponse, ownersResponse, teamResponse] =
+      const [
+        appointmentsResponse,
+        followUpsResponse,
+        patientsResponse,
+        ownersResponse,
+        teamResponse,
+      ] =
         await Promise.all([
           getAppointments(getDayRange(dateValue)),
+          getFollowUps(getDayRange(dateValue)),
           getPatients(),
           getOwners(),
           getClinicTeam(),
@@ -105,6 +166,7 @@ export function AgendaScreen() {
         ...current,
         isLoading: false,
         appointments: appointmentsResponse.data,
+        followUps: followUpsResponse.data,
         patients: patientsResponse.data,
         owners: ownersResponse.data,
         team: teamResponse.data,
@@ -123,12 +185,40 @@ export function AgendaScreen() {
   }, [loadAgenda, selectedDate]);
 
   useEffect(() => {
+    if (requestedTab === "follow_ups") {
+      setActiveTab("follow_ups");
+      return;
+    }
+
+    if (requestedTab === "appointments") {
+      setActiveTab("appointments");
+    }
+  }, [requestedTab]);
+
+  useEffect(() => {
     if (!requestedPatientId || state.patients.length === 0) {
       return;
     }
 
     const patient = state.patients.find((item) => item.id === requestedPatientId);
     if (!patient) {
+      return;
+    }
+
+    if (requestedTab === "follow_ups") {
+      setActiveTab("follow_ups");
+      setFollowUpFormState((current) => ({
+        ...current,
+        patient_id: patient.id,
+        owner_id: patient.owner_id,
+        date: selectedDate,
+        assigned_user_id:
+          current.assigned_user_id ||
+          getDefaultFollowUpAssignedUserId(state.team, user?.email) ||
+          state.team[0]?.id ||
+          "",
+      }));
+      setIsFollowUpCreateOpen(true);
       return;
     }
 
@@ -141,7 +231,14 @@ export function AgendaScreen() {
         current.assigned_user_id || getDefaultAssignedUserId(state.team, user?.email),
     }));
     setIsCreateOpen(true);
-  }, [requestedPatientId, selectedDate, state.patients, state.team, user?.email]);
+  }, [
+    requestedPatientId,
+    requestedTab,
+    selectedDate,
+    state.patients,
+    state.team,
+    user?.email,
+  ]);
 
   function openCreateModal() {
     const nextFormState = getInitialAppointmentFormState(parseDateInput(selectedDate));
@@ -158,8 +255,33 @@ export function AgendaScreen() {
     setIsCreateOpen(true);
   }
 
+  function openFollowUpModal() {
+    const nextFormState = getInitialFollowUpFormState(parseDateInput(selectedDate));
+    setFollowUpFormState({
+      ...nextFormState,
+      date: selectedDate,
+      assigned_user_id:
+        getDefaultFollowUpAssignedUserId(state.team, user?.email) || state.team[0]?.id || "",
+    });
+    setState((current) => ({
+      ...current,
+      flowMessage: null,
+      successMessage: null,
+    }));
+    setIsFollowUpCreateOpen(true);
+  }
+
   function closeCreateModal() {
     setIsCreateOpen(false);
+    setState((current) => ({
+      ...current,
+      isSubmitting: false,
+      flowMessage: null,
+    }));
+  }
+
+  function closeFollowUpModal() {
+    setIsFollowUpCreateOpen(false);
     setState((current) => ({
       ...current,
       isSubmitting: false,
@@ -179,6 +301,14 @@ export function AgendaScreen() {
       ...current,
       patient_id: patientId,
       owner_id: patient?.owner_id ?? current.owner_id,
+    }));
+  }
+
+  function handleFollowUpPatientChange(patientId: string) {
+    setFollowUpFormState((current) => ({
+      ...current,
+      patient_id: patientId,
+      owner_id: getPatientOwnerId(state.patients, patientId, current.owner_id),
     }));
   }
 
@@ -218,23 +348,144 @@ export function AgendaScreen() {
     }
   }
 
+  async function handleCreateFollowUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const validationMessage = validateFollowUpForm(followUpFormState, {
+      teamRequired: state.team.length > 0,
+    });
+    if (validationMessage) {
+      setState((current) => ({ ...current, flowMessage: validationMessage }));
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isSubmitting: true,
+      flowMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await createFollowUp(buildFollowUpPayload(followUpFormState));
+      setIsFollowUpCreateOpen(false);
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        successMessage: followUpFormState.create_appointment
+          ? "Seguimiento y turno programados correctamente."
+          : "Seguimiento programado correctamente.",
+      }));
+      await loadAgenda(selectedDate);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        flowMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleCompleteFollowUp(followUp: FollowUp) {
+    const confirmed = window.confirm("¿Marcar este seguimiento como completado?");
+    if (!confirmed) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isSubmitting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await completeFollowUp(followUp.id);
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        successMessage: "Seguimiento completado correctamente.",
+      }));
+      await loadAgenda(selectedDate);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  function openCancelFollowUpModal(followUp: FollowUp) {
+    setFollowUpToCancel(followUp);
+    setFollowUpCancelNotes("");
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+      flowMessage: null,
+    }));
+  }
+
+  function closeCancelFollowUpModal() {
+    if (state.isSubmitting) {
+      return;
+    }
+
+    setFollowUpToCancel(null);
+    setFollowUpCancelNotes("");
+  }
+
+  async function handleCancelFollowUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!followUpToCancel) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isSubmitting: true,
+      flowMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await cancelFollowUp(followUpToCancel.id, followUpCancelNotes.trim() || undefined);
+      setFollowUpToCancel(null);
+      setFollowUpCancelNotes("");
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        successMessage: "Seguimiento cancelado correctamente.",
+      }));
+      await loadAgenda(selectedDate);
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isSubmitting: false,
+        flowMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
   const veterinarianOptions = useMemo(() => {
     if (state.team.length > 0) {
       return state.team.map((member) => ({ id: member.id, label: member.full_name }));
     }
 
     const options = new Map<string, string>();
-    state.appointments.forEach((appointment) => {
+    [...state.appointments, ...state.followUps].forEach((item) => {
       const label = getAppointmentUserName(
-        appointment.assigned_user_name,
-        appointment.assigned_user_email,
+        item.assigned_user_name,
+        item.assigned_user_email,
       );
-      if (appointment.assigned_user_id && label) {
-        options.set(appointment.assigned_user_id, label);
+      if (item.assigned_user_id && label) {
+        options.set(item.assigned_user_id, label);
       }
     });
     return Array.from(options, ([id, label]) => ({ id, label }));
-  }, [state.appointments, state.team]);
+  }, [state.appointments, state.followUps, state.team]);
 
   const filteredAppointments = useMemo(() => {
     return state.appointments.filter((appointment) => {
@@ -251,18 +502,58 @@ export function AgendaScreen() {
     });
   }, [state.appointments, statusFilter, typeFilter, vetFilter]);
 
+  const filteredFollowUps = useMemo(() => {
+    return state.followUps.filter((followUp) => {
+      if (followUpStatusFilter !== "all" && followUp.status !== followUpStatusFilter) {
+        return false;
+      }
+      if (followUpTypeFilter !== "all" && followUp.follow_up_type !== followUpTypeFilter) {
+        return false;
+      }
+      if (followUpVetFilter !== "all" && followUp.assigned_user_id !== followUpVetFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [state.followUps, followUpStatusFilter, followUpTypeFilter, followUpVetFilter]);
+
   return (
     <div className="page-stack agenda-layout">
       <section className="screen-heading screen-heading--with-action">
         <div>
           <p className="eyebrow">Clínica</p>
           <h1>Agenda</h1>
-          <p>Turnos y citas de la clínica</p>
+          <p>Turnos y seguimientos clínicos de la clínica</p>
         </div>
-        <button className="primary-button agenda-new-button" onClick={openCreateModal} type="button">
+        <button
+          className="primary-button agenda-new-button"
+          onClick={activeTab === "appointments" ? openCreateModal : openFollowUpModal}
+          type="button"
+        >
           <Plus aria-hidden="true" size={18} />
-          <span>Nuevo turno</span>
+          <span>{activeTab === "appointments" ? "Nuevo turno" : "Nuevo seguimiento"}</span>
         </button>
+      </section>
+
+      <section className="panel tabbed-card">
+        <div className="tab-list" aria-label="Secciones de agenda">
+          <button
+            aria-pressed={activeTab === "appointments"}
+            className={activeTab === "appointments" ? "tab-pill tab-pill--active" : "tab-pill"}
+            type="button"
+            onClick={() => setActiveTab("appointments")}
+          >
+            Turnos
+          </button>
+          <button
+            aria-pressed={activeTab === "follow_ups"}
+            className={activeTab === "follow_ups" ? "tab-pill tab-pill--active" : "tab-pill"}
+            type="button"
+            onClick={() => setActiveTab("follow_ups")}
+          >
+            Seguimientos
+          </button>
+        </div>
       </section>
 
       <section className="agenda-date-card" aria-label="Navegación por fecha">
@@ -303,31 +594,65 @@ export function AgendaScreen() {
         ) : null}
         <label className="field">
           <span>Estado</span>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as AppointmentStatus | "all")}
-          >
-            <option value="all">Todos</option>
-            {appointmentStatusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          {activeTab === "appointments" ? (
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as AppointmentStatus | "all")
+              }
+            >
+              <option value="all">Todos</option>
+              {appointmentStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={followUpStatusFilter}
+              onChange={(event) =>
+                setFollowUpStatusFilter(event.target.value as FollowUpStatus | "all")
+              }
+            >
+              <option value="all">Todos</option>
+              {followUpStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <label className="field">
           <span>Tipo</span>
-          <select
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value as AppointmentType | "all")}
-          >
-            <option value="all">Todos</option>
-            {appointmentTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          {activeTab === "appointments" ? (
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value as AppointmentType | "all")}
+            >
+              <option value="all">Todos</option>
+              {appointmentTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={followUpTypeFilter}
+              onChange={(event) =>
+                setFollowUpTypeFilter(event.target.value as FollowUpType | "all")
+              }
+            >
+              <option value="all">Todos</option>
+              {followUpTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
       </section>
 
@@ -336,17 +661,50 @@ export function AgendaScreen() {
 
       {state.isLoading ? <div className="loading-card" aria-label="Cargando agenda" /> : null}
 
-      {!state.isLoading && !state.errorMessage && filteredAppointments.length === 0 ? (
+      {!state.isLoading &&
+      !state.errorMessage &&
+      activeTab === "appointments" &&
+      filteredAppointments.length === 0 ? (
         <div className="empty-state">
           <strong>No hay turnos programados para este día.</strong>
           <span>Crea un turno para agendar una consulta, control, vacuna o examen.</span>
         </div>
       ) : null}
 
-      {!state.isLoading && !state.errorMessage && filteredAppointments.length > 0 ? (
+      {!state.isLoading &&
+      !state.errorMessage &&
+      activeTab === "appointments" &&
+      filteredAppointments.length > 0 ? (
         <section className="appointment-list" aria-label="Turnos del día">
           {filteredAppointments.map((appointment) => (
             <AppointmentCard appointment={appointment} key={appointment.id} />
+          ))}
+        </section>
+      ) : null}
+
+      {!state.isLoading &&
+      !state.errorMessage &&
+      activeTab === "follow_ups" &&
+      filteredFollowUps.length === 0 ? (
+        <div className="empty-state">
+          <strong>No hay seguimientos programados para este día.</strong>
+          <span>Programa controles, vacunas, desparasitaciones o revisiones clínicas.</span>
+        </div>
+      ) : null}
+
+      {!state.isLoading &&
+      !state.errorMessage &&
+      activeTab === "follow_ups" &&
+      filteredFollowUps.length > 0 ? (
+        <section className="appointment-list" aria-label="Seguimientos del día">
+          {filteredFollowUps.map((followUp) => (
+            <FollowUpCard
+              followUp={followUp}
+              isBusy={state.isSubmitting}
+              key={followUp.id}
+              onCancel={openCancelFollowUpModal}
+              onComplete={handleCompleteFollowUp}
+            />
           ))}
         </section>
       ) : null}
@@ -365,6 +723,34 @@ export function AgendaScreen() {
           onPatientChange={handlePatientChange}
           onSubmit={handleCreateAppointment}
           onUpdateForm={setFormState}
+        />
+      ) : null}
+
+      {isFollowUpCreateOpen ? (
+        <FollowUpFormModal
+          flowMessage={state.flowMessage}
+          formState={followUpFormState}
+          isSubmitting={state.isSubmitting}
+          owners={state.owners}
+          patients={state.patients}
+          submitLabel="Programar seguimiento"
+          team={state.team}
+          title="Nuevo seguimiento"
+          onClose={closeFollowUpModal}
+          onPatientChange={handleFollowUpPatientChange}
+          onSubmit={handleCreateFollowUp}
+          onUpdateForm={setFollowUpFormState}
+        />
+      ) : null}
+
+      {followUpToCancel ? (
+        <FollowUpCancelModal
+          followUp={followUpToCancel}
+          isSubmitting={state.isSubmitting}
+          notes={followUpCancelNotes}
+          onClose={closeCancelFollowUpModal}
+          onNotesChange={setFollowUpCancelNotes}
+          onSubmit={handleCancelFollowUp}
         />
       ) : null}
     </div>
@@ -402,6 +788,152 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
       </div>
       <ChevronRight aria-hidden="true" className="patient-card__chevron" size={20} />
     </Link>
+  );
+}
+
+function FollowUpCard({
+  followUp,
+  isBusy,
+  onComplete,
+  onCancel,
+}: {
+  followUp: FollowUp;
+  isBusy: boolean;
+  onComplete: (followUp: FollowUp) => void;
+  onCancel: (followUp: FollowUp) => void;
+}) {
+  const assignedUser = getFollowUpUserName(
+    followUp.assigned_user_name,
+    followUp.assigned_user_email,
+  );
+
+  return (
+    <article className="appointment-card follow-up-card">
+      <div className="appointment-card__time">
+        <Clock aria-hidden="true" size={17} />
+        <strong>{formatDateTimeCompact(followUp.due_at)}</strong>
+      </div>
+      <div className="appointment-card__body">
+        <div className="appointment-card__title-row">
+          <h2>{followUp.title}</h2>
+          <span className={getFollowUpTypeBadgeClass(followUp.follow_up_type)}>
+            {getFollowUpTypeLabel(followUp.follow_up_type)}
+          </span>
+          <span className={getFollowUpStatusBadgeClass(followUp.status)}>
+            {getFollowUpStatusLabel(followUp.status)}
+          </span>
+        </div>
+        {followUp.description ? <p>{followUp.description}</p> : null}
+        <div className="appointment-card__meta">
+          {followUp.patient_name ? <span>Paciente: {followUp.patient_name}</span> : null}
+          {followUp.owner_name ? <span>Propietario: {followUp.owner_name}</span> : null}
+          {assignedUser ? <span>Veterinario: {assignedUser}</span> : null}
+          {followUp.appointment_id ? <span>Turno asociado en agenda</span> : null}
+        </div>
+        <div className="record-card__actions">
+          <Link className="secondary-button" href={`/follow-ups/${followUp.id}`}>
+            Ver
+          </Link>
+          <button
+            className="secondary-button"
+            disabled={
+              isBusy ||
+              followUp.status === "completed" ||
+              followUp.status === "cancelled"
+            }
+            type="button"
+            onClick={() => onComplete(followUp)}
+          >
+            <CheckCircle2 aria-hidden="true" size={16} />
+            Completar
+          </button>
+          <button
+            className="secondary-button secondary-button--danger"
+            disabled={isBusy || followUp.status === "cancelled"}
+            type="button"
+            onClick={() => onCancel(followUp)}
+          >
+            <XCircle aria-hidden="true" size={16} />
+            Cancelar
+          </button>
+        </div>
+      </div>
+      <span className="follow-up-card__icon" aria-hidden="true">
+        {getFollowUpIcon(followUp.follow_up_type)}
+      </span>
+    </article>
+  );
+}
+
+function FollowUpCancelModal({
+  followUp,
+  notes,
+  isSubmitting,
+  onClose,
+  onNotesChange,
+  onSubmit,
+}: {
+  followUp: FollowUp;
+  notes: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onNotesChange: (notes: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        aria-labelledby="cancel-follow-up-title"
+        aria-modal="true"
+        className="bottom-sheet"
+        role="dialog"
+      >
+        <div className="bottom-sheet__header">
+          <div>
+            <p className="eyebrow">Seguimiento clínico</p>
+            <h2 id="cancel-follow-up-title">Cancelar seguimiento</h2>
+          </div>
+          <button
+            aria-label="Cerrar"
+            className="icon-button"
+            disabled={isSubmitting}
+            onClick={onClose}
+            type="button"
+          >
+            <X aria-hidden="true" size={20} />
+          </button>
+        </div>
+
+        <div className="clinical-section">
+          <strong>{followUp.title}</strong>
+          <p className="panel-note">Puedes dejar una nota opcional para documentar la cancelación.</p>
+        </div>
+
+        <form className="entity-form" onSubmit={onSubmit}>
+          <label className="field">
+            <span>Notas de cancelación</span>
+            <textarea
+              rows={4}
+              value={notes}
+              onChange={(event) => onNotesChange(event.target.value)}
+            />
+          </label>
+          <div className="modal-actions">
+            <button
+              className="secondary-button"
+              disabled={isSubmitting}
+              onClick={onClose}
+              type="button"
+            >
+              Volver
+            </button>
+            <button className="danger-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? "Guardando..." : "Cancelar seguimiento"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -681,4 +1213,13 @@ function getDefaultAssignedUserId(team: ClinicTeamMember[], email?: string | nul
     team[0]?.id ??
     ""
   );
+}
+
+function formatDateTimeCompact(value: string) {
+  return new Intl.DateTimeFormat("es", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }

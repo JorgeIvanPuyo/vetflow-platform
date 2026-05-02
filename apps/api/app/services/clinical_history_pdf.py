@@ -54,6 +54,7 @@ class ClinicalHistoryPdfService:
                 exams,
                 preventive_care,
                 file_references,
+                _follow_ups,
             ) = self.consultation_service.get_patient_clinical_history(
                 tenant_id,
                 patient_id,

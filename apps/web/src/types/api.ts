@@ -208,7 +208,12 @@ export type FileDownloadUrlResponse = {
 };
 
 export type ClinicalHistoryTimelineItem = {
-  type: "consultation" | "exam" | "preventive_care" | "file_reference";
+  type:
+    | "consultation"
+    | "exam"
+    | "preventive_care"
+    | "file_reference"
+    | "follow_up";
   id: string;
   date: string;
   title: string;
@@ -216,6 +221,8 @@ export type ClinicalHistoryTimelineItem = {
   created_by?: UserTrace | null;
   attended_by?: UserTrace | null;
   requested_by?: UserTrace | null;
+  assigned_user?: UserTrace | null;
+  follow_up_status?: FollowUpStatus | null;
 };
 
 export type ClinicalHistory = {
@@ -224,6 +231,7 @@ export type ClinicalHistory = {
   exams?: Exam[];
   preventive_care?: PreventiveCare[];
   file_references?: PatientFileReference[];
+  follow_ups?: FollowUp[];
   timeline?: ClinicalHistoryTimelineItem[];
   owner?: Owner | null;
 };
@@ -328,6 +336,94 @@ export type AppointmentFilters = {
   owner_id?: string;
   status?: AppointmentStatus;
   appointment_type?: AppointmentType;
+};
+
+export type FollowUpType =
+  | "consultation_control"
+  | "vaccine"
+  | "deworming"
+  | "exam_review"
+  | "other";
+
+export type FollowUpStatus =
+  | "pending"
+  | "scheduled"
+  | "completed"
+  | "cancelled"
+  | "overdue";
+
+export type FollowUpSourceType =
+  | "consultation"
+  | "preventive_care"
+  | "exam"
+  | "manual";
+
+export type FollowUp = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  owner_id: string | null;
+  assigned_user_id?: string | null;
+  created_by_user_id?: string | null;
+  source_type?: FollowUpSourceType | null;
+  source_id?: string | null;
+  appointment_id?: string | null;
+  title: string;
+  description: string | null;
+  follow_up_type: FollowUpType;
+  status: FollowUpStatus;
+  due_at: string;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  notes: string | null;
+  patient_name?: string | null;
+  owner_name?: string | null;
+  assigned_user_name?: string | null;
+  assigned_user_email?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateFollowUpPayload = {
+  patient_id: string;
+  owner_id?: string | null;
+  assigned_user_id?: string | null;
+  title: string;
+  description?: string | null;
+  follow_up_type: FollowUpType;
+  due_at: string;
+  notes?: string | null;
+  source_type?: FollowUpSourceType | null;
+  source_id?: string | null;
+  create_appointment?: boolean;
+  appointment_duration_minutes?: number;
+};
+
+export type UpdateFollowUpPayload = Partial<
+  Pick<
+    CreateFollowUpPayload,
+    | "assigned_user_id"
+    | "title"
+    | "description"
+    | "follow_up_type"
+    | "due_at"
+    | "notes"
+  >
+> & {
+  status?: FollowUpStatus;
+  appointment_id?: string | null;
+};
+
+export type FollowUpFilters = {
+  date_from?: string;
+  date_to?: string;
+  patient_id?: string;
+  owner_id?: string;
+  assigned_user_id?: string;
+  status?: FollowUpStatus;
+  follow_up_type?: FollowUpType;
 };
 
 export type CreateOwnerPayload = {

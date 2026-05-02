@@ -9,12 +9,14 @@ from app.models.consultation import (
     ConsultationStudyRequest,
 )
 from app.models.exam import Exam
+from app.models.follow_up import FollowUp
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.patient import Patient
 from app.repositories.consultation import ConsultationRepository
 from app.repositories.exam import ExamRepository
 from app.repositories.file_reference import FileReferenceRepository
+from app.repositories.follow_up import FollowUpRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.preventive_care import PreventiveCareRepository
 from app.schemas.consultation import (
@@ -32,6 +34,7 @@ class ConsultationService:
         self.exam_repository = ExamRepository(db)
         self.preventive_care_repository = PreventiveCareRepository(db)
         self.file_reference_repository = FileReferenceRepository(db)
+        self.follow_up_repository = FollowUpRepository(db)
         self.patient_repository = PatientRepository(db)
 
     def create_consultation(
@@ -208,6 +211,7 @@ class ConsultationService:
         list[Exam],
         list[PatientPreventiveCare],
         list[PatientFileReference],
+        list[FollowUp],
     ]:
         patient = self._get_patient_for_tenant(tenant_id, patient_id)
         consultations, _ = self.consultation_repository.list_by_patient(
@@ -223,7 +227,8 @@ class ConsultationService:
             tenant_id,
             patient_id,
         )
-        return patient, consultations, exams, preventive_care, file_references
+        follow_ups, _ = self.follow_up_repository.list_by_patient(tenant_id, patient_id)
+        return patient, consultations, exams, preventive_care, file_references, follow_ups
 
     def _get_patient_for_tenant(
         self, tenant_id: uuid.UUID, patient_id: uuid.UUID

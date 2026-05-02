@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   Cat,
+  ClipboardCheck,
   Download,
   Dog,
   Edit,
@@ -29,8 +30,20 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { FollowUpFormModal } from "@/features/follow-ups/components/follow-up-form-modal";
+import {
+  FollowUpFormState,
+  buildFollowUpPayload,
+  getDefaultAssignedUserId as getDefaultFollowUpAssignedUserId,
+  getFollowUpStatusBadgeClass,
+  getFollowUpStatusLabel,
+  getFollowUpTypeLabel,
+  getInitialFollowUpFormState,
+  validateFollowUpForm,
+} from "@/features/follow-ups/components/follow-up-helpers";
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
 import { exportClinicalHistoryPdf } from "@/services/clinical-history-export";
+import { getClinicTeam } from "@/services/clinic";
 import {
   createPatientFileReference,
   deletePatientFileReference,
@@ -38,16 +51,19 @@ import {
   getPatientFileReferences,
   uploadPatientFile,
 } from "@/services/file-references";
+import { createFollowUp } from "@/services/follow-ups";
 import { getOwner, getOwners } from "@/services/owners";
 import { deletePatient, getPatientClinicalHistory, updatePatient } from "@/services/patients";
 import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
+  ClinicTeamMember,
   ClinicalHistory,
   ClinicalHistoryPdfExportPayload,
   ClinicalHistoryTimelineItem,
   Consultation,
   CreatePatientFileReferencePayload,
   CreatePreventiveCarePayload,
+  FollowUp,
   Owner,
   Patient,
   PatientFileReference,
@@ -63,6 +79,7 @@ type PatientDetailProps = {
 type PatientDetailState = {
   isLoading: boolean;
   isPreventiveSubmitting: boolean;
+  isFollowUpSubmitting: boolean;
   isFileSubmitting: boolean;
   isFileUploading: boolean;
   isFileDeleting: boolean;
@@ -73,6 +90,7 @@ type PatientDetailState = {
   clinicalHistory: ClinicalHistory | null;
   owner: Owner | null;
   owners: Owner[];
+  team: ClinicTeamMember[];
   preventiveCare: PreventiveCare[];
   fileReferences: PatientFileReference[];
   errorMessage: string | null;
@@ -80,7 +98,13 @@ type PatientDetailState = {
 };
 
 type PatientDetailSection = "history" | "info" | "preventive" | "files";
-type TimelineFilter = "all" | "consultation" | "exam" | "preventive_care" | "file_reference";
+type TimelineFilter =
+  | "all"
+  | "consultation"
+  | "exam"
+  | "preventive_care"
+  | "file_reference"
+  | "follow_up";
 
 type PreventiveCareFormState = {
   name: string;
@@ -169,6 +193,7 @@ const initialPdfExportFormState: PdfExportFormState = {
 const initialState: PatientDetailState = {
   isLoading: true,
   isPreventiveSubmitting: false,
+  isFollowUpSubmitting: false,
   isFileSubmitting: false,
   isFileUploading: false,
   isFileDeleting: false,
@@ -179,6 +204,7 @@ const initialState: PatientDetailState = {
   clinicalHistory: null,
   owner: null,
   owners: [],
+  team: [],
   preventiveCare: [],
   fileReferences: [],
   errorMessage: null,
@@ -214,6 +240,7 @@ const timelineFilters: Array<{ value: TimelineFilter; label: string }> = [
   { value: "exam", label: "Exámenes" },
   { value: "preventive_care", label: "Vacunas/desparasitación" },
   { value: "file_reference", label: "Archivos" },
+  { value: "follow_up", label: "Seguimientos" },
 ];
 
 const preventiveCareTypeOptions: Array<{ value: PreventiveCareType; label: string }> = [
@@ -271,12 +298,15 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [activeSection, setActiveSection] = useState<PatientDetailSection>("history");
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
   const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
   const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [fileReferenceToDelete, setFileReferenceToDelete] =
     useState<PatientFileReference | null>(null);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
+  const [followUpFormState, setFollowUpFormState] =
+    useState<FollowUpFormState>(getInitialFollowUpFormState());
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
   const [fileUploadFormState, setFileUploadFormState] =
     useState<FileUploadFormState>(initialFileUploadFormState);
@@ -304,11 +334,13 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         preventiveResponse,
         fileReferenceResponse,
         ownersResponse,
+        teamResponse,
       ] = await Promise.all([
         getPatientClinicalHistory(patientId),
         getPatientPreventiveCare(patientId),
         getPatientFileReferences(patientId),
         getOwners(),
+        getClinicTeam(),
       ]);
       let owner: Owner | null = null;
 
@@ -331,6 +363,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         fileReferences: fileReferenceResponse.data,
         owner,
         owners: ownersResponse.data,
+        team: teamResponse.data,
         errorMessage: null,
       }));
     } catch (error) {
@@ -340,6 +373,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         clinicalHistory: null,
         owner: null,
         owners: [],
+        team: [],
         preventiveCare: [],
         fileReferences: [],
         errorMessage: getApiErrorMessage(error),
@@ -390,6 +424,73 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       setState((current) => ({
         ...current,
         isPreventiveSubmitting: false,
+        errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  function openFollowUpModal(patient: Patient) {
+    setFollowUpFormState({
+      ...getInitialFollowUpFormState(new Date()),
+      patient_id: patient.id,
+      owner_id: patient.owner_id,
+      assigned_user_id:
+        getDefaultFollowUpAssignedUserId(state.team) || state.team[0]?.id || "",
+    });
+    setIsFollowUpModalOpen(true);
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closeFollowUpModal() {
+    if (state.isFollowUpSubmitting) {
+      return;
+    }
+
+    setIsFollowUpModalOpen(false);
+  }
+
+  async function handleCreateFollowUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const validationMessage = validateFollowUpForm(followUpFormState, {
+      teamRequired: state.team.length > 0,
+    });
+    if (validationMessage) {
+      setState((current) => ({
+        ...current,
+        errorMessage: validationMessage,
+        successMessage: null,
+      }));
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isFollowUpSubmitting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      await createFollowUp(buildFollowUpPayload(followUpFormState));
+      setIsFollowUpModalOpen(false);
+      setActiveSection("history");
+      setState((current) => ({
+        ...current,
+        isFollowUpSubmitting: false,
+        successMessage: followUpFormState.create_appointment
+          ? "Seguimiento y turno programados correctamente."
+          : "Seguimiento programado correctamente.",
+      }));
+      await loadPatientDetail();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isFollowUpSubmitting: false,
         errorMessage: getApiErrorMessage(error),
       }));
     }
@@ -869,6 +970,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <CalendarDays aria-hidden="true" size={18} />
             Agendar turno
           </button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => openFollowUpModal(patient)}
+          >
+            <ClipboardCheck aria-hidden="true" size={18} />
+            Programar seguimiento
+          </button>
         </div>
       </section>
 
@@ -933,6 +1042,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
       {isPdfExportModalOpen ? renderPdfExportModal() : null}
       {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
+      {isFollowUpModalOpen ? renderFollowUpModal(patient) : null}
       {isFileUploadModalOpen ? renderFileUploadModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
       {fileReferenceToDelete ? renderFileDeleteModal(fileReferenceToDelete) : null}
@@ -946,7 +1056,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <div>
             <p className="eyebrow">Timeline</p>
             <h2>Historial completo</h2>
-            <p>Consultas, exámenes, vacunas, desparasitación y archivos.</p>
+            <p>Consultas, seguimientos, exámenes, vacunas, desparasitación y archivos.</p>
           </div>
           <div className="history-header-actions">
             <label className="compact-filter">
@@ -1165,6 +1275,27 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           </div>
         )}
       </section>
+    );
+  }
+
+  function renderFollowUpModal(patient: Patient) {
+    return (
+      <FollowUpFormModal
+        flowMessage={state.errorMessage}
+        formState={followUpFormState}
+        isSubmitting={state.isFollowUpSubmitting}
+        ownerLocked
+        owners={state.owners}
+        patientLocked
+        patients={[patient]}
+        submitLabel="Programar seguimiento"
+        team={state.team}
+        title="Nuevo seguimiento"
+        onClose={closeFollowUpModal}
+        onPatientChange={() => undefined}
+        onSubmit={handleCreateFollowUp}
+        onUpdateForm={setFollowUpFormState}
+      />
     );
   }
 
@@ -1908,7 +2039,16 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: boolean) {
   return (
     <>
-      <span className={`badge ${getTimelineBadgeClass(item.type)}`}>{getTimelineTypeLabel(item.type)}</span>
+      <div className="timeline-card__badges">
+        <span className={`badge ${getTimelineBadgeClass(item.type)}`}>
+          {getTimelineTypeLabel(item.type)}
+        </span>
+        {item.type === "follow_up" && item.follow_up_status ? (
+          <span className={getFollowUpStatusBadgeClass(item.follow_up_status)}>
+            {getFollowUpStatusLabel(item.follow_up_status)}
+          </span>
+        ) : null}
+      </div>
       <time dateTime={item.date}>{formatDateTime(item.date)}</time>
       <h3>{item.title}</h3>
       <p>{item.summary}</p>
@@ -1940,6 +2080,7 @@ function getTimelineTraceabilityLines(item: ClinicalHistoryTimelineItem) {
   const createdBy = getUserTraceLabel(item.created_by);
   const attendedBy = getUserTraceLabel(item.attended_by);
   const requestedBy = getUserTraceLabel(item.requested_by);
+  const assignedUser = getUserTraceLabel(item.assigned_user);
 
   if (item.type === "consultation") {
     const lines: Array<{ label: string; value: string }> = [];
@@ -1962,6 +2103,19 @@ function getTimelineTraceabilityLines(item: ClinicalHistoryTimelineItem) {
     return [{ label: "Registrado por", value: createdBy }];
   }
 
+  if (item.type === "follow_up") {
+    const lines: Array<{ label: string; value: string }> = [];
+
+    if (assignedUser) {
+      lines.push({ label: "Veterinario asignado", value: assignedUser });
+    }
+    if (createdBy && createdBy !== assignedUser) {
+      lines.push({ label: "Registrado por", value: createdBy });
+    }
+
+    return lines;
+  }
+
   return [];
 }
 
@@ -1980,7 +2134,15 @@ function formatDateTime(value: string) {
 
 function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryTimelineItem[] {
   if (clinicalHistory.timeline) {
-    return clinicalHistory.timeline;
+    const followUpsById = new Map(
+      (clinicalHistory.follow_ups ?? []).map((followUp) => [followUp.id, followUp]),
+    );
+
+    return clinicalHistory.timeline.map((item) => ({
+      ...item,
+      follow_up_status:
+        item.type === "follow_up" ? followUpsById.get(item.id)?.status ?? null : null,
+    }));
   }
 
   return clinicalHistory.consultations.map((consultation) => ({
@@ -2019,6 +2181,9 @@ function getTimelineHref(item: ClinicalHistoryTimelineItem) {
   if (item.type === "exam") {
     return `/exams/${item.id}`;
   }
+  if (item.type === "follow_up") {
+    return `/follow-ups/${item.id}`;
+  }
   return null;
 }
 
@@ -2026,6 +2191,7 @@ function getTimelineIcon(type: ClinicalHistoryTimelineItem["type"]) {
   if (type === "consultation") return <Stethoscope size={18} />;
   if (type === "exam") return <FileText size={18} />;
   if (type === "preventive_care") return <Syringe size={18} />;
+  if (type === "follow_up") return <ClipboardCheck size={18} />;
   return <FolderOpen size={18} />;
 }
 
@@ -2035,12 +2201,14 @@ function getTimelineTypeLabel(type: ClinicalHistoryTimelineItem["type"]) {
     exam: "Examen",
     preventive_care: "Vacuna/desparasitación",
     file_reference: "Archivo",
+    follow_up: "Seguimiento",
   };
   return labels[type];
 }
 
 function getTimelineBadgeClass(type: ClinicalHistoryTimelineItem["type"]) {
   if (type === "exam" || type === "file_reference") return "badge--blue";
+  if (type === "follow_up") return "badge--warning";
   return "badge--success";
 }
 

@@ -21,6 +21,7 @@ from app.schemas.consultation import (
 )
 from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
+from app.schemas.follow_up import FollowUpRead
 from app.schemas.patient import PatientRead
 from app.schemas.preventive_care import PreventiveCareRead
 from app.services.consultation import ConsultationService
@@ -215,6 +216,7 @@ def get_patient_clinical_history(
         exams,
         preventive_care,
         file_references,
+        follow_ups,
     ) = ConsultationService(db).get_patient_clinical_history(
         tenant.tenant_id,
         patient_id,
@@ -268,6 +270,24 @@ def get_patient_clinical_history(
             )
             for file_reference in file_references
         ],
+        *[
+            ClinicalHistoryTimelineItem(
+                type="follow_up",
+                id=follow_up.id,
+                date=follow_up.due_at,
+                title=follow_up.title,
+                summary=_follow_up_summary(follow_up),
+                created_by=_user_trace(
+                    follow_up.created_by_user,
+                    tenant.tenant_id,
+                ),
+                assigned_user=_user_trace(
+                    follow_up.assigned_user,
+                    tenant.tenant_id,
+                ),
+            )
+            for follow_up in follow_ups
+        ],
     ]
     timeline.sort(key=lambda item: item.date, reverse=True)
 
@@ -285,11 +305,12 @@ def get_patient_clinical_history(
             FileReferenceRead.model_validate(file_reference)
             for file_reference in file_references
         ],
+        follow_ups=[FollowUpRead.model_validate(follow_up) for follow_up in follow_ups],
         timeline=timeline,
     )
     body = clinical_history.model_dump(mode="json")
     for item in body["timeline"]:
-        for key in ("created_by", "attended_by", "requested_by"):
+        for key in ("created_by", "attended_by", "requested_by", "assigned_user"):
             if item.get(key) is None:
                 item.pop(key, None)
 
@@ -323,6 +344,29 @@ def _preventive_care_summary(record) -> str:
     return record.lot_number or record.notes or care_type_labels.get(
         record.care_type,
         record.care_type,
+    )
+
+
+def _follow_up_summary(follow_up) -> str:
+    follow_up_type_labels = {
+        "consultation_control": "Próximo control",
+        "vaccine": "Próxima vacuna",
+        "deworming": "Próxima desparasitación",
+        "exam_review": "Revisión de examen",
+        "other": "Seguimiento clínico",
+    }
+    status_labels = {
+        "pending": "Pendiente",
+        "scheduled": "Programado",
+        "completed": "Completado",
+        "cancelled": "Cancelado",
+        "overdue": "Vencido",
+    }
+    if follow_up.description:
+        return follow_up.description
+    return (
+        f"{status_labels.get(follow_up.status, follow_up.status)} · "
+        f"{follow_up_type_labels.get(follow_up.follow_up_type, follow_up.follow_up_type)}"
     )
 
 

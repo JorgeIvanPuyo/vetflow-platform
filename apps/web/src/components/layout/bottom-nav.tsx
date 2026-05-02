@@ -24,7 +24,11 @@ export function BottomNav() {
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive =
-          item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          item.href === "/agenda"
+            ? pathname.startsWith("/agenda") || pathname.startsWith("/follow-ups")
+            : item.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(item.href);
 
         return (
           <Link

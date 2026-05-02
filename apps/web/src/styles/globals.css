@@ -741,6 +741,21 @@ code {
   line-height: 1.45;
 }
 
+.follow-up-card {
+  align-items: start;
+}
+
+.follow-up-card__icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+}
+
 .appointment-card__meta {
   display: flex;
   flex-wrap: wrap;
@@ -1531,6 +1546,12 @@ code {
   margin: 0;
   color: var(--color-text-muted);
   line-height: 1.5;
+}
+
+.timeline-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .simple-list,

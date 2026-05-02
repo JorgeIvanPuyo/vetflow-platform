@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.models.consultation import Consultation
 from app.models.exam import Exam
+from app.models.follow_up import FollowUp
 from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
@@ -75,6 +76,12 @@ class OwnerService:
                 delete(PatientPreventiveCare).where(
                     PatientPreventiveCare.tenant_id == tenant_id,
                     PatientPreventiveCare.patient_id.in_(patient_ids),
+                )
+            )
+            self.db.execute(
+                delete(FollowUp).where(
+                    FollowUp.tenant_id == tenant_id,
+                    FollowUp.patient_id.in_(patient_ids),
                 )
             )
             self.db.execute(

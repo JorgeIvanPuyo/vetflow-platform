@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.schemas.exam import ExamRead
 from app.schemas.file_reference import FileReferenceRead
+from app.schemas.follow_up import FollowUpRead
 from app.schemas.patient import PatientRead
 from app.schemas.preventive_care import PreventiveCareRead
 
@@ -167,6 +168,7 @@ class ClinicalHistoryTimelineItem(BaseModel):
     created_by: TimelineUserTrace | None = None
     attended_by: TimelineUserTrace | None = None
     requested_by: TimelineUserTrace | None = None
+    assigned_user: TimelineUserTrace | None = None
 
 
 class ClinicalHistoryRead(BaseModel):
@@ -175,4 +177,5 @@ class ClinicalHistoryRead(BaseModel):
     exams: list[ExamRead]
     preventive_care: list[PreventiveCareRead] = Field(default_factory=list)
     file_references: list[FileReferenceRead] = Field(default_factory=list)
+    follow_ups: list[FollowUpRead] = Field(default_factory=list)
     timeline: list[ClinicalHistoryTimelineItem]

@@ -29,3 +29,7 @@ class Tenant(BaseModel):
         "Appointment",
         back_populates="tenant",
     )
+    follow_ups: Mapped[list[FollowUp]] = relationship(
+        "FollowUp",
+        back_populates="tenant",
+    )
