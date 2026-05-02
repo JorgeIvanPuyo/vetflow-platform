@@ -110,7 +110,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const router = useRouter();
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
-  const [movementFilter, setMovementFilter] = useState<MovementFilter>("all");
+  const [movementFilter, setMovementFilter] = useState<InventoryMovementFilter>("all");
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isEntryOpen, setIsEntryOpen] = useState(false);
@@ -144,7 +144,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   }, [itemId]);
 
   const loadMovements = useCallback(
-    async (page: number, filter: MovementFilter) => {
+    async (page: number, filter: InventoryMovementFilter) => {
       setMovementState((current) => ({
         ...current,
         isLoading: true,
@@ -177,7 +177,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   );
 
   const refreshDetail = useCallback(
-    async (page: number, filter: MovementFilter) => {
+    async (page: number, filter: InventoryMovementFilter) => {
       setState((current) => ({
         ...current,
         isLoading: true,
