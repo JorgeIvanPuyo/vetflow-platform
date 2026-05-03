@@ -181,6 +181,7 @@ class ClinicService:
             "email": tenant.email,
             "address": tenant.address,
             "notes": tenant.notes,
+            "timezone": tenant.timezone or "America/Panama",
         }
 
     def _validate_logo_file(

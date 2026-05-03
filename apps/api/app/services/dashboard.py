@@ -274,20 +274,20 @@ class DashboardService:
 
         if date_from_raw is None and date_to_raw is None:
             return DashboardTimeWindows(
-                requested_start=today_start,
-                requested_end=today_end,
-                appointments_start=today_start,
-                appointments_end=today_end,
-                follow_ups_start=now,
-                follow_ups_end=now + timedelta(days=7),
-                overdue_before=now,
-                consultations_start=now - timedelta(days=7),
-                consultations_end=now,
-                preventive_care_start=now,
-                preventive_care_end=now + timedelta(days=30),
-                files_start=now - timedelta(days=7),
-                files_end=now,
-            )
+            requested_start=today_start,
+            requested_end=today_end,
+            appointments_start=now,
+            appointments_end=now + timedelta(days=1),
+            follow_ups_start=now,
+            follow_ups_end=now + timedelta(days=7),
+            overdue_before=now,
+            consultations_start=now - timedelta(days=7),
+            consultations_end=now,
+            preventive_care_start=now,
+            preventive_care_end=now + timedelta(days=30),
+            files_start=now - timedelta(days=7),
+            files_end=now,
+        )
 
         requested_start = self._parse_datetime_boundary(date_from_raw, is_end=False) or today_start
         requested_end = self._parse_datetime_boundary(date_to_raw, is_end=True) or today_end

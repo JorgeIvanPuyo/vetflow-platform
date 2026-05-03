@@ -50,3 +50,5 @@ GCP_*.json
 firebase-service-account.json
 apps/api/firebase-service-account.json
 apps/web/firebaseConfig.json
+
+*vetflow*-*.zip

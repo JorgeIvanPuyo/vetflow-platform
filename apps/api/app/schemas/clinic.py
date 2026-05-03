@@ -14,6 +14,7 @@ class ClinicProfileRead(BaseModel):
     email: str | None = None
     address: str | None = None
     notes: str | None = None
+    timezone: str
 
     @model_validator(mode="after")
     def apply_display_name_fallback(self) -> "ClinicProfileRead":
@@ -29,6 +30,7 @@ class ClinicProfileUpdate(BaseModel):
     email: str | None = None
     address: str | None = None
     notes: str | None = None
+    timezone: str | None = None
 
 
 class ClinicTeamMemberRead(BaseModel):

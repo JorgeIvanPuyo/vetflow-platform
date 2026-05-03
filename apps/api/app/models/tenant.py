@@ -17,6 +17,12 @@ class Tenant(BaseModel):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="America/Panama",
+        server_default="America/Panama",
+    )
 
     users: Mapped[list[User]] = relationship("User", back_populates="tenant")
     owners: Mapped[list[Owner]] = relationship("Owner", back_populates="tenant")
