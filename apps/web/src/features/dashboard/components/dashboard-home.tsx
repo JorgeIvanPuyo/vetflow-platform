@@ -53,6 +53,8 @@ type DashboardState = {
   errorMessage: string | null;
 };
 
+type DashboardKpiTone = "blue" | "success" | "warning" | "danger";
+
 const initialState: DashboardState = {
   isLoading: true,
   isRefreshing: false,
@@ -128,69 +130,17 @@ export function DashboardHome() {
 
   return (
     <div className="page-stack dashboard-page">
-      <section className="screen-heading">
-        <div className="screen-heading--with-action dashboard-heading-row">
-          <div>
-            <p className="eyebrow">Clínica</p>
-            <h1>Dashboard</h1>
-            <p>Resumen operativo de la clínica</p>
-          </div>
-          <button
-            className="secondary-button dashboard-refresh-button"
-            type="button"
-            onClick={() => void loadDashboard()}
-            disabled={state.isLoading || state.isRefreshing}
-          >
-            <RefreshCw
-              size={16}
-              className={state.isRefreshing ? "dashboard-spin" : undefined}
-            />
-            <span>{state.isRefreshing ? "Actualizando..." : "Actualizar"}</span>
-          </button>
-        </div>
-      </section>
-
-      <section className="panel dashboard-filters-panel">
-        <div className="section-heading">
-          <p className="eyebrow">Filtros</p>
-          <h2>Vista operativa</h2>
-        </div>
-
-        <div className="dashboard-filters">
-          <div className="dashboard-period-filter">
-            <span className="dashboard-filter-label">Periodo</span>
-            <div className="tab-list" role="tablist" aria-label="Periodo del dashboard">
-              {dashboardQuickPeriods.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`tab-pill${periodFilter === option.value ? " tab-pill--active" : ""}`}
-                  onClick={() => setPeriodFilter(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {showVetFilter ? (
-            <label className="compact-filter dashboard-vet-filter">
-              <span className="dashboard-filter-label">Veterinario</span>
-              <select
-                value={assignedUserId}
-                onChange={(event) => setAssignedUserId(event.target.value)}
-              >
-                <option value="all">Todos</option>
-                {state.team.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.full_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-        </div>
-      </section>
+      <DashboardHeader
+        assignedUserId={assignedUserId}
+        isLoading={state.isLoading}
+        isRefreshing={state.isRefreshing}
+        onAssignedUserChange={setAssignedUserId}
+        onPeriodChange={setPeriodFilter}
+        onRefresh={() => void loadDashboard()}
+        periodFilter={periodFilter}
+        showVetFilter={showVetFilter}
+        team={state.team}
+      />
 
       {state.isLoading && !summary ? (
         <section className="panel empty-state">
@@ -216,63 +166,9 @@ export function DashboardHome() {
             </section>
           ) : null}
 
-          <section className="kpi-grid" aria-label="Indicadores principales">
-            <DashboardKpiCard
-              href="/agenda"
-              icon={getKpiIcon("appointments")}
-              label={getDashboardCardLabel(periodFilter, "Turnos hoy", "Turnos del período")}
-              value={summary.cards.appointments_today}
-              helper={getDashboardCardHelper(
-                periodFilter,
-                "Agenda programada para hoy",
-                "Turnos encontrados en el período seleccionado",
-              )}
-              tone="blue"
-            />
-            <DashboardKpiCard
-              href="/follow-ups"
-              icon={getKpiIcon("upcoming_follow_ups")}
-              label="Seguimientos próximos"
-              value={summary.cards.follow_ups_upcoming}
-              helper="Controles y recordatorios próximos"
-              tone="success"
-            />
-            <DashboardKpiCard
-              href="/follow-ups"
-              icon={getKpiIcon("overdue_follow_ups")}
-              label="Seguimientos vencidos"
-              value={summary.cards.follow_ups_overdue}
-              helper="Casos que necesitan atención"
-              tone="warning"
-            />
-            <DashboardKpiCard
-              href={summary.recent_consultations[0] ? `/consultations/${summary.recent_consultations[0].id}` : "/patients"}
-              icon={getKpiIcon("consultations")}
-              label="Consultas recientes"
-              value={summary.cards.consultations_recent}
-              helper="Actividad clínica registrada"
-              tone="success"
-            />
-            <DashboardKpiCard
-              href={summary.upcoming_preventive_care[0] ? `/patients/${summary.upcoming_preventive_care[0].patient_id}` : "/patients"}
-              icon={getKpiIcon("preventive_care")}
-              label="Vacunas próximas"
-              value={summary.cards.preventive_care_upcoming}
-              helper="Próximas vacunas y desparasitaciones"
-              tone="blue"
-            />
-            <DashboardKpiCard
-              href={summary.recent_files[0] ? `/patients/${summary.recent_files[0].patient_id}` : "/patients"}
-              icon={getKpiIcon("files")}
-              label="Archivos recientes"
-              value={summary.cards.files_recent}
-              helper="Documentos y estudios cargados"
-              tone="danger"
-            />
-          </section>
-
-          <div className="dashboard-sections-grid">
+          <div className="dashboard-priority-grid">
             <DashboardSection
+              className="dashboard-section--appointments"
               title={getDashboardCardLabel(periodFilter, "Turnos de hoy", "Turnos del período")}
               subtitle="Primeros turnos registrados en agenda"
               actionHref="/agenda"
@@ -294,6 +190,7 @@ export function DashboardHome() {
             </DashboardSection>
 
             <DashboardSection
+              className="dashboard-section--critical"
               title="Seguimientos críticos"
               subtitle="Vencidos primero, luego próximos"
               actionHref="/follow-ups"
@@ -313,6 +210,7 @@ export function DashboardHome() {
             </DashboardSection>
 
             <DashboardSection
+              className="dashboard-section--consultations"
               title="Consultas recientes"
               subtitle="Últimos registros clínicos"
             >
@@ -330,6 +228,7 @@ export function DashboardHome() {
             </DashboardSection>
 
             <DashboardSection
+              className="dashboard-section--preventive"
               title="Próximas vacunas y desparasitaciones"
               subtitle="Preventivos con vencimiento cercano"
             >
@@ -345,7 +244,72 @@ export function DashboardHome() {
                 </DashboardEmptyMessage>
               )}
             </DashboardSection>
+          </div>
 
+          <DashboardKpiStrip
+            items={[
+              {
+                href: "/agenda",
+                icon: getKpiIcon("appointments"),
+                label: getDashboardCardLabel(periodFilter, "Turnos hoy", "Turnos del período"),
+                value: summary.cards.appointments_today,
+                helper: getDashboardCardHelper(
+                  periodFilter,
+                  "Agenda programada para hoy",
+                  "Turnos encontrados en el período seleccionado",
+                ),
+                tone: "blue",
+              },
+              {
+                href: "/follow-ups",
+                icon: getKpiIcon("upcoming_follow_ups"),
+                label: "Seguimientos próximos",
+                value: summary.cards.follow_ups_upcoming,
+                helper: "Controles y recordatorios próximos",
+                tone: "success",
+              },
+              {
+                href: "/follow-ups",
+                icon: getKpiIcon("overdue_follow_ups"),
+                label: "Seguimientos vencidos",
+                value: summary.cards.follow_ups_overdue,
+                helper: "Casos que necesitan atención",
+                tone: "warning",
+              },
+              {
+                href: summary.recent_consultations[0]
+                  ? `/consultations/${summary.recent_consultations[0].id}`
+                  : "/patients",
+                icon: getKpiIcon("consultations"),
+                label: "Consultas recientes",
+                value: summary.cards.consultations_recent,
+                helper: "Actividad clínica registrada",
+                tone: "success",
+              },
+              {
+                href: summary.upcoming_preventive_care[0]
+                  ? `/patients/${summary.upcoming_preventive_care[0].patient_id}`
+                  : "/patients",
+                icon: getKpiIcon("preventive_care"),
+                label: "Vacunas próximas",
+                value: summary.cards.preventive_care_upcoming,
+                helper: "Próximas vacunas y desparasitaciones",
+                tone: "blue",
+              },
+              {
+                href: summary.recent_files[0]
+                  ? `/patients/${summary.recent_files[0].patient_id}`
+                  : "/patients",
+                icon: getKpiIcon("files"),
+                label: "Archivos recientes",
+                value: summary.cards.files_recent,
+                helper: "Documentos y estudios cargados",
+                tone: "danger",
+              },
+            ]}
+          />
+
+          <div className="dashboard-secondary-grid">
             <DashboardSection
               title="Archivos recientes"
               subtitle="Documentos y resultados subidos a la historia clínica"
@@ -386,6 +350,108 @@ export function DashboardHome() {
   );
 }
 
+function DashboardHeader({
+  assignedUserId,
+  isLoading,
+  isRefreshing,
+  onAssignedUserChange,
+  onPeriodChange,
+  onRefresh,
+  periodFilter,
+  showVetFilter,
+  team,
+}: {
+  assignedUserId: string;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  onAssignedUserChange: (value: string) => void;
+  onPeriodChange: (value: DashboardQuickPeriod) => void;
+  onRefresh: () => void;
+  periodFilter: DashboardQuickPeriod;
+  showVetFilter: boolean;
+  team: ClinicTeamMember[];
+}) {
+  return (
+    <section className="screen-heading dashboard-hero">
+      <div className="dashboard-heading-row">
+        <div>
+          <p className="eyebrow">Clínica</p>
+          <h1>Dashboard</h1>
+          <p>Operación clínica en tiempo real</p>
+        </div>
+        <button
+          className="secondary-button dashboard-refresh-button"
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading || isRefreshing}
+        >
+          <RefreshCw
+            size={16}
+            className={isRefreshing ? "dashboard-spin" : undefined}
+          />
+          <span>{isRefreshing ? "Actualizando..." : "Actualizar"}</span>
+        </button>
+      </div>
+
+      <div className="dashboard-filters" aria-label="Filtros del dashboard">
+        <div className="dashboard-period-filter">
+          <span className="dashboard-filter-label">Periodo</span>
+          <div className="tab-list" role="tablist" aria-label="Periodo del dashboard">
+            {dashboardQuickPeriods.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`tab-pill${periodFilter === option.value ? " tab-pill--active" : ""}`}
+                onClick={() => onPeriodChange(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {showVetFilter ? (
+          <label className="compact-filter dashboard-vet-filter">
+            <span className="dashboard-filter-label">Veterinario</span>
+            <select
+              value={assignedUserId}
+              onChange={(event) => onAssignedUserChange(event.target.value)}
+            >
+              <option value="all">Todos</option>
+              {team.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function DashboardKpiStrip({
+  items,
+}: {
+  items: Array<{
+    href: string;
+    icon: ReactNode;
+    label: string;
+    value: number;
+    helper: string;
+    tone: DashboardKpiTone;
+  }>;
+}) {
+  return (
+    <section className="dashboard-kpi-strip" aria-label="Indicadores principales">
+      {items.map((item) => (
+        <DashboardKpiCard key={`${item.href}-${item.label}`} {...item} />
+      ))}
+    </section>
+  );
+}
+
 function DashboardKpiCard({
   href,
   icon,
@@ -399,7 +465,7 @@ function DashboardKpiCard({
   label: string;
   value: number;
   helper: string;
-  tone: "blue" | "success" | "warning" | "danger";
+  tone: DashboardKpiTone;
 }) {
   return (
     <Link className={`kpi-card kpi-card--${tone} dashboard-kpi-link`} href={href}>
@@ -417,15 +483,17 @@ function DashboardSection({
   actionHref,
   actionLabel,
   children,
+  className,
 }: {
   title: string;
   subtitle: string;
   actionHref?: string;
   actionLabel?: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <section className="panel dashboard-section">
+    <section className={`panel dashboard-section${className ? ` ${className}` : ""}`}>
       <div className="section-heading section-heading--row">
         <div>
           <h2>{title}</h2>

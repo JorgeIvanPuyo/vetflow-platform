@@ -580,12 +580,34 @@ code {
   gap: 10px;
 }
 
-.dashboard-filters-panel {
-  display: grid;
-  gap: 14px;
+.dashboard-page {
+  gap: 12px;
 }
 
-.dashboard-heading-row,
+.dashboard-hero {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.dashboard-hero h1 {
+  margin: 1px 0 2px;
+  font-size: clamp(1.55rem, 8vw, 2.2rem);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.dashboard-hero .eyebrow {
+  font-size: 0.7rem;
+}
+
+.dashboard-heading-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
 .dashboard-section .section-heading--row {
   flex-wrap: wrap;
   align-items: flex-start;
@@ -593,42 +615,125 @@ code {
 
 .dashboard-filters {
   display: grid;
-  gap: 14px;
+  gap: 8px;
+}
+
+.dashboard-page .tab-list {
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.dashboard-page .tab-pill {
+  min-height: 34px;
+  padding-inline: 10px;
+  font-size: 0.8rem;
 }
 
 .dashboard-period-filter,
 .dashboard-vet-filter {
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .dashboard-filter-label {
   color: var(--color-text-muted);
-  font-size: 0.88rem;
+  font-size: 0.76rem;
   font-weight: 600;
 }
 
 .dashboard-refresh-button {
-  min-height: 42px;
+  min-height: 38px;
+  padding-inline: 10px;
   white-space: nowrap;
+}
+
+.dashboard-vet-filter select {
+  min-height: 38px;
+  padding-block: 0.45rem;
+  font-size: 0.88rem;
 }
 
 .dashboard-spin {
   animation: dashboard-spin 1s linear infinite;
 }
 
-.dashboard-kpi-link {
-  min-height: 164px;
+.dashboard-kpi-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scroll-snap-type: x proximity;
 }
 
-.dashboard-sections-grid {
+.dashboard-kpi-strip .dashboard-kpi-link {
+  min-width: 158px;
+  min-height: 98px;
+  flex: 0 0 158px;
+  scroll-snap-align: start;
+}
+
+.dashboard-kpi-strip .kpi-card {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px;
+}
+
+.dashboard-kpi-strip .kpi-card__icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
+}
+
+.dashboard-kpi-strip .kpi-card__value {
+  font-size: 1.35rem;
+}
+
+.dashboard-kpi-strip .kpi-card h2,
+.dashboard-kpi-strip .kpi-card p {
+  grid-column: 1 / -1;
+}
+
+.dashboard-kpi-strip .kpi-card h2 {
+  font-size: 0.82rem;
+}
+
+.dashboard-kpi-strip .kpi-card p {
+  font-size: 0.74rem;
+  line-height: 1.25;
+}
+
+.dashboard-kpi-link {
+  min-height: 150px;
+}
+
+.dashboard-priority-grid,
+.dashboard-secondary-grid {
   display: grid;
-  gap: 16px;
+  gap: 10px;
+}
+
+.dashboard-section--critical {
+  order: 1;
+}
+
+.dashboard-section--appointments {
+  order: 2;
+}
+
+.dashboard-section--preventive {
+  order: 3;
+}
+
+.dashboard-section--consultations {
+  order: 4;
 }
 
 .dashboard-section {
   display: grid;
-  gap: 14px;
+  gap: 10px;
+  padding: 12px;
+  align-content: start;
 }
 
 .dashboard-section-link {
@@ -644,13 +749,13 @@ code {
 .dashboard-list,
 .dashboard-activity-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dashboard-row {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface-soft);
@@ -659,14 +764,14 @@ code {
 .dashboard-row__main {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .dashboard-row__main h3,
 .dashboard-activity-card h3 {
   margin: 0;
-  font-size: 1rem;
-  letter-spacing: -0.02em;
+  font-size: 0.94rem;
+  letter-spacing: 0;
 }
 
 .dashboard-row__main p,
@@ -674,20 +779,20 @@ code {
 .dashboard-activity-card p {
   margin: 0;
   color: var(--color-text-muted);
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 .dashboard-row__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dashboard-row__time,
 .dashboard-row__badge {
   color: var(--color-text-muted);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
 }
 
 .dashboard-row__badge {
@@ -701,8 +806,8 @@ code {
 
 .dashboard-activity-card {
   display: grid;
-  gap: 14px;
-  padding: 14px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface-soft);
@@ -711,12 +816,12 @@ code {
 .dashboard-activity-card__header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .dashboard-activity-card__icon {
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -728,15 +833,15 @@ code {
 .dashboard-activity-card__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .dashboard-activity-card__stats div {
   display: grid;
-  gap: 4px;
-  padding: 10px;
+  gap: 3px;
+  padding: 8px;
   border: 1px solid rgba(228, 222, 211, 0.9);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--color-surface);
 }
 
@@ -2765,6 +2870,7 @@ code {
 @media (min-width: 760px) {
   .page-container {
     padding-top: 28px;
+    padding-bottom: 32px;
   }
 
   .site-header__bar {
@@ -2786,15 +2892,7 @@ code {
   }
 
   .bottom-nav {
-    left: 50%;
-    right: auto;
-    bottom: 18px;
-    width: min(620px, calc(100% - 48px));
-    min-height: 64px;
-    transform: translateX(-50%);
-    border: 1px solid var(--color-border);
-    border-radius: 24px;
-    overflow: hidden;
+    display: none;
   }
 
   .content-grid,
@@ -2813,12 +2911,55 @@ code {
   }
 
   .dashboard-filters {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
     align-items: end;
   }
 
-  .dashboard-sections-grid {
+  .dashboard-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.95fr);
+    align-items: end;
+    padding: 14px 16px;
+  }
+
+  .dashboard-heading-row {
+    min-width: 0;
+  }
+
+  .dashboard-priority-grid,
+  .dashboard-secondary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-priority-grid {
+    align-items: start;
+  }
+
+  .dashboard-section--appointments {
+    order: 1;
+  }
+
+  .dashboard-section--critical {
+    order: 2;
+  }
+
+  .dashboard-section--consultations {
+    order: 3;
+  }
+
+  .dashboard-section--preventive {
+    order: 4;
+  }
+
+  .dashboard-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .dashboard-kpi-strip .dashboard-kpi-link {
+    min-width: 0;
+    min-height: 104px;
+    flex: initial;
   }
 
   .inventory-toolbar {
