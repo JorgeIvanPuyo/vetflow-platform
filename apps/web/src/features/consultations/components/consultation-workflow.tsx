@@ -123,7 +123,8 @@ type InventoryMedicationFormState = {
 
 type ToastState = {
   title: string;
-  detail: string;
+  detail?: string;
+  variant: "success" | "error";
 };
 
 const steps = [
@@ -211,6 +212,9 @@ function getStepIcon(stepId: (typeof steps)[number]["id"]) {
 export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const router = useRouter();
   const hasStartedRef = useRef(false);
+  const previousStepRef = useRef<number | null>(null);
+  const stepCardRef = useRef<HTMLElement | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isAddingStudy, setIsAddingStudy] = useState(false);
@@ -316,12 +320,66 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   }, [initializeWorkflow]);
 
   useEffect(() => {
+    if (!toast) {
+      return;
+    }
+
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 5000);
+
+    return () => {
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+    };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!errorMessage || !consultation) {
+      return;
+    }
+
+    showToast({
+      title: "No fue posible completar la acción",
+      detail: errorMessage,
+      variant: "error",
+    });
+    setErrorMessage(null);
+  }, [consultation, errorMessage]);
+
+  useEffect(() => {
     if (!localStorageKeyPrefix || isLoading) {
       return;
     }
 
     saveLocalStep(localStorageKeyPrefix, activeStep, formState);
   }, [activeStep, formState, isLoading, localStorageKeyPrefix]);
+
+  useEffect(() => {
+    if (isLoading) {
+      previousStepRef.current = activeStep;
+      return;
+    }
+
+    if (previousStepRef.current === null) {
+      previousStepRef.current = activeStep;
+      return;
+    }
+
+    if (previousStepRef.current === activeStep) {
+      return;
+    }
+
+    stepCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    previousStepRef.current = activeStep;
+  }, [activeStep, isLoading]);
 
   useEffect(() => {
     if (medicationMode !== "inventory") {
@@ -374,6 +432,14 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     setFormState((current) => ({ ...current, [key]: value }));
   }
 
+  function showToast(nextToast: ToastState) {
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToast(nextToast);
+  }
+
   async function saveStep(targetStep = activeStep, status: "draft" | "completed" = "draft") {
     if (!consultation || !localStorageKeyPrefix) {
       return false;
@@ -399,14 +465,20 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       if (targetStep !== activeStep) {
         clearLocalStep(localStorageKeyPrefix, targetStep);
       }
-      setToast({ title: "Progreso guardado", detail: `Paso ${targetStep} de 8` });
+      showToast({
+        title: "Progreso guardado",
+        detail: `Paso ${targetStep} de 8`,
+        variant: "success",
+      });
       setIsSaving(false);
       return true;
     } catch {
       saveLocalStep(localStorageKeyPrefix, activeStep, formState);
-      setErrorMessage(
-        "Sin conexión estable. Guardamos el avance localmente y podrás intentar de nuevo.",
-      );
+      showToast({
+        title: "Guardado local disponible",
+        detail: "Sin conexión estable. Guardamos el avance localmente y podrás intentar de nuevo.",
+        variant: "error",
+      });
       setIsSaving(false);
       return false;
     }
@@ -659,6 +731,18 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
 
   return (
     <div className="consultation-workflow">
+      {toast ? (
+        <div className="consultation-toast-stack" aria-live="polite" aria-atomic="true">
+          <div
+            className={`consultation-toast consultation-toast--${toast.variant}`}
+            role={toast.variant === "error" ? "alert" : "status"}
+          >
+            <strong>{toast.title}</strong>
+            {toast.detail ? <span>{toast.detail}</span> : null}
+          </div>
+        </div>
+      ) : null}
+
       <section className="consultation-workflow__header">
         <div className="consultation-workflow__topbar">
           <Link
@@ -809,15 +893,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         </nav>
       </section>
 
-      {toast ? (
-        <div className="success-state consultation-toast" role="status">
-          <strong>{toast.title}</strong>
-          <span>{toast.detail}</span>
-        </div>
-      ) : null}
-      {errorMessage ? <div className="error-state">{errorMessage}</div> : null}
-
-      <section className="consultation-step-card">
+      <section className="consultation-step-card" ref={stepCardRef}>
         {activeStep === 1 ? renderAnamnesisStep() : null}
         {activeStep === 2 ? renderExamStep() : null}
         {activeStep === 3 ? renderPresumptiveDiagnosisStep() : null}
@@ -828,7 +904,11 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         {activeStep === 8 ? renderIndicationsStep() : null}
       </section>
 
-      <div className="consultation-workflow__footer">
+      <div
+        className={`consultation-workflow__footer${
+          activeStep < 8 ? " consultation-workflow__footer--navigation" : ""
+        }`}
+      >
         <button
           aria-label="Paso anterior"
           className="secondary-button consultation-nav-button consultation-nav-button--previous"
@@ -841,16 +921,21 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         </button>
 
         {activeStep < 8 ? (
-          <button
-            aria-label="Paso siguiente"
-            className="primary-button consultation-nav-button consultation-nav-button--next"
-            disabled={isSaving}
-            onClick={() => void goToStep(activeStep + 1)}
-            type="button"
-          >
-            <span>Siguiente</span>
-            <ChevronRight aria-hidden="true" size={18} />
-          </button>
+          <>
+            <p className="consultation-workflow__footer-status" aria-live="polite">
+              Paso {activeStep} de 8
+            </p>
+            <button
+              aria-label="Paso siguiente"
+              className="primary-button consultation-nav-button consultation-nav-button--next"
+              disabled={isSaving}
+              onClick={() => void goToStep(activeStep + 1)}
+              type="button"
+            >
+              <span>Siguiente</span>
+              <ChevronRight aria-hidden="true" size={18} />
+            </button>
+          </>
         ) : (
           <div className="consultation-workflow__final-actions">
             <button
