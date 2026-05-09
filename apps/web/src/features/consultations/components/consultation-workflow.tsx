@@ -90,6 +90,7 @@ type FormState = {
   presumptive_diagnosis: string;
   diagnostic_tags: string;
   diagnostic_plan_notes: string;
+  diagnostic_results: string;
   therapeutic_plan: string;
   therapeutic_plan_notes: string;
   final_diagnosis: string;
@@ -130,10 +131,10 @@ const steps = [
   { id: 2, label: "Examen" },
   { id: 3, label: "Diagnóstico presuntivo" },
   { id: 4, label: "Plan diagnóstico" },
-  { id: 5, label: "Plan terapéutico" },
-  { id: 6, label: "Diagnóstico final" },
-  { id: 7, label: "Indicaciones" },
-  { id: 8, label: "Cierre" },
+  { id: 5, label: "Resultados diagnósticos" },
+  { id: 6, label: "Plan terapéutico" },
+  { id: 7, label: "Diagnóstico final" },
+  { id: 8, label: "Indicaciones" },
 ] as const;
 
 const initialFormState: FormState = {
@@ -154,6 +155,7 @@ const initialFormState: FormState = {
   presumptive_diagnosis: "",
   diagnostic_tags: "",
   diagnostic_plan_notes: "",
+  diagnostic_results: "",
   therapeutic_plan: "",
   therapeutic_plan_notes: "",
   final_diagnosis: "",
@@ -731,10 +733,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         {activeStep === 2 ? renderExamStep() : null}
         {activeStep === 3 ? renderPresumptiveDiagnosisStep() : null}
         {activeStep === 4 ? renderDiagnosticPlanStep() : null}
-        {activeStep === 5 ? renderTherapeuticPlanStep() : null}
-        {activeStep === 6 ? renderFinalDiagnosisStep() : null}
-        {activeStep === 7 ? renderIndicationsStep() : null}
-        {activeStep === 8 ? renderClosureStep() : null}
+        {activeStep === 5 ? renderDiagnosticResultsStep() : null}
+        {activeStep === 6 ? renderTherapeuticPlanStep() : null}
+        {activeStep === 7 ? renderFinalDiagnosisStep() : null}
+        {activeStep === 8 ? renderIndicationsStep() : null}
       </section>
 
       <div className="consultation-workflow__footer">
@@ -1060,11 +1062,36 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     );
   }
 
-  function renderTherapeuticPlanStep() {
+  function renderDiagnosticResultsStep() {
     return (
       <>
         <StepHeading
           eyebrow="Paso 5"
+          icon={<FlaskConical aria-hidden="true" size={20} />}
+          title="Resultados diagnósticos"
+          description="Resumen clínico de los resultados obtenidos."
+        />
+        <label className="field">
+          <span>Resultados del plan diagnóstico</span>
+          <textarea
+            rows={6}
+            placeholder="Ej. Hemograma compatible con proceso infeccioso leve. Radiografía sin hallazgos relevantes. Ecografía con signos compatibles con gastritis."
+            value={formState.diagnostic_results}
+            onChange={(event) => updateField("diagnostic_results", event.target.value)}
+          />
+          <small>
+            Resume aquí los hallazgos más importantes de los estudios realizados.
+          </small>
+        </label>
+      </>
+    );
+  }
+
+  function renderTherapeuticPlanStep() {
+    return (
+      <>
+        <StepHeading
+          eyebrow="Paso 6"
           icon={<Pill aria-hidden="true" size={20} />}
           title="Plan terapéutico"
           description="Registra medicamentos manuales o descuenta stock desde inventario."
@@ -1318,7 +1345,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     return (
       <>
         <StepHeading
-          eyebrow="Paso 6"
+          eyebrow="Paso 7"
           icon={<Stethoscope aria-hidden="true" size={20} />}
           title="Diagnóstico final"
           description="Conclusión diagnóstica cuando ya esté disponible."
@@ -1339,10 +1366,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     return (
       <>
         <StepHeading
-          eyebrow="Paso 7"
+          eyebrow="Paso 8"
           icon={<CalendarCheck aria-hidden="true" size={20} />}
           title="Indicaciones"
-          description="Instrucciones para casa y seguimiento."
+          description="Instrucciones para casa, control y cierre de la consulta."
         />
         <label className="field">
           <span>Indicaciones</span>
@@ -1353,19 +1380,6 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             onChange={(event) => updateField("indications", event.target.value)}
           />
         </label>
-      </>
-    );
-  }
-
-  function renderClosureStep() {
-    return (
-      <>
-        <StepHeading
-          eyebrow="Paso 8"
-          icon={<CalendarCheck aria-hidden="true" size={20} />}
-          title="Cierre"
-          description="Control, resumen y estado final de la consulta."
-        />
         <div className="form-grid">
           <label className="field">
             <span>Próximo control</span>
@@ -1600,6 +1614,7 @@ function toFormState(consultation: Consultation): FormState {
     presumptive_diagnosis: consultation.presumptive_diagnosis ?? "",
     diagnostic_tags: consultation.diagnostic_tags?.join(", ") ?? "",
     diagnostic_plan_notes: consultation.diagnostic_plan_notes ?? "",
+    diagnostic_results: consultation.diagnostic_results ?? "",
     therapeutic_plan: consultation.therapeutic_plan ?? "",
     therapeutic_plan_notes: consultation.therapeutic_plan_notes ?? "",
     final_diagnosis: consultation.final_diagnosis ?? "",
@@ -1629,6 +1644,7 @@ function buildPayload(formState: FormState): StepUpdatePayload {
     presumptive_diagnosis: formState.presumptive_diagnosis.trim() || null,
     diagnostic_tags: splitTags(formState.diagnostic_tags),
     diagnostic_plan_notes: formState.diagnostic_plan_notes.trim() || null,
+    diagnostic_results: formState.diagnostic_results.trim() || null,
     therapeutic_plan: formState.therapeutic_plan.trim() || null,
     therapeutic_plan_notes: formState.therapeutic_plan_notes.trim() || null,
     final_diagnosis: formState.final_diagnosis.trim() || null,
@@ -1719,10 +1735,15 @@ function pickStepFields(step: number, formState: FormState): Partial<FormState> 
     ],
     3: ["presumptive_diagnosis", "diagnostic_tags"],
     4: ["diagnostic_plan_notes"],
-    5: ["therapeutic_plan", "therapeutic_plan_notes"],
-    6: ["final_diagnosis"],
-    7: ["indications"],
-    8: ["next_control_date", "reminder_requested", "consultation_summary"],
+    5: ["diagnostic_results"],
+    6: ["therapeutic_plan", "therapeutic_plan_notes"],
+    7: ["final_diagnosis"],
+    8: [
+      "indications",
+      "next_control_date",
+      "reminder_requested",
+      "consultation_summary",
+    ],
   };
 
   return fieldsByStep[step].reduce<Partial<FormState>>((partialState, field) => {

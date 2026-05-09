@@ -248,6 +248,11 @@ class ClinicalHistoryPdfService:
         self._append_optional(lines, "Hallazgos físicos", consultation.physical_exam_findings)
         self._append_optional(lines, "Plan diagnóstico", consultation.diagnostic_plan)
         self._append_optional(lines, "Notas del plan diagnóstico", consultation.diagnostic_plan_notes)
+        self._append_optional(
+            lines,
+            "Resultados del plan diagnóstico",
+            consultation.diagnostic_results,
+        )
         self._append_optional(lines, "Plan terapéutico", consultation.therapeutic_plan)
         self._append_optional(lines, "Notas del plan terapéutico", consultation.therapeutic_plan_notes)
         self._append_optional(lines, "Diagnóstico final", consultation.final_diagnosis)

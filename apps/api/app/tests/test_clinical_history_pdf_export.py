@@ -67,6 +67,7 @@ def _create_consultation(client, tenant, patient_id: str, **overrides) -> dict:
         "clinical_exam": "Eritema leve",
         "presumptive_diagnosis": "Dermatitis alérgica",
         "diagnostic_plan": "Raspado si persiste",
+        "diagnostic_results": "Hemograma compatible con proceso infeccioso leve",
         "therapeutic_plan": "Tratamiento tópico",
         "final_diagnosis": "Dermatitis por contacto",
         "indications": "Volver si empeora",
@@ -277,6 +278,13 @@ def test_export_pdf_supports_full_detail(client, tenant, db_session):
 
     assert "Anamnesis: Prurito hace 3 días" in lines
     assert "Examen clínico: Eritema leve" in lines
+    assert (
+        "Resultados del plan diagnóstico: Hemograma compatible con proceso infeccioso leve"
+        in lines
+    )
+    assert lines.index(
+        "Resultados del plan diagnóstico: Hemograma compatible con proceso infeccioso leve"
+    ) < lines.index("Plan terapéutico: Tratamiento tópico")
     assert "Medicamentos:" in lines
     assert "- Cefalexina · 250 mg · Cada 12 horas" in lines
     assert "Solicitudes de estudio:" in lines

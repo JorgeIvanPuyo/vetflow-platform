@@ -108,6 +108,7 @@ class ConsultationService:
             clinical_exam=original.clinical_exam,
             presumptive_diagnosis=original.presumptive_diagnosis,
             diagnostic_plan=original.diagnostic_plan,
+            diagnostic_results=original.diagnostic_results,
             therapeutic_plan=original.therapeutic_plan,
             final_diagnosis=original.final_diagnosis,
             indications=original.indications,

@@ -32,6 +32,7 @@ def _create_consultation(client, tenant, patient_id, **overrides):
         "clinical_exam": "Mild redness",
         "presumptive_diagnosis": "Allergic dermatitis",
         "diagnostic_plan": "Skin scraping if symptoms persist",
+        "diagnostic_results": None,
         "therapeutic_plan": "Topical treatment",
         "final_diagnosis": None,
         "indications": "Return if symptoms worsen",
@@ -75,6 +76,7 @@ def test_create_and_get_consultation(client, tenant):
     assert consultation["patient_id"] == patient["id"]
     assert consultation["reason"] == "Skin irritation"
     assert consultation["final_diagnosis"] is None
+    assert consultation["diagnostic_results"] is None
 
     response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
@@ -87,8 +89,46 @@ def test_create_and_get_consultation(client, tenant):
     assert body["status"] == "draft"
     assert body["consultation_type"] == "initial"
     assert body["parent_consultation_id"] is None
+    assert body["diagnostic_results"] is None
     assert body["medications"] == []
     assert body["study_requests"] == []
+
+
+def test_create_consultation_with_diagnostic_results(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    consultation = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        diagnostic_results="Hemograma compatible con proceso infeccioso leve",
+    )
+
+    assert (
+        consultation["diagnostic_results"]
+        == "Hemograma compatible con proceso infeccioso leve"
+    )
+
+    list_response = client.get(
+        f"/api/v1/patients/{patient['id']}/consultations",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert list_response.status_code == 200
+    assert (
+        list_response.json()["data"][0]["diagnostic_results"]
+        == "Hemograma compatible con proceso infeccioso leve"
+    )
+
+    history_response = client.get(
+        f"/api/v1/patients/{patient['id']}/clinical-history",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert history_response.status_code == 200
+    assert (
+        history_response.json()["data"]["consultations"][0]["diagnostic_results"]
+        == "Hemograma compatible con proceso infeccioso leve"
+    )
 
 
 def test_create_consultation_as_draft(client, tenant):
@@ -178,6 +218,37 @@ def test_patch_consultation_clinical_fields(client, tenant):
     assert body["data"]["clinical_exam"] == "Redness improved"
     assert body["data"]["final_diagnosis"] == "Contact dermatitis"
     assert body["data"]["anamnesis"] == "Owner reports itching for 3 days"
+
+
+def test_update_consultation_with_diagnostic_results(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "diagnostic_results": "Radiografía sin evidencia de fractura",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.json()["data"]["diagnostic_results"]
+        == "Radiografía sin evidencia de fractura"
+    )
+
+    detail_response = client.get(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert detail_response.status_code == 200
+    assert (
+        detail_response.json()["data"]["diagnostic_results"]
+        == "Radiografía sin evidencia de fractura"
+    )
 
 
 def test_partial_update_step_1_data(client, tenant):
@@ -492,6 +563,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
         clinical_exam="Less redness",
         presumptive_diagnosis="Atopy",
         diagnostic_plan="Repeat skin scraping if relapses",
+        diagnostic_results="Ecografía compatible con gastritis",
         therapeutic_plan="Continue topical therapy",
         final_diagnosis="Allergic dermatitis",
         indications="Control in 7 days",
@@ -570,6 +642,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     assert follow_up["clinical_exam"] == "Less redness"
     assert follow_up["presumptive_diagnosis"] == "Atopy"
     assert follow_up["diagnostic_plan"] == "Repeat skin scraping if relapses"
+    assert follow_up["diagnostic_results"] == "Ecografía compatible con gastritis"
     assert follow_up["therapeutic_plan"] == "Continue topical therapy"
     assert follow_up["final_diagnosis"] == "Allergic dermatitis"
     assert follow_up["indications"] == "Control in 7 days"

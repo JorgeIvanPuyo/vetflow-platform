@@ -23,6 +23,7 @@ class ConsultationBase(BaseModel):
     clinical_exam: str | None = None
     presumptive_diagnosis: str | None = None
     diagnostic_plan: str | None = None
+    diagnostic_results: str | None = None
     therapeutic_plan: str | None = None
     final_diagnosis: str | None = None
     indications: str | None = None
@@ -58,6 +59,7 @@ class ConsultationUpdate(BaseModel):
     clinical_exam: str | None = None
     presumptive_diagnosis: str | None = None
     diagnostic_plan: str | None = None
+    diagnostic_results: str | None = None
     therapeutic_plan: str | None = None
     final_diagnosis: str | None = None
     indications: str | None = None

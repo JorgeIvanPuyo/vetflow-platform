@@ -122,6 +122,7 @@ export type Consultation = {
   clinical_exam: string | null;
   presumptive_diagnosis: string | null;
   diagnostic_plan: string | null;
+  diagnostic_results: string | null;
   therapeutic_plan: string | null;
   final_diagnosis: string | null;
   indications: string | null;
@@ -762,6 +763,7 @@ export type CreateConsultationPayload = {
   physical_exam_findings?: string | null;
   diagnostic_tags?: string[] | null;
   diagnostic_plan_notes?: string | null;
+  diagnostic_results?: string | null;
   therapeutic_plan_notes?: string | null;
   next_control_date?: string | null;
   consultation_summary?: string | null;

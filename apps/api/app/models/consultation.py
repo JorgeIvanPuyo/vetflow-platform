@@ -79,6 +79,7 @@ class Consultation(BaseModel):
     clinical_exam: Mapped[str | None] = mapped_column(Text, nullable=True)
     presumptive_diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
     diagnostic_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diagnostic_results: Mapped[str | None] = mapped_column(Text, nullable=True)
     therapeutic_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     final_diagnosis: Mapped[str | None] = mapped_column(Text, nullable=True)
     indications: Mapped[str | None] = mapped_column(Text, nullable=True)
