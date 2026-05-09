@@ -187,6 +187,27 @@ const initialInventoryMedicationFormState: InventoryMedicationFormState = {
 const mucousMembraneOptions = ["Rosadas", "Pálidas", "Congestivas", "Cianóticas", "Ictéricas"];
 const hydrationOptions = ["Normal", "Leve deshidratación", "Moderada", "Severa"];
 
+function getStepIcon(stepId: (typeof steps)[number]["id"]) {
+  switch (stepId) {
+    case 1:
+      return <Stethoscope size={12} />;
+    case 2:
+      return <CalendarCheck size={12} />;
+    case 3:
+      return <Stethoscope size={12} />;
+    case 4:
+      return <FlaskConical size={12} />;
+    case 5:
+      return <FlaskConical size={12} />;
+    case 6:
+      return <Pill size={12} />;
+    case 7:
+      return <Check size={12} />;
+    case 8:
+      return <ChevronRight size={12} />;
+  }
+}
+
 export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const router = useRouter();
   const hasStartedRef = useRef(false);
@@ -212,9 +233,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [areDetailsExpanded, setAreDetailsExpanded] = useState(false);
 
   const consultationId = consultation?.id ?? null;
-  const title = props.mode === "new" ? "Nueva consulta" : "Consulta";
+  const title =
+    consultation?.consultation_type === "follow_up"
+      ? "Consulta de control"
+      : "Consulta";
   const patientDescription = getPatientDescription(patient);
   const attendingUserName = getTraceableUserName(consultation, "attending");
   const registeredByName = getTraceableUserName(consultation, "created_by");
@@ -628,6 +653,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     return <div className="empty-state">No encontramos esta consulta.</div>;
   }
 
+  const hasAllergies = hasClinicalText(patient?.allergies);
+  const hasChronicConditions = hasClinicalText(patient?.chronic_conditions);
+  const alertCount = Number(hasAllergies) + Number(hasChronicConditions);
+
   return (
     <div className="consultation-workflow">
       <section className="consultation-workflow__header">
@@ -641,59 +670,114 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           </Link>
           <div className="consultation-workflow__title">
             <h1>{title}</h1>
-            <p>
-              {patient?.name ?? "Paciente"} {patientDescription ? `• ${patientDescription}` : ""}
-            </p>
           </div>
-          <button
-            className="primary-button consultation-workflow__save"
-            disabled={isSaving}
-            onClick={handleHeaderSave}
-            type="button"
-          >
-            <Save aria-hidden="true" size={18} />
-            {isSaving ? "Guardando..." : "Guardar"}
-          </button>
+          <div className="consultation-workflow__toolbar-actions">
+            <button
+              className="primary-button consultation-workflow__save"
+              disabled={isSaving}
+              onClick={handleHeaderSave}
+              type="button"
+            >
+              <Save aria-hidden="true" size={17} />
+              <span>{isSaving ? "Guardando..." : "Guardar"}</span>
+            </button>
+            {props.mode === "edit" ? (
+              <button
+                aria-label="Eliminar consulta"
+                className="icon-button consultation-workflow__delete-button"
+                onClick={() => setIsDeleteModalOpen(true)}
+                title="Eliminar consulta"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={17} />
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        <div className="consultation-workflow__badges">
+        <div className="consultation-workflow__meta-row" aria-label="Resumen del paciente">
+          <span className="consultation-chip">
+            <strong>Paciente</strong>
+            {patient?.name ?? "Paciente"}
+          </span>
+          <span className="consultation-chip">
+            <strong>Raza</strong>
+            {patientDescription || "No indicada"}
+          </span>
           <span className={getStatusClass(consultation.status)}>
             {consultation.status === "completed" ? "Completada" : "Borrador"}
           </span>
-          {consultation.consultation_type === "follow_up" ? (
-            <span className="badge badge--blue">Consulta de control</span>
-          ) : null}
-          {hasClinicalText(patient?.allergies) ? (
-            <span className="badge badge--danger">Alergias: {patient?.allergies}</span>
-          ) : null}
-          {hasClinicalText(patient?.chronic_conditions) ? (
-            <span className="badge badge--warning">
-              Condiciones: {patient?.chronic_conditions}
+          <span className="badge badge--blue">
+            {consultation.consultation_type === "follow_up" ? "Control" : "Inicial"}
+          </span>
+        </div>
+
+        <div className="consultation-workflow__alert-line">
+          {hasAllergies ? (
+            <span className="consultation-chip consultation-chip--danger">
+              <strong>Alergias</strong>
+              {patient?.allergies}
             </span>
           ) : null}
+          {hasChronicConditions ? (
+            <span className="consultation-chip consultation-chip--warning">
+              <strong>Condiciones críticas</strong>
+              {patient?.chronic_conditions}
+            </span>
+          ) : null}
+          {alertCount === 0 ? (
+            <span className="consultation-workflow__quiet-note">Sin alertas registradas</span>
+          ) : null}
+          <button
+            className="consultation-workflow__details-toggle"
+            onClick={() => setAreDetailsExpanded((current) => !current)}
+            type="button"
+          >
+            {areDetailsExpanded ? "Ocultar detalles" : "Ver detalles"}
+          </button>
         </div>
-        {consultation.consultation_type === "follow_up" &&
-        consultation.parent_consultation_id ? (
+
+        {areDetailsExpanded ? (
+          <div className="consultation-workflow__details-panel">
+            {consultation.consultation_type === "follow_up" &&
+            consultation.parent_consultation_id ? (
+              <p className="consultation-workflow__context-note">
+                Basada en consulta anterior
+              </p>
+            ) : null}
+            {attendingUserName || registeredByName ? (
+              <div className="traceability-meta">
+                {attendingUserName ? (
+                  <span>
+                    <strong>Atendido por:</strong> {attendingUserName}
+                  </span>
+                ) : null}
+                {registeredByName ? (
+                  <span>
+                    <strong>Registrado por:</strong> {registeredByName}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            {hasAllergies ? (
+              <p>
+                <strong>Alergias:</strong> {patient?.allergies}
+              </p>
+            ) : null}
+            {hasChronicConditions ? (
+              <p>
+                <strong>Condiciones críticas:</strong> {patient?.chronic_conditions}
+              </p>
+            ) : null}
+            {props.mode === "new" ? (
+              <p className="panel-note">Esta consulta quedará registrada con tu usuario.</p>
+            ) : null}
+          </div>
+        ) : consultation.consultation_type === "follow_up" &&
+          consultation.parent_consultation_id ? (
           <p className="consultation-workflow__context-note">
             Basada en consulta anterior
           </p>
-        ) : null}
-        {attendingUserName || registeredByName ? (
-          <div className="traceability-meta">
-            {attendingUserName ? (
-              <span>
-                <strong>Atendido por:</strong> {attendingUserName}
-              </span>
-            ) : null}
-            {registeredByName ? (
-              <span>
-                <strong>Registrado por:</strong> {registeredByName}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-        {props.mode === "new" ? (
-          <p className="panel-note">Esta consulta quedará registrada con tu usuario.</p>
         ) : null}
 
         <nav className="consultation-stepper" aria-label="Pasos de la consulta">
@@ -703,17 +787,22 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             return (
               <button
                 aria-current={isActive ? "step" : undefined}
+                aria-label={`Ir a ${step.label}`}
                 className={`consultation-stepper__item${
                   isActive ? " consultation-stepper__item--active" : ""
                 }${isCompleted ? " consultation-stepper__item--completed" : ""}`}
                 key={step.id}
                 onClick={() => void goToStep(step.id)}
+                title={step.label}
                 type="button"
               >
                 <span className="consultation-stepper__number">
-                  {isCompleted ? <Check aria-hidden="true" size={15} /> : step.id}
+                  {isCompleted ? <Check aria-hidden="true" size={13} /> : step.id}
                 </span>
-                <span>{step.label}</span>
+                <span className="consultation-stepper__icon" aria-hidden="true">
+                  {getStepIcon(step.id)}
+                </span>
+                <span className="sr-only">{step.label}</span>
               </button>
             );
           })}
@@ -741,23 +830,25 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
 
       <div className="consultation-workflow__footer">
         <button
-          className="secondary-button"
+          aria-label="Paso anterior"
+          className="secondary-button consultation-nav-button consultation-nav-button--previous"
           disabled={activeStep === 1 || isSaving}
           onClick={() => void goToStep(activeStep - 1)}
           type="button"
         >
           <ChevronLeft aria-hidden="true" size={18} />
-          Anterior
+          <span>Anterior</span>
         </button>
 
         {activeStep < 8 ? (
           <button
-            className="primary-button"
+            aria-label="Paso siguiente"
+            className="primary-button consultation-nav-button consultation-nav-button--next"
             disabled={isSaving}
             onClick={() => void goToStep(activeStep + 1)}
             type="button"
           >
-            Siguiente
+            <span>Siguiente</span>
             <ChevronRight aria-hidden="true" size={18} />
           </button>
         ) : (
@@ -781,26 +872,6 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           </div>
         )}
       </div>
-
-      {props.mode === "edit" ? (
-        <section className="panel consultation-danger-zone">
-          <div>
-            <p className="eyebrow">Acciones</p>
-            <h2>Eliminar consulta</h2>
-            <p className="muted-text">
-              Elimina la consulta y conserva los exámenes clínicos registrados.
-            </p>
-          </div>
-          <button
-            className="secondary-button secondary-button--danger"
-            onClick={() => setIsDeleteModalOpen(true)}
-            type="button"
-          >
-            <Trash2 aria-hidden="true" size={18} />
-            Eliminar consulta
-          </button>
-        </section>
-      ) : null}
 
       {isDeleteModalOpen ? renderDeleteModal() : null}
     </div>
@@ -838,7 +909,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Síntomas</span>
           <textarea
-            rows={4}
+            rows={3}
             value={formState.symptoms}
             onChange={(event) => updateField("symptoms", event.target.value)}
           />
@@ -864,7 +935,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Antecedentes relevantes</span>
           <textarea
-            rows={4}
+            rows={3}
             value={formState.relevant_history}
             onChange={(event) => updateField("relevant_history", event.target.value)}
           />
@@ -939,7 +1010,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Hallazgos del examen físico</span>
           <textarea
-            rows={6}
+            rows={5}
             value={formState.physical_exam_findings}
             onChange={(event) => updateField("physical_exam_findings", event.target.value)}
           />
@@ -960,7 +1031,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Diagnóstico presuntivo</span>
           <textarea
-            rows={7}
+            rows={5}
             value={formState.presumptive_diagnosis}
             onChange={(event) => updateField("presumptive_diagnosis", event.target.value)}
           />
@@ -1053,7 +1124,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Notas del plan diagnóstico</span>
           <textarea
-            rows={5}
+            rows={4}
             value={formState.diagnostic_plan_notes}
             onChange={(event) => updateField("diagnostic_plan_notes", event.target.value)}
           />
@@ -1074,7 +1145,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Resultados del plan diagnóstico</span>
           <textarea
-            rows={6}
+            rows={5}
             placeholder="Ej. Hemograma compatible con proceso infeccioso leve. Radiografía sin hallazgos relevantes. Ecografía con signos compatibles con gastritis."
             value={formState.diagnostic_results}
             onChange={(event) => updateField("diagnostic_results", event.target.value)}
@@ -1324,7 +1395,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Plan terapéutico</span>
           <textarea
-            rows={4}
+            rows={3}
             value={formState.therapeutic_plan}
             onChange={(event) => updateField("therapeutic_plan", event.target.value)}
           />
@@ -1332,7 +1403,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Notas del plan terapéutico</span>
           <textarea
-            rows={5}
+            rows={4}
             value={formState.therapeutic_plan_notes}
             onChange={(event) => updateField("therapeutic_plan_notes", event.target.value)}
           />
@@ -1353,7 +1424,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Diagnóstico final</span>
           <textarea
-            rows={8}
+            rows={5}
             value={formState.final_diagnosis}
             onChange={(event) => updateField("final_diagnosis", event.target.value)}
           />
@@ -1374,7 +1445,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Indicaciones</span>
           <textarea
-            rows={9}
+            rows={5}
             placeholder="Tratamiento en casa, signos de alarma, cuidados, dieta..."
             value={formState.indications}
             onChange={(event) => updateField("indications", event.target.value)}
@@ -1406,7 +1477,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Resumen de consulta</span>
           <textarea
-            rows={8}
+            rows={4}
             value={formState.consultation_summary}
             onChange={(event) => updateField("consultation_summary", event.target.value)}
           />
@@ -1476,7 +1547,6 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
 }
 
 function StepHeading({
-  eyebrow,
   icon,
   title,
   description,
@@ -1490,7 +1560,6 @@ function StepHeading({
     <div className="consultation-step-heading">
       <span className="icon-bubble">{icon}</span>
       <div>
-        <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>
         <p>{description}</p>
       </div>

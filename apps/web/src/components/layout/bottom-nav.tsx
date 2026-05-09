@@ -18,6 +18,13 @@ function closeMobileMenu() {
 
 export function BottomNav() {
   const pathname = usePathname();
+  const isConsultationWorkflow =
+    pathname.startsWith("/consultations/") ||
+    /^\/patients\/[^/]+\/consultations\/new$/.test(pathname);
+
+  if (isConsultationWorkflow) {
+    return null;
+  }
 
   return (
     <nav className="bottom-nav" aria-label="Navegación principal móvil">

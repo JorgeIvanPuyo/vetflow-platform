@@ -1749,6 +1749,39 @@ code {
   line-height: 1.5;
 }
 
+.consultation-workflow .field,
+.consultation-workflow .form-field {
+  gap: 5px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.consultation-workflow .field span,
+.consultation-workflow .form-field span {
+  color: var(--color-text);
+}
+
+.consultation-workflow .field small,
+.consultation-workflow .form-field small {
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.consultation-workflow .field input,
+.consultation-workflow .field select,
+.consultation-workflow .field textarea,
+.consultation-workflow .form-field input {
+  min-height: 40px;
+  padding: 0.58rem 0.72rem;
+  font-size: 0.9rem;
+}
+
+.consultation-workflow .field textarea {
+  line-height: 1.42;
+}
+
 .choice-section {
   display: grid;
   grid-column: 1 / -1;
@@ -1790,6 +1823,17 @@ code {
   padding: 12px 10px;
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.consultation-workflow .choice-card {
+  min-height: 66px;
+  gap: 5px;
+  padding: 9px 8px;
+  font-size: 0.86rem;
+}
+
+.consultation-workflow .choice-card small {
+  font-size: 0.72rem;
 }
 
 .choice-card--selected {
@@ -1909,6 +1953,24 @@ code {
 .danger-button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+}
+
+.consultation-workflow .primary-button,
+.consultation-workflow .secondary-button,
+.consultation-workflow .danger-button,
+.consultation-workflow .primary-action {
+  min-height: 40px;
+  gap: 6px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  padding: 0 12px;
+}
+
+.consultation-workflow .icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  box-shadow: none;
 }
 
 .tabbed-card {
@@ -2079,8 +2141,10 @@ code {
 
 .consultation-workflow {
   display: grid;
-  gap: 14px;
-  padding-bottom: 16px;
+  width: min(calc(100% - 20px), 1080px);
+  margin: 0 auto;
+  gap: 10px;
+  padding-bottom: 74px;
 }
 
 .consultation-workflow__header,
@@ -2094,19 +2158,19 @@ code {
 
 .consultation-workflow__header {
   position: sticky;
-  top: calc(var(--header-height) + 8px);
+  top: calc(var(--header-height) + 4px);
   z-index: 12;
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 6px;
+  padding: 8px 9px;
   backdrop-filter: blur(16px);
 }
 
 .consultation-workflow__topbar {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .consultation-workflow__title {
@@ -2114,56 +2178,141 @@ code {
 }
 
 .consultation-workflow__title h1 {
-  margin: 0 0 3px;
-  font-size: clamp(1.35rem, 6vw, 2rem);
-  letter-spacing: -0.04em;
-}
-
-.consultation-workflow__title p {
-  overflow: hidden;
   margin: 0;
-  color: var(--color-text-muted);
+  overflow: hidden;
+  font-size: clamp(1rem, 4vw, 1.22rem);
+  letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.consultation-workflow__save {
-  min-width: 44px;
-  padding-inline: 12px;
+.consultation-workflow__toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.consultation-workflow__badges {
+.consultation-workflow__save {
+  min-width: 40px;
+  padding-inline: 10px;
+}
+
+.consultation-workflow__delete-button {
+  border-color: rgba(217, 67, 62, 0.22);
+  color: var(--color-danger);
+}
+
+.consultation-workflow__delete-button:hover,
+.consultation-workflow__delete-button:focus-visible {
+  background: var(--color-danger-soft);
+}
+
+.consultation-workflow__meta-row,
+.consultation-workflow__alert-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 5px;
 }
 
 .consultation-workflow__context-note {
-  margin: -4px 0 0;
+  margin: -1px 0 0;
   color: var(--color-text-muted);
-  font-size: 0.88rem;
+  font-size: 0.78rem;
+}
+
+.consultation-workflow__quiet-note {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.consultation-workflow__details-toggle {
+  min-height: 28px;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-dark);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.consultation-workflow__details-panel {
+  display: grid;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.consultation-workflow__details-panel p {
+  margin: 0;
+}
+
+.consultation-workflow__details-panel .traceability-meta {
+  margin: 0;
+}
+
+.consultation-chip {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  padding: 3px 7px;
+}
+
+.consultation-chip strong {
+  color: var(--color-text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.consultation-chip--danger {
+  border-color: rgba(217, 67, 62, 0.2);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.consultation-chip--warning {
+  border-color: rgba(147, 96, 15, 0.2);
+  background: var(--color-warning-soft);
+  color: #7a4f0b;
 }
 
 .consultation-stepper {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
 }
 
 .consultation-stepper__item {
-  min-height: 46px;
-  flex: 0 0 auto;
+  width: 40px;
+  min-height: 34px;
+  flex: 0 0 40px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 2px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
   background: var(--color-surface-soft);
   color: var(--color-text-muted);
-  font-size: 0.84rem;
-  font-weight: 700;
-  padding: 0 12px 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -2180,22 +2329,35 @@ code {
 }
 
 .consultation-stepper__number {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.72);
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .consultation-stepper__item--active .consultation-stepper__number {
-  background: rgba(255, 255, 255, 0.22);
+  background: transparent;
+}
+
+.consultation-stepper__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
 }
 
 .consultation-toast {
+  width: min(100%, 460px);
   display: grid;
   gap: 2px;
+  justify-self: end;
+  padding: 8px 10px;
+  font-size: 0.84rem;
 }
 
 .consultation-toast strong {
@@ -2204,37 +2366,47 @@ code {
 
 .consultation-step-card {
   display: grid;
-  gap: 16px;
-  padding: 16px;
+  align-content: start;
+  gap: 10px;
+  min-height: max(420px, calc(100svh - var(--header-height) - 190px));
+  padding: 10px;
 }
 
 .consultation-step-heading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+}
+
+.consultation-step-heading .icon-bubble {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
 }
 
 .consultation-step-heading h2 {
-  margin: 2px 0 3px;
-  font-size: 1.35rem;
-  letter-spacing: -0.03em;
+  margin: 0 0 1px;
+  font-size: 1rem;
+  letter-spacing: 0;
 }
 
 .consultation-step-heading p {
   margin: 0;
   color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 
 .consultation-metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .consultation-inline-form {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface-soft);
@@ -2242,15 +2414,15 @@ code {
 
 .consultation-record-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .consultation-record-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -2269,14 +2441,14 @@ code {
 }
 
 .consultation-record-row h3 {
-  font-size: 1rem;
+  font-size: 0.94rem;
 }
 
 .consultation-record-row p,
 .consultation-record-row small {
-  margin-top: 4px;
+  margin-top: 3px;
   color: var(--color-text-muted);
-  line-height: 1.45;
+  line-height: 1.35;
 }
 
 .consultation-record-row small {
@@ -2290,16 +2462,16 @@ code {
 
 .inventory-medication-results {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .inventory-medication-card {
   width: 100%;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   align-items: start;
-  padding: 12px;
+  padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -2319,8 +2491,8 @@ code {
 }
 
 .inventory-medication-card__icon {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2341,7 +2513,7 @@ code {
 
 .inventory-medication-card__body span {
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 
 .inventory-medication-card .timeline-card__badges {
@@ -2354,15 +2526,16 @@ code {
 }
 
 .consultation-toggle {
-  min-height: 48px;
+  min-height: 40px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 9px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-input);
   background: var(--color-surface);
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
 .consultation-toggle input {
@@ -2373,23 +2546,71 @@ code {
 
 .consultation-workflow__footer {
   position: sticky;
-  bottom: calc(var(--bottom-nav-height) + 10px);
+  bottom: calc(8px + env(safe-area-inset-bottom));
   z-index: 11;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid rgba(228, 222, 211, 0.92);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.94);
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(228, 222, 211, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-floating);
   backdrop-filter: blur(16px);
+}
+
+.consultation-nav-button {
+  min-height: 42px;
+}
+
+@media (max-width: 520px) {
+  .consultation-workflow__save span {
+    display: none;
+  }
+
+  .consultation-workflow__save {
+    width: 40px;
+    padding-inline: 0;
+  }
+
+  .consultation-chip {
+    max-width: 100%;
+  }
+
+  .consultation-chip--danger,
+  .consultation-chip--warning {
+    max-width: calc(100% - 96px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .consultation-nav-button {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    justify-self: start;
+    border-radius: var(--radius-pill);
+    padding: 0;
+  }
+
+  .consultation-nav-button--next {
+    justify-self: end;
+  }
+
+  .consultation-nav-button span {
+    display: none;
+  }
+
+  .consultation-workflow__final-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 .consultation-workflow__final-actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
+  gap: 8px;
 }
 
 .consultation-danger-zone {
@@ -2569,15 +2790,50 @@ code {
   }
 
   .consultation-workflow {
-    gap: 18px;
+    width: min(calc(100% - 32px), 1100px);
+    gap: 12px;
+    padding-bottom: 34px;
+  }
+
+  .consultation-workflow__header {
+    top: calc(var(--header-height) + 8px);
+    padding: 9px 12px;
   }
 
   .consultation-step-card {
-    padding: 22px;
+    min-height: max(520px, calc(100vh - var(--header-height) - 230px));
+    padding: 14px 18px;
+  }
+
+  .consultation-workflow .form-grid {
+    gap: 10px 12px;
+  }
+
+  .consultation-stepper {
+    width: 100%;
+    justify-content: center;
+    overflow-x: visible;
+  }
+
+  .consultation-stepper__item {
+    width: 42px;
+    flex-basis: 42px;
   }
 
   .consultation-metrics-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .consultation-workflow__footer {
+    width: min(100%, 560px);
+    justify-self: end;
+    grid-template-columns: auto auto;
+    position: static;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .consultation-workflow__final-actions {
