@@ -63,6 +63,27 @@ def get_consultation(
     }
 
 
+@router.post(
+    "/consultations/{consultation_id}/follow-up",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_follow_up_consultation(
+    consultation_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    consultation = ConsultationService(db).create_follow_up_consultation(
+        tenant.tenant_id,
+        consultation_id,
+        created_by_user_id=tenant.user_id,
+        attending_user_id=tenant.user_id,
+    )
+    return {
+        "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
 @router.patch("/consultations/{consultation_id}")
 def update_consultation(
     consultation_id: uuid.UUID,

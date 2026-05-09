@@ -2038,6 +2038,17 @@ code {
   gap: 8px;
 }
 
+.timeline-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.timeline-card__actions .secondary-button {
+  flex: 1 1 142px;
+}
+
 .simple-list,
 .timeline {
   list-style: none;
@@ -2125,6 +2136,12 @@ code {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.consultation-workflow__context-note {
+  margin: -4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
 }
 
 .consultation-stepper {

@@ -1,3 +1,8 @@
+from sqlalchemy import func, select
+
+from app.models.inventory_movement import InventoryMovement
+
+
 def _create_owner(client, tenant, full_name="Owner"):
     response = client.post(
         "/api/v1/owners",
@@ -80,6 +85,8 @@ def test_create_and_get_consultation(client, tenant):
     body = response.json()["data"]
     assert body["id"] == consultation["id"]
     assert body["status"] == "draft"
+    assert body["consultation_type"] == "initial"
+    assert body["parent_consultation_id"] is None
     assert body["medications"] == []
     assert body["study_requests"] == []
 
@@ -463,6 +470,163 @@ def test_deleting_inventory_medication_preserves_movement_and_stock(client, tena
     )
     assert item_response.status_code == 200
     assert item_response.json()["data"]["current_stock"] == "6.00"
+
+
+def test_create_follow_up_consultation_copies_context_without_inventory_side_effects(
+    client,
+    db_session,
+    tenant,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        status="completed",
+        current_step=8,
+        reason="Chronic skin control",
+        anamnesis="Pruritus improved after shampoo",
+        symptoms="Mild itching",
+        symptom_duration="10 days",
+        clinical_exam="Less redness",
+        presumptive_diagnosis="Atopy",
+        diagnostic_plan="Repeat skin scraping if relapses",
+        therapeutic_plan="Continue topical therapy",
+        final_diagnosis="Allergic dermatitis",
+        indications="Control in 7 days",
+    )
+    item = _create_inventory_item(client, tenant, current_stock="10", sale_price_ars="900")
+
+    manual_medication_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "medication_name": "Cetirizine",
+            "dose_or_quantity": "5 mg",
+            "instructions": "Every 24 hours",
+        },
+    )
+    inventory_medication_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/medications",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "inventory_item_id": item["id"],
+            "quantity_used": "4",
+            "dose_or_quantity": "4 tablets",
+            "instructions": "Dispensed for home treatment",
+        },
+    )
+    study_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/study-requests",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "name": "Skin scraping",
+            "study_type": "laboratory",
+            "notes": "Reference for next control",
+        },
+    )
+    exam_response = client.post(
+        "/api/v1/exams",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={
+            "patient_id": patient["id"],
+            "consultation_id": consultation["id"],
+            "exam_type": "Dermatology panel",
+            "requested_at": "2026-04-24T10:30:00Z",
+        },
+    )
+    assert manual_medication_response.status_code == 201
+    assert inventory_medication_response.status_code == 201
+    assert study_response.status_code == 201
+    assert exam_response.status_code == 201
+
+    movements_before = db_session.scalar(
+        select(func.count()).select_from(InventoryMovement)
+    )
+    stock_before = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    ).json()["data"]["current_stock"]
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/follow-up",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 201
+    follow_up = response.json()["data"]
+    assert follow_up["id"] != consultation["id"]
+    assert follow_up["tenant_id"] == str(tenant.id)
+    assert follow_up["patient_id"] == patient["id"]
+    assert follow_up["consultation_type"] == "follow_up"
+    assert follow_up["parent_consultation_id"] == consultation["id"]
+    assert follow_up["status"] == "draft"
+    assert follow_up["current_step"] == 1
+    assert follow_up["reason"] == "Chronic skin control"
+    assert follow_up["anamnesis"] == "Pruritus improved after shampoo"
+    assert follow_up["symptoms"] == "Mild itching"
+    assert follow_up["symptom_duration"] == "10 days"
+    assert follow_up["clinical_exam"] == "Less redness"
+    assert follow_up["presumptive_diagnosis"] == "Atopy"
+    assert follow_up["diagnostic_plan"] == "Repeat skin scraping if relapses"
+    assert follow_up["therapeutic_plan"] == "Continue topical therapy"
+    assert follow_up["final_diagnosis"] == "Allergic dermatitis"
+    assert follow_up["indications"] == "Control in 7 days"
+
+    copied_medications = sorted(
+        follow_up["medications"],
+        key=lambda medication: medication["medication_name"],
+    )
+    assert [medication["medication_name"] for medication in copied_medications] == [
+        "Amoxicilina stock",
+        "Cetirizine",
+    ]
+    copied_inventory_medication = copied_medications[0]
+    assert copied_inventory_medication["inventory_item_id"] == item["id"]
+    assert copied_inventory_medication["inventory_movement_id"] is None
+    assert copied_inventory_medication["quantity_used"] == "4.00"
+
+    assert len(follow_up["study_requests"]) == 1
+    assert follow_up["study_requests"][0]["name"] == "Skin scraping"
+    assert follow_up["study_requests"][0]["study_type"] == "laboratory"
+    assert follow_up["study_requests"][0]["notes"] == "Reference for next control"
+
+    follow_up_exams_response = client.get(
+        f"/api/v1/consultations/{follow_up['id']}/exams",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert follow_up_exams_response.status_code == 200
+    assert follow_up_exams_response.json()["data"] == []
+
+    movements_after = db_session.scalar(
+        select(func.count()).select_from(InventoryMovement)
+    )
+    assert movements_after == movements_before
+    stock_after = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    ).json()["data"]["current_stock"]
+    assert stock_before == "6.00"
+    assert stock_after == stock_before
+
+
+def test_follow_up_consultation_is_tenant_safe(client, tenant, other_tenant):
+    foreign_owner = _create_owner(client, other_tenant, "Foreign Owner")
+    foreign_patient = _create_patient(client, other_tenant, foreign_owner["id"], "Nina")
+    foreign_consultation = _create_consultation(
+        client,
+        other_tenant,
+        foreign_patient["id"],
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{foreign_consultation['id']}/follow-up",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "consultation_not_found"
 
 
 def test_complete_consultation_with_status_completed(client, tenant):

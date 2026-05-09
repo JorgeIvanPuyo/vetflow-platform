@@ -44,6 +44,7 @@ import {
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
 import { exportClinicalHistoryPdf } from "@/services/clinical-history-export";
 import { getClinicTeam } from "@/services/clinic";
+import { createFollowUpConsultation } from "@/services/consultations";
 import {
   createPatientFileReference,
   deletePatientFileReference,
@@ -87,6 +88,7 @@ type PatientDetailState = {
   isPdfExporting: boolean;
   isPatientSaving: boolean;
   isPatientDeleting: boolean;
+  isFollowUpConsultationCreating: boolean;
   clinicalHistory: ClinicalHistory | null;
   owner: Owner | null;
   owners: Owner[];
@@ -201,6 +203,7 @@ const initialState: PatientDetailState = {
   isPdfExporting: false,
   isPatientSaving: false,
   isPatientDeleting: false,
+  isFollowUpConsultationCreating: false,
   clinicalHistory: null,
   owner: null,
   owners: [],
@@ -314,6 +317,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     useState<PdfExportFormState>(initialPdfExportFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
   const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
+  const [consultationToCreateControl, setConsultationToCreateControl] =
+    useState<ClinicalHistoryTimelineItem | null>(null);
   const [patientEditFormState, setPatientEditFormState] =
     useState<PatientEditFormState>(initialPatientEditFormState);
   const [editSpeciesOption, setEditSpeciesOption] = useState<SpeciesOption>("");
@@ -492,6 +497,48 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         ...current,
         isFollowUpSubmitting: false,
         errorMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
+  function openFollowUpConsultationModal(item: ClinicalHistoryTimelineItem) {
+    setConsultationToCreateControl(item);
+    setState((current) => ({
+      ...current,
+      errorMessage: null,
+      successMessage: null,
+    }));
+  }
+
+  function closeFollowUpConsultationModal() {
+    if (state.isFollowUpConsultationCreating) {
+      return;
+    }
+
+    setConsultationToCreateControl(null);
+  }
+
+  async function handleCreateFollowUpConsultation() {
+    if (!consultationToCreateControl) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isFollowUpConsultationCreating: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      const response = await createFollowUpConsultation(consultationToCreateControl.id);
+      router.push(`/consultations/${response.data.id}`);
+    } catch {
+      setConsultationToCreateControl(null);
+      setState((current) => ({
+        ...current,
+        isFollowUpConsultationCreating: false,
+        errorMessage: "No fue posible crear la consulta de control.",
       }));
     }
   }
@@ -1046,6 +1093,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {isFileUploadModalOpen ? renderFileUploadModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
       {fileReferenceToDelete ? renderFileDeleteModal(fileReferenceToDelete) : null}
+      {consultationToCreateControl ? renderFollowUpConsultationModal() : null}
     </div>
   );
 
@@ -1082,7 +1130,26 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 <span className="clinical-timeline__dot" aria-hidden="true">
                   {getTimelineIcon(item.type)}
                 </span>
-                {getTimelineHref(item) ? (
+                {item.type === "consultation" ? (
+                  <article className="clinical-timeline__card">
+                    {renderTimelineContent(item, false)}
+                    <div className="timeline-card__actions">
+                      <Link
+                        className="secondary-button secondary-button--compact"
+                        href={`/consultations/${item.id}`}
+                      >
+                        Ver consulta
+                      </Link>
+                      <button
+                        className="secondary-button secondary-button--compact"
+                        onClick={() => openFollowUpConsultationModal(item)}
+                        type="button"
+                      >
+                        Consulta de control
+                      </button>
+                    </div>
+                  </article>
+                ) : getTimelineHref(item) ? (
                   <Link className="clinical-timeline__card" href={getTimelineHref(item) ?? "#"}>
                     {renderTimelineContent(item, true)}
                   </Link>
@@ -2034,6 +2101,59 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       </div>
     );
   }
+
+  function renderFollowUpConsultationModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section
+          aria-labelledby="follow-up-consultation-title"
+          aria-modal="true"
+          className="bottom-sheet"
+          role="dialog"
+        >
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Consulta</p>
+              <h2 id="follow-up-consultation-title">Crear consulta de control</h2>
+            </div>
+            <button
+              aria-label="Cerrar"
+              className="icon-button"
+              disabled={state.isFollowUpConsultationCreating}
+              onClick={closeFollowUpConsultationModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+          <p>
+            Se creará una nueva consulta basada en esta consulta anterior.
+            Podrás editar toda la información antes de guardarla.
+          </p>
+          <div className="modal-actions">
+            <button
+              className="secondary-button"
+              disabled={state.isFollowUpConsultationCreating}
+              onClick={closeFollowUpConsultationModal}
+              type="button"
+            >
+              Cancelar
+            </button>
+            <button
+              className="primary-button"
+              disabled={state.isFollowUpConsultationCreating}
+              onClick={() => void handleCreateFollowUpConsultation()}
+              type="button"
+            >
+              {state.isFollowUpConsultationCreating
+                ? "Creando..."
+                : "Crear consulta"}
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 }
 
 function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: boolean) {
@@ -2046,6 +2166,11 @@ function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: b
         {item.type === "follow_up" && item.follow_up_status ? (
           <span className={getFollowUpStatusBadgeClass(item.follow_up_status)}>
             {getFollowUpStatusLabel(item.follow_up_status)}
+          </span>
+        ) : null}
+        {item.type === "consultation" ? (
+          <span className="badge badge--blue">
+            {item.consultation_type === "follow_up" ? "Control" : "Inicial"}
           </span>
         ) : null}
       </div>
@@ -2133,6 +2258,10 @@ function formatDateTime(value: string) {
 }
 
 function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryTimelineItem[] {
+  const consultationsById = new Map(
+    clinicalHistory.consultations.map((consultation) => [consultation.id, consultation]),
+  );
+
   if (clinicalHistory.timeline) {
     const followUpsById = new Map(
       (clinicalHistory.follow_ups ?? []).map((followUp) => [followUp.id, followUp]),
@@ -2142,6 +2271,14 @@ function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryT
       ...item,
       follow_up_status:
         item.type === "follow_up" ? followUpsById.get(item.id)?.status ?? null : null,
+      consultation_type:
+        item.type === "consultation"
+          ? consultationsById.get(item.id)?.consultation_type ?? "initial"
+          : undefined,
+      parent_consultation_id:
+        item.type === "consultation"
+          ? consultationsById.get(item.id)?.parent_consultation_id ?? null
+          : undefined,
     }));
   }
 
@@ -2151,6 +2288,8 @@ function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryT
     date: consultation.visit_date,
     title: consultation.reason,
     summary: getConsultationSummary(consultation),
+    consultation_type: consultation.consultation_type,
+    parent_consultation_id: consultation.parent_consultation_id,
     created_by: getTraceableUserName(consultation, "created_by")
       ? {
           full_name: getTraceableUserName(consultation, "created_by"),

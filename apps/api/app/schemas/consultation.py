@@ -142,6 +142,8 @@ class ConsultationRead(ConsultationBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
+    consultation_type: Literal["initial", "follow_up"]
+    parent_consultation_id: uuid.UUID | None
     created_by_user_id: uuid.UUID | None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None

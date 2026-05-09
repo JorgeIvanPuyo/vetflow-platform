@@ -22,6 +22,13 @@ export function createConsultation(payload: CreateConsultationPayload) {
   return api.post<ApiItemResponse<Consultation>>("/api/v1/consultations", payload);
 }
 
+export function createFollowUpConsultation(consultationId: string) {
+  return api.post<ApiItemResponse<Consultation>>(
+    `/api/v1/consultations/${consultationId}/follow-up`,
+    {},
+  );
+}
+
 export function getConsultation(consultationId: string) {
   return api.get<ApiItemResponse<Consultation>>(
     `/api/v1/consultations/${consultationId}`,

@@ -90,6 +90,7 @@ type FormState = {
   presumptive_diagnosis: string;
   diagnostic_tags: string;
   diagnostic_plan_notes: string;
+  therapeutic_plan: string;
   therapeutic_plan_notes: string;
   final_diagnosis: string;
   indications: string;
@@ -153,6 +154,7 @@ const initialFormState: FormState = {
   presumptive_diagnosis: "",
   diagnostic_tags: "",
   diagnostic_plan_notes: "",
+  therapeutic_plan: "",
   therapeutic_plan_notes: "",
   final_diagnosis: "",
   indications: "",
@@ -656,6 +658,9 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           <span className={getStatusClass(consultation.status)}>
             {consultation.status === "completed" ? "Completada" : "Borrador"}
           </span>
+          {consultation.consultation_type === "follow_up" ? (
+            <span className="badge badge--blue">Consulta de control</span>
+          ) : null}
           {hasClinicalText(patient?.allergies) ? (
             <span className="badge badge--danger">Alergias: {patient?.allergies}</span>
           ) : null}
@@ -665,6 +670,12 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             </span>
           ) : null}
         </div>
+        {consultation.consultation_type === "follow_up" &&
+        consultation.parent_consultation_id ? (
+          <p className="consultation-workflow__context-note">
+            Basada en consulta anterior
+          </p>
+        ) : null}
         {attendingUserName || registeredByName ? (
           <div className="traceability-meta">
             {attendingUserName ? (
@@ -1284,6 +1295,14 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           )}
         />
         <label className="field">
+          <span>Plan terapéutico</span>
+          <textarea
+            rows={4}
+            value={formState.therapeutic_plan}
+            onChange={(event) => updateField("therapeutic_plan", event.target.value)}
+          />
+        </label>
+        <label className="field">
           <span>Notas del plan terapéutico</span>
           <textarea
             rows={5}
@@ -1581,6 +1600,7 @@ function toFormState(consultation: Consultation): FormState {
     presumptive_diagnosis: consultation.presumptive_diagnosis ?? "",
     diagnostic_tags: consultation.diagnostic_tags?.join(", ") ?? "",
     diagnostic_plan_notes: consultation.diagnostic_plan_notes ?? "",
+    therapeutic_plan: consultation.therapeutic_plan ?? "",
     therapeutic_plan_notes: consultation.therapeutic_plan_notes ?? "",
     final_diagnosis: consultation.final_diagnosis ?? "",
     indications: consultation.indications ?? "",
@@ -1609,6 +1629,7 @@ function buildPayload(formState: FormState): StepUpdatePayload {
     presumptive_diagnosis: formState.presumptive_diagnosis.trim() || null,
     diagnostic_tags: splitTags(formState.diagnostic_tags),
     diagnostic_plan_notes: formState.diagnostic_plan_notes.trim() || null,
+    therapeutic_plan: formState.therapeutic_plan.trim() || null,
     therapeutic_plan_notes: formState.therapeutic_plan_notes.trim() || null,
     final_diagnosis: formState.final_diagnosis.trim() || null,
     indications: formState.indications.trim() || null,
@@ -1698,7 +1719,7 @@ function pickStepFields(step: number, formState: FormState): Partial<FormState> 
     ],
     3: ["presumptive_diagnosis", "diagnostic_tags"],
     4: ["diagnostic_plan_notes"],
-    5: ["therapeutic_plan_notes"],
+    5: ["therapeutic_plan", "therapeutic_plan_notes"],
     6: ["final_diagnosis"],
     7: ["indications"],
     8: ["next_control_date", "reminder_requested", "consultation_summary"],

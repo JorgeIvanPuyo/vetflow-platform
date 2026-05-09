@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -24,6 +25,12 @@ from app.models.base import BaseModel
 
 class Consultation(BaseModel):
     __tablename__ = "consultations"
+    __table_args__ = (
+        CheckConstraint(
+            "consultation_type IN ('initial', 'follow_up')",
+            name="ck_consultations_consultation_type",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -35,6 +42,12 @@ class Consultation(BaseModel):
         Uuid(as_uuid=True),
         ForeignKey("patients.id"),
         nullable=False,
+        index=True,
+    )
+    parent_consultation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("consultations.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -52,6 +65,13 @@ class Consultation(BaseModel):
     visit_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        index=True,
+    )
+    consultation_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="initial",
+        server_default="initial",
         index=True,
     )
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -102,6 +122,11 @@ class Consultation(BaseModel):
     attending_user: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[attending_user_id],
+    )
+    parent_consultation: Mapped[Consultation | None] = relationship(
+        "Consultation",
+        remote_side="Consultation.id",
+        foreign_keys=[parent_consultation_id],
     )
     exams: Mapped[list[Exam]] = relationship("Exam", back_populates="consultation")
     medications: Mapped[list[ConsultationMedication]] = relationship(

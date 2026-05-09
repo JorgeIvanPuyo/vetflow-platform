@@ -66,6 +66,7 @@ export type Patient = {
 };
 
 export type ConsultationStatus = "draft" | "completed";
+export type ConsultationType = "initial" | "follow_up";
 
 export type ConsultationMedication = {
   id: string;
@@ -103,6 +104,8 @@ export type Consultation = {
   id: string;
   tenant_id: string;
   patient_id: string;
+  consultation_type: ConsultationType;
+  parent_consultation_id: string | null;
   created_by_user_id?: string | null;
   attending_user_id?: string | null;
   created_by_user?: UserTrace | null;
@@ -231,6 +234,8 @@ export type ClinicalHistoryTimelineItem = {
   requested_by?: UserTrace | null;
   assigned_user?: UserTrace | null;
   follow_up_status?: FollowUpStatus | null;
+  consultation_type?: ConsultationType | null;
+  parent_consultation_id?: string | null;
 };
 
 export type ClinicalHistory = {

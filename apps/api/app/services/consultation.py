@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy.orm import Session
@@ -84,6 +85,65 @@ class ConsultationService:
         if consultation is None:
             raise AppError(404, "consultation_not_found", "Consultation not found")
         return consultation
+
+    def create_follow_up_consultation(
+        self,
+        tenant_id: uuid.UUID,
+        consultation_id: uuid.UUID,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
+        attending_user_id: uuid.UUID | None = None,
+    ) -> Consultation:
+        original = self.get_consultation(tenant_id, consultation_id)
+        follow_up = Consultation(
+            tenant_id=tenant_id,
+            patient_id=original.patient_id,
+            created_by_user_id=created_by_user_id,
+            attending_user_id=attending_user_id,
+            visit_date=datetime.now(timezone.utc),
+            reason=original.reason,
+            anamnesis=original.anamnesis,
+            symptoms=original.symptoms,
+            symptom_duration=original.symptom_duration,
+            clinical_exam=original.clinical_exam,
+            presumptive_diagnosis=original.presumptive_diagnosis,
+            diagnostic_plan=original.diagnostic_plan,
+            therapeutic_plan=original.therapeutic_plan,
+            final_diagnosis=original.final_diagnosis,
+            indications=original.indications,
+            consultation_type="follow_up",
+            parent_consultation_id=original.id,
+            status="draft",
+            current_step=1,
+        )
+        self.consultation_repository.create(follow_up)
+
+        for medication in original.medications:
+            copied_medication = ConsultationMedication(
+                tenant_id=tenant_id,
+                consultation_id=follow_up.id,
+                medication_name=medication.medication_name,
+                dose_or_quantity=medication.dose_or_quantity,
+                instructions=medication.instructions,
+                inventory_item_id=medication.inventory_item_id,
+                inventory_movement_id=None,
+                supplied_by_clinic=medication.supplied_by_clinic,
+                quantity_used=medication.quantity_used,
+            )
+            self.consultation_repository.create_medication(copied_medication)
+
+        for study_request in original.study_requests:
+            copied_study_request = ConsultationStudyRequest(
+                tenant_id=tenant_id,
+                consultation_id=follow_up.id,
+                name=study_request.name,
+                study_type=study_request.study_type,
+                notes=study_request.notes,
+            )
+            self.consultation_repository.create_study_request(copied_study_request)
+
+        self.db.commit()
+        return self.get_consultation(tenant_id, follow_up.id)
 
     def update_consultation(
         self,
