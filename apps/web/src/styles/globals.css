@@ -2145,6 +2145,7 @@ code {
   margin: 0 auto;
   gap: 10px;
   padding-bottom: 74px;
+  scroll-margin-top: calc(var(--header-height) + 10px);
 }
 
 .consultation-workflow__header,
@@ -2157,13 +2158,9 @@ code {
 }
 
 .consultation-workflow__header {
-  position: sticky;
-  top: calc(var(--header-height) + 4px);
-  z-index: 12;
   display: grid;
   gap: 6px;
   padding: 8px 9px;
-  backdrop-filter: blur(16px);
 }
 
 .consultation-workflow__topbar {
@@ -2391,7 +2388,6 @@ code {
   gap: 10px;
   min-height: max(420px, calc(100svh - var(--header-height) - 190px));
   padding: 10px;
-  scroll-margin-top: calc(var(--header-height) + 84px);
 }
 
 .consultation-step-heading {
@@ -2850,7 +2846,6 @@ code {
   }
 
   .consultation-workflow__header {
-    top: calc(var(--header-height) + 8px);
     padding: 9px 12px;
   }
 

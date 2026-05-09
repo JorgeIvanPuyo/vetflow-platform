@@ -213,7 +213,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const router = useRouter();
   const hasStartedRef = useRef(false);
   const previousStepRef = useRef<number | null>(null);
-  const stepCardRef = useRef<HTMLElement | null>(null);
+  const workflowRef = useRef<HTMLDivElement | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -377,7 +377,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       return;
     }
 
-    stepCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    workflowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     previousStepRef.current = activeStep;
   }, [activeStep, isLoading]);
 
@@ -730,7 +730,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const alertCount = Number(hasAllergies) + Number(hasChronicConditions);
 
   return (
-    <div className="consultation-workflow">
+    <div className="consultation-workflow" ref={workflowRef}>
       {toast ? (
         <div className="consultation-toast-stack" aria-live="polite" aria-atomic="true">
           <div
@@ -893,7 +893,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         </nav>
       </section>
 
-      <section className="consultation-step-card" ref={stepCardRef}>
+      <section className="consultation-step-card">
         {activeStep === 1 ? renderAnamnesisStep() : null}
         {activeStep === 2 ? renderExamStep() : null}
         {activeStep === 3 ? renderPresumptiveDiagnosisStep() : null}
