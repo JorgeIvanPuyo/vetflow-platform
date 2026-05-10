@@ -3,6 +3,7 @@
 import {
   CalendarDays,
   Cat,
+  ChevronDown,
   ClipboardCheck,
   Download,
   Dog,
@@ -13,16 +14,12 @@ import {
   History,
   Image as ImageIcon,
   Info,
-  Mail,
-  MapPin,
   PawPrint,
-  Phone,
   Plus,
   Stethoscope,
   Syringe,
   Trash2,
   Upload,
-  User,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -317,6 +314,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     useState<PdfExportFormState>(initialPdfExportFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
   const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
+  const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({});
   const [consultationToCreateControl, setConsultationToCreateControl] =
     useState<ClinicalHistoryTimelineItem | null>(null);
   const [patientEditFormState, setPatientEditFormState] =
@@ -763,6 +761,13 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     setPdfExportError(null);
   }
 
+  function toggleTimelineItem(itemKey: string) {
+    setExpandedTimelineItems((current) => ({
+      ...current,
+      [itemKey]: !current[itemKey],
+    }));
+  }
+
   async function handleExportClinicalHistoryPdf(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -980,17 +985,13 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   const { patient } = state.clinicalHistory;
-  const patientRegisteredBy = getTraceableUserName(patient, "created_by");
 
   return (
     <div className="page-stack patient-detail-page">
       <section className="detail-hero patient-detail-hero">
-        <Link className="back-link" href="/patients">
-          Volver a pacientes
-        </Link>
-        <div className="detail-hero__main">
+        <div className="detail-hero__main patient-detail-hero__main">
           <span className={`pet-avatar pet-avatar--large ${getSexAvatarClass(patient.sex)}`} aria-hidden="true">
-            {getSpeciesIcon(patient.species, 30)}
+            {getSpeciesIcon(patient.species, 22)}
           </span>
           <div>
             <h1>{patient.name}</h1>
@@ -1000,64 +1001,34 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </p>
           </div>
         </div>
-        <div className="button-row">
+        <div className="button-row patient-detail-hero__actions">
           <button
-            className="primary-button"
+            className="primary-button patient-detail-hero__primary-action"
             type="button"
             onClick={() => router.push(`/patients/${patientId}/consultations/new`)}
           >
-            <Stethoscope aria-hidden="true" size={18} />
+            <Stethoscope aria-hidden="true" size={16} />
             Nueva consulta
           </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => router.push(`/agenda?patient_id=${patientId}`)}
-          >
-            <CalendarDays aria-hidden="true" size={18} />
-            Agendar turno
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => openFollowUpModal(patient)}
-          >
-            <ClipboardCheck aria-hidden="true" size={18} />
-            Programar seguimiento
-          </button>
+          <div className="patient-detail-hero__secondary-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => router.push(`/agenda?patient_id=${patientId}`)}
+            >
+              <CalendarDays aria-hidden="true" size={15} />
+              Agendar turno
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => openFollowUpModal(patient)}
+            >
+              <ClipboardCheck aria-hidden="true" size={15} />
+              Programar seguimiento
+            </button>
+          </div>
         </div>
-      </section>
-
-      <section className="panel patient-profile-card">
-        <dl className="metric-list">
-          <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
-          <div><dt>Edad</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
-          <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
-        </dl>
-
-        {hasClinicalText(patient.allergies) ? (
-          <div className="alert-box alert-box--structured">
-            <strong>Alergias</strong>
-            <span>{patient.allergies}</span>
-          </div>
-        ) : null}
-
-        <section className="owner-inline-card" aria-label="Propietario">
-          <div className="section-heading">
-            <p className="eyebrow">Responsable</p>
-            <h2>Propietario</h2>
-          </div>
-          {state.owner ? (
-            <dl className="owner-details owner-details--compact">
-              <div><dt>Nombre</dt><dd><User size={15} /> {state.owner.full_name}</dd></div>
-              <div><dt>Teléfono</dt><dd><Phone size={15} /> {state.owner.phone}</dd></div>
-              {state.owner.email ? <div><dt>Correo</dt><dd><Mail size={15} /> {state.owner.email}</dd></div> : null}
-              {state.owner.address ? <div><dt>Dirección</dt><dd><MapPin size={15} /> {state.owner.address}</dd></div> : null}
-            </dl>
-          ) : (
-            <div className="empty-state">No hay datos del propietario disponibles.</div>
-          )}
-        </section>
       </section>
 
       {state.successMessage ? <p className="success-state">{state.successMessage}</p> : null}
@@ -1100,9 +1071,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   function renderHistorySection(timeline: ClinicalHistoryTimelineItem[]) {
     return (
       <section className="panel patient-detail-section">
-        <div className="section-heading section-heading--row">
+        <div className="section-heading section-heading--row history-section-heading">
           <div>
-            <p className="eyebrow">Timeline</p>
             <h2>Historial completo</h2>
             <p>Consultas, seguimientos, exámenes, vacunas, desparasitación y archivos.</p>
           </div>
@@ -1125,41 +1095,69 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <div className="empty-state">No hay registros para mostrar en este historial.</div>
         ) : (
           <ol className="clinical-timeline">
-            {timeline.map((item) => (
-              <li className={`clinical-timeline__item clinical-timeline__item--${item.type}`} key={`${item.type}-${item.id}`}>
-                <span className="clinical-timeline__dot" aria-hidden="true">
-                  {getTimelineIcon(item.type)}
-                </span>
-                {item.type === "consultation" ? (
-                  <article className="clinical-timeline__card">
-                    {renderTimelineContent(item, false)}
-                    <div className="timeline-card__actions">
-                      <Link
-                        className="secondary-button secondary-button--compact"
-                        href={`/consultations/${item.id}`}
-                      >
-                        Ver consulta
-                      </Link>
+            {timeline.map((item) => {
+              const itemKey = `${item.type}-${item.id}`;
+              const isExpanded = Boolean(expandedTimelineItems[itemKey]);
+              const href = getTimelineHref(item);
+
+              return (
+                <li className={`clinical-timeline__item clinical-timeline__item--${item.type}`} key={itemKey}>
+                  <span className="clinical-timeline__dot" aria-hidden="true">
+                    {getTimelineIcon(item.type)}
+                  </span>
+                  <article className={`clinical-timeline__card${isExpanded ? " clinical-timeline__card--expanded" : ""}`}>
+                    <div className="timeline-card__summary">
+                      <div className="timeline-card__summary-main">
+                        <time dateTime={item.date}>{formatDateTime(item.date)}</time>
+                        {renderTimelineBadges(item)}
+                        <h3>{item.title}</h3>
+                      </div>
                       <button
-                        className="secondary-button secondary-button--compact"
-                        onClick={() => openFollowUpConsultationModal(item)}
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? "Contraer registro" : "Expandir registro"}
+                        className="timeline-card__toggle"
                         type="button"
+                        onClick={() => toggleTimelineItem(itemKey)}
                       >
-                        Consulta de control
+                        <ChevronDown aria-hidden="true" size={16} />
                       </button>
                     </div>
+
+                    {isExpanded ? (
+                      <div className="timeline-card__expanded">
+                        <div className="timeline-card__details">
+                          {item.summary ? <p>{item.summary}</p> : null}
+                          {renderTimelineTraceability(item)}
+                        </div>
+                        {item.type === "consultation" ? (
+                          <div className="timeline-card__actions">
+                            <Link
+                              className="secondary-button secondary-button--compact"
+                              href={`/consultations/${item.id}`}
+                            >
+                              Ver consulta
+                            </Link>
+                            <button
+                              className="secondary-button secondary-button--compact"
+                              onClick={() => openFollowUpConsultationModal(item)}
+                              type="button"
+                            >
+                              Consulta de control
+                            </button>
+                          </div>
+                        ) : href ? (
+                          <div className="timeline-card__actions">
+                            <Link className="secondary-button secondary-button--compact" href={href}>
+                              Ver
+                            </Link>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </article>
-                ) : getTimelineHref(item) ? (
-                  <Link className="clinical-timeline__card" href={getTimelineHref(item) ?? "#"}>
-                    {renderTimelineContent(item, true)}
-                  </Link>
-                ) : (
-                  <article className="clinical-timeline__card">
-                    {renderTimelineContent(item, false)}
-                  </article>
-                )}
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ol>
         )}
       </section>
@@ -1168,21 +1166,20 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
   function renderInfoSection(patient: Patient) {
     return (
-      <section className="panel patient-detail-section">
-        <div className="section-heading section-heading--row">
+      <section className="panel patient-profile-info-card">
+        <div className="patient-profile-info-card__header">
           <div>
-            <p className="eyebrow">Ficha</p>
             <h2>Información</h2>
-            <p>Datos generales registrados para este paciente.</p>
+            <p>Datos generales del paciente y propietario.</p>
           </div>
-          <div className="detail-action-row">
+          <div className="patient-profile-info-card__actions">
             <button
               aria-label="Editar paciente"
               className="secondary-button"
               onClick={() => openPatientEditModal(patient)}
               type="button"
             >
-              <Edit aria-hidden="true" size={18} /> Editar
+              <Edit aria-hidden="true" size={16} /> Editar
             </button>
             <button
               aria-label="Eliminar paciente"
@@ -1190,29 +1187,44 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               onClick={openPatientDeleteModal}
               type="button"
             >
-              <Trash2 aria-hidden="true" size={18} /> Eliminar
+              <Trash2 aria-hidden="true" size={16} /> Eliminar
             </button>
           </div>
         </div>
-        <dl className="detail-grid">
-          <div><dt>Nombre</dt><dd>{patient.name}</dd></div>
-          <div><dt>Especie</dt><dd>{patient.species}</dd></div>
-          <div><dt>Raza</dt><dd>{patient.breed ?? "No indicado"}</dd></div>
-          <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
-          <div><dt>Edad estimada</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
-          <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
-          <div><dt>Alergias</dt><dd>{hasClinicalText(patient.allergies) ? patient.allergies : "Sin registros"}</dd></div>
-          <div><dt>Condiciones crónicas</dt><dd>{patient.chronic_conditions ?? "Sin registros"}</dd></div>
-        </dl>
-        <div className="traceability-meta">
-          <span>
-            <strong>Fecha de creación:</strong> {formatDateTime(patient.created_at)}
-          </span>
-          {patientRegisteredBy ? (
-            <span>
-              <strong>Registrado por:</strong> {patientRegisteredBy}
-            </span>
-          ) : null}
+
+        <div className="patient-profile-info-card__content">
+          <div className="patient-profile-info-block">
+            <h3>Datos del paciente</h3>
+            <dl className="patient-profile-info-list">
+              <div><dt>Nombre</dt><dd>{patient.name}</dd></div>
+              <div><dt>Especie</dt><dd>{patient.species}</dd></div>
+              <div><dt>Raza</dt><dd>{patient.breed ?? "No indicado"}</dd></div>
+              <div><dt>Sexo</dt><dd>{patient.sex ?? "No indicado"}</dd></div>
+              <div><dt>Edad estimada</dt><dd>{patient.estimated_age ?? "No indicado"}</dd></div>
+              <div><dt>Peso</dt><dd>{patient.weight_kg ? `${patient.weight_kg} kg` : "No indicado"}</dd></div>
+              <div><dt>Alergias</dt><dd>{hasClinicalText(patient.allergies) ? patient.allergies : "Sin registros"}</dd></div>
+              <div><dt>Condiciones crónicas</dt><dd>{hasClinicalText(patient.chronic_conditions) ? patient.chronic_conditions : "Sin registros"}</dd></div>
+              <div><dt>Fecha de creación</dt><dd>{formatDateTime(patient.created_at)}</dd></div>
+            </dl>
+          </div>
+
+          <div className="patient-profile-info-block">
+            <h3>Propietario</h3>
+            {state.owner ? (
+              <>
+                <dl className="patient-profile-info-list">
+                  <div><dt>Nombre</dt><dd>{state.owner.full_name}</dd></div>
+                  <div><dt>Teléfono</dt><dd>{state.owner.phone}</dd></div>
+                  {state.owner.email ? <div><dt>Correo</dt><dd>{state.owner.email}</dd></div> : null}
+                </dl>
+                <Link className="secondary-button patient-profile-info-card__owner-link" href={`/owners/${state.owner.id}`}>
+                  Ver propietario
+                </Link>
+              </>
+            ) : (
+              <div className="empty-state">No hay datos del propietario disponibles.</div>
+            )}
+          </div>
         </div>
       </section>
     );
@@ -2156,24 +2168,30 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 }
 
+function renderTimelineBadges(item: ClinicalHistoryTimelineItem) {
+  return (
+    <div className="timeline-card__badges">
+      <span className={`badge ${getTimelineBadgeClass(item.type)}`}>
+        {getTimelineTypeLabel(item.type)}
+      </span>
+      {item.type === "follow_up" && item.follow_up_status ? (
+        <span className={getFollowUpStatusBadgeClass(item.follow_up_status)}>
+          {getFollowUpStatusLabel(item.follow_up_status)}
+        </span>
+      ) : null}
+      {item.type === "consultation" ? (
+        <span className="badge badge--blue">
+          {item.consultation_type === "follow_up" ? "Control" : "Inicial"}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function renderTimelineContent(item: ClinicalHistoryTimelineItem, isNavigable: boolean) {
   return (
     <>
-      <div className="timeline-card__badges">
-        <span className={`badge ${getTimelineBadgeClass(item.type)}`}>
-          {getTimelineTypeLabel(item.type)}
-        </span>
-        {item.type === "follow_up" && item.follow_up_status ? (
-          <span className={getFollowUpStatusBadgeClass(item.follow_up_status)}>
-            {getFollowUpStatusLabel(item.follow_up_status)}
-          </span>
-        ) : null}
-        {item.type === "consultation" ? (
-          <span className="badge badge--blue">
-            {item.consultation_type === "follow_up" ? "Control" : "Inicial"}
-          </span>
-        ) : null}
-      </div>
+      {renderTimelineBadges(item)}
       <time dateTime={item.date}>{formatDateTime(item.date)}</time>
       <h3>{item.title}</h3>
       <p>{item.summary}</p>
