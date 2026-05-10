@@ -5461,3 +5461,219 @@ code {
     height: 96px;
   }
 }
+
+/* Owner detail compact density */
+.owner-detail-page {
+  gap: 14px;
+  padding-bottom: 104px;
+}
+
+.owner-detail-page .summary-grid {
+  gap: 14px;
+}
+
+.owner-detail-hero {
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.owner-detail-hero__main {
+  min-width: 0;
+  display: contents;
+}
+
+.owner-detail-hero .contact-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.owner-detail-hero h1 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.owner-detail-hero p {
+  max-width: 220px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.owner-detail-hero__actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.owner-detail-hero__actions .primary-button,
+.owner-detail-hero__actions .secondary-button {
+  min-height: 40px;
+  height: 40px;
+  flex: initial;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.owner-data-card,
+.owner-pets-card {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.owner-data-card .section-heading,
+.owner-pets-card .section-heading {
+  margin-bottom: 14px;
+}
+
+.owner-data-card .section-heading h2,
+.owner-pets-card .section-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.owner-data-card .owner-details {
+  gap: 0;
+}
+
+.owner-data-card .owner-details div {
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 4px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.owner-data-card .owner-details div:last-child {
+  border-bottom: 0;
+}
+
+.owner-data-card .owner-details dt {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.owner-data-card .owner-details dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.owner-data-card .owner-details svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.owner-pets-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.owner-pets-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+}
+
+.owner-pets-card__icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.owner-pets-card .patient-card-list {
+  gap: 10px;
+}
+
+.owner-pets-card .patient-card {
+  border-radius: 16px;
+}
+
+@media (min-width: 760px) {
+  .owner-detail-page {
+    gap: 16px;
+    padding-bottom: 32px;
+  }
+
+  .owner-detail-page .summary-grid {
+    gap: 16px;
+  }
+
+  .owner-detail-hero {
+    min-height: 96px;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    column-gap: 14px;
+    padding: 20px 22px;
+  }
+
+  .owner-detail-hero .contact-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    font-size: 16px;
+  }
+
+  .owner-detail-hero h1 {
+    font-size: 28px;
+    line-height: 32px;
+  }
+
+  .owner-detail-hero p {
+    max-width: none;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .owner-detail-hero__actions {
+    grid-column: auto;
+    display: flex;
+    gap: 8px;
+    margin-top: 0;
+  }
+
+  .owner-detail-hero__actions .primary-button,
+  .owner-detail-hero__actions .secondary-button {
+    min-height: 36px;
+    height: 36px;
+    padding: 0 14px;
+  }
+
+  .owner-data-card,
+  .owner-pets-card {
+    padding: 18px;
+  }
+
+  .owner-data-card .owner-details div {
+    grid-template-columns: 140px minmax(0, 1fr);
+    align-items: center;
+  }
+}

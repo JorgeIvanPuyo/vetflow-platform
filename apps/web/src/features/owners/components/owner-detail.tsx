@@ -206,11 +206,8 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
 
   return (
     <div className="page-stack owner-detail-page">
-      <section className="detail-hero">
-        <Link className="back-link" href="/owners">
-          Volver a propietarios
-        </Link>
-        <div className="detail-hero__main">
+      <section className="detail-hero owner-detail-hero">
+        <div className="detail-hero__main owner-detail-hero__main">
           <span className="contact-avatar" aria-hidden="true">
             {state.owner.full_name.charAt(0).toUpperCase()}
           </span>
@@ -219,14 +216,14 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
             <p>Contacto principal y mascotas asociadas</p>
           </div>
         </div>
-        <div className="detail-hero__actions">
+        <div className="detail-hero__actions owner-detail-hero__actions">
           <button
             aria-label="Editar propietario"
             className="primary-button"
             onClick={openEditModal}
             type="button"
           >
-            <Edit aria-hidden="true" size={18} />
+            <Edit aria-hidden="true" size={16} />
             Editar
           </button>
           <button
@@ -235,7 +232,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
             onClick={openDeleteModal}
             type="button"
           >
-            <Trash2 aria-hidden="true" size={18} />
+            <Trash2 aria-hidden="true" size={16} />
             Eliminar
           </button>
         </div>
@@ -246,26 +243,23 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
       <section className="summary-grid">
         <article className="panel owner-data-card">
           <div className="section-heading">
-            <p className="eyebrow">Datos</p>
             <h2>Información del propietario</h2>
           </div>
           <dl className="owner-details">
-            <div><dt>Nombre</dt><dd><User size={15} /> {state.owner.full_name}</dd></div>
-            <div><dt>Teléfono</dt><dd><Phone size={15} /> {state.owner.phone}</dd></div>
-            <div><dt>Correo</dt><dd><Mail size={15} /> {state.owner.email ?? "No indicado"}</dd></div>
-            <div><dt>Dirección</dt><dd><MapPin size={15} /> {state.owner.address ?? "No indicada"}</dd></div>
+            <div><dt>Nombre</dt><dd><User size={14} /> {state.owner.full_name}</dd></div>
+            <div><dt>Teléfono</dt><dd><Phone size={14} /> {state.owner.phone}</dd></div>
+            <div><dt>Correo</dt><dd><Mail size={14} /> {state.owner.email ?? "No indicado"}</dd></div>
+            <div><dt>Dirección</dt><dd><MapPin size={14} /> {state.owner.address ?? "No indicada"}</dd></div>
             <div><dt>Creado</dt><dd>{formatDate(state.owner.created_at)}</dd></div>
           </dl>
         </article>
 
-        <article className="panel">
-          <div className="section-heading section-heading--row">
+        <article className="panel owner-pets-card">
+          <div className="section-heading section-heading--row owner-pets-card__header">
             <div>
-              <p className="eyebrow">Mascotas</p>
-              <h2>Mascotas</h2>
-              <p>{state.pets.length} mascota{state.pets.length === 1 ? "" : "s"}</p>
+              <h2>{state.pets.length} Mascota{state.pets.length === 1 ? "" : "s"}</h2>
             </div>
-            <span className="icon-bubble"><PawPrint size={22} /></span>
+            <span className="icon-bubble owner-pets-card__icon"><PawPrint size={20} /></span>
           </div>
 
           {state.pets.length === 0 ? (
