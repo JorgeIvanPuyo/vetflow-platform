@@ -1,18 +1,19 @@
 "use client";
 
-import { LogOut, Menu, Search, X } from "lucide-react";
+import { Menu, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ClinicBrandMark } from "@/components/layout/clinic-brand-mark";
 import { navigationItems } from "@/components/layout/navigation-items";
+import { UserSessionFooter } from "@/components/layout/user-session-footer";
 import { useAuth } from "@/features/auth/auth-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 import { GlobalSearch } from "@/features/search/components/global-search";
 
 export function AppHeader() {
   const { displayName, profile, refreshProfile } = useClinic();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -65,17 +66,14 @@ export function AppHeader() {
           })}
         </div>
 
-        <button
-          className="mobile-menu__logout"
-          type="button"
-          onClick={() => {
+        <UserSessionFooter
+          className="mobile-menu__user-footer"
+          onLogout={() => {
             setIsMenuOpen(false);
-            logout();
+            void logout();
           }}
-        >
-          <LogOut size={20} />
-          <span>Cerrar sesión</span>
-        </button>
+          user={user}
+        />
       </nav>
     </div>
   ) : null;

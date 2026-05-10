@@ -1,17 +1,17 @@
 "use client";
 
-import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ClinicBrandMark } from "@/components/layout/clinic-brand-mark";
 import { navigationItems } from "@/components/layout/navigation-items";
+import { UserSessionFooter } from "@/components/layout/user-session-footer";
 import { useAuth } from "@/features/auth/auth-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { displayName, profile, refreshProfile } = useClinic();
 
   function isActive(href: string) {
@@ -49,10 +49,7 @@ export function AppSidebar() {
           })}
         </nav>
 
-        <button className="app-sidebar__logout" type="button" onClick={logout}>
-          <LogOut size={18} />
-          <span>Cerrar sesión</span>
-        </button>
+        <UserSessionFooter className="app-sidebar__user-footer" onLogout={logout} user={user} />
       </div>
     </aside>
   );
