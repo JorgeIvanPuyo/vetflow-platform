@@ -166,6 +166,53 @@ export function DashboardHome() {
             </section>
           ) : null}
 
+          <DashboardKpiStrip
+            items={[
+              {
+                href: "/agenda",
+                icon: getKpiIcon("appointments"),
+                label: "Turnos",
+                value: summary.cards.appointments_today,
+                helper: "Agenda activa",
+                tone: "blue",
+              },
+              {
+                href: "/follow-ups",
+                icon: getKpiIcon("upcoming_follow_ups"),
+                label: "Seguimientos",
+                value: summary.cards.follow_ups_upcoming,
+                helper: "Próximos controles",
+                tone: "success",
+              },
+              {
+                href: "/patients",
+                icon: getKpiIcon("consultations"),
+                label: "Consultas",
+                value: summary.cards.consultations_recent,
+                helper: "Actividad reciente",
+                tone: "warning",
+              },
+            ]}
+          />
+
+          <section className="dashboard-quick-actions">
+            <Link className="quick-action" href="/patients">
+              Nuevo paciente
+            </Link>
+
+            <Link className="quick-action" href="/patients">
+              Nueva consulta
+            </Link>
+
+            <Link className="quick-action" href="/agenda">
+              Nuevo turno
+            </Link>
+
+            <Link className="quick-action" href="/inventory">
+              Registrar compra
+            </Link>
+          </section>
+
           <div className="dashboard-priority-grid">
             <DashboardSection
               className="dashboard-section--appointments"
@@ -246,69 +293,6 @@ export function DashboardHome() {
             </DashboardSection>
           </div>
 
-          <DashboardKpiStrip
-            items={[
-              {
-                href: "/agenda",
-                icon: getKpiIcon("appointments"),
-                label: getDashboardCardLabel(periodFilter, "Turnos hoy", "Turnos del período"),
-                value: summary.cards.appointments_today,
-                helper: getDashboardCardHelper(
-                  periodFilter,
-                  "Agenda programada para hoy",
-                  "Turnos encontrados en el período seleccionado",
-                ),
-                tone: "blue",
-              },
-              {
-                href: "/follow-ups",
-                icon: getKpiIcon("upcoming_follow_ups"),
-                label: "Seguimientos próximos",
-                value: summary.cards.follow_ups_upcoming,
-                helper: "Controles y recordatorios próximos",
-                tone: "success",
-              },
-              {
-                href: "/follow-ups",
-                icon: getKpiIcon("overdue_follow_ups"),
-                label: "Seguimientos vencidos",
-                value: summary.cards.follow_ups_overdue,
-                helper: "Casos que necesitan atención",
-                tone: "warning",
-              },
-              {
-                href: summary.recent_consultations[0]
-                  ? `/consultations/${summary.recent_consultations[0].id}`
-                  : "/patients",
-                icon: getKpiIcon("consultations"),
-                label: "Consultas recientes",
-                value: summary.cards.consultations_recent,
-                helper: "Actividad clínica registrada",
-                tone: "success",
-              },
-              {
-                href: summary.upcoming_preventive_care[0]
-                  ? `/patients/${summary.upcoming_preventive_care[0].patient_id}`
-                  : "/patients",
-                icon: getKpiIcon("preventive_care"),
-                label: "Vacunas próximas",
-                value: summary.cards.preventive_care_upcoming,
-                helper: "Próximas vacunas y desparasitaciones",
-                tone: "blue",
-              },
-              {
-                href: summary.recent_files[0]
-                  ? `/patients/${summary.recent_files[0].patient_id}`
-                  : "/patients",
-                icon: getKpiIcon("files"),
-                label: "Archivos recientes",
-                value: summary.cards.files_recent,
-                helper: "Documentos y estudios cargados",
-                tone: "danger",
-              },
-            ]}
-          />
-
           <div className="dashboard-secondary-grid">
             <DashboardSection
               title="Archivos recientes"
@@ -372,7 +356,7 @@ function DashboardHeader({
   team: ClinicTeamMember[];
 }) {
   return (
-    <section className="screen-heading dashboard-hero">
+    <section className="dashboard-top">
       <div className="dashboard-heading-row">
         <div>
           <p className="eyebrow">Clínica</p>
