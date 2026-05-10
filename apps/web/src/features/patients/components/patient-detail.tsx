@@ -315,6 +315,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
   const [isPatientDeleteOpen, setIsPatientDeleteOpen] = useState(false);
   const [expandedTimelineItems, setExpandedTimelineItems] = useState<Record<string, boolean>>({});
+  const [expandedFileItems, setExpandedFileItems] = useState<Record<string, boolean>>({});
   const [consultationToCreateControl, setConsultationToCreateControl] =
     useState<ClinicalHistoryTimelineItem | null>(null);
   const [patientEditFormState, setPatientEditFormState] =
@@ -763,6 +764,13 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
   function toggleTimelineItem(itemKey: string) {
     setExpandedTimelineItems((current) => ({
+      ...current,
+      [itemKey]: !current[itemKey],
+    }));
+  }
+
+  function toggleFileItem(itemKey: string) {
+    setExpandedFileItems((current) => ({
       ...current,
       [itemKey]: !current[itemKey],
     }));
@@ -1274,19 +1282,18 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
   function renderFilesSection() {
     return (
-      <section className="panel patient-detail-section">
-        <div className="section-heading section-heading--row">
+      <section className="panel patient-detail-section patient-files-section">
+        <div className="section-heading section-heading--row patient-files-section__header">
           <div>
-            <p className="eyebrow">Archivos clínicos</p>
             <h2>Archivos adjuntos</h2>
             <p>Laboratorios, radiografías, fotos clínicas y documentos del paciente.</p>
           </div>
-          <div className="detail-action-row">
+          <div className="patient-files-section__actions">
             <button className="primary-button" type="button" onClick={() => setIsFileUploadModalOpen(true)}>
-              <Upload aria-hidden="true" size={18} /> Subir archivo
+              <Upload aria-hidden="true" size={16} /> Subir archivo
             </button>
             <button className="secondary-button" type="button" onClick={() => setIsFileModalOpen(true)}>
-              <Plus aria-hidden="true" size={18} /> Agregar referencia
+              <Plus aria-hidden="true" size={16} /> Agregar referencia
             </button>
           </div>
         </div>
@@ -1297,60 +1304,83 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <span>Sube laboratorios, radiografías, fotos clínicas o documentos PDF.</span>
           </div>
         ) : (
-          <div className="record-card-list">
-            {state.fileReferences.map((fileReference) => (
-              <article className="record-card" key={fileReference.id}>
-                <span className="icon-bubble icon-bubble--blue">
-                  {getFileReferenceIcon(fileReference)}
-                </span>
-                <div>
-                  <div className="record-card__title-row">
-                    <span className="badge badge--blue">
+          <div className="patient-file-card-list">
+            {state.fileReferences.map((fileReference) => {
+              const isExpanded = Boolean(expandedFileItems[fileReference.id]);
+              const fileDate = fileReference.uploaded_at ?? fileReference.created_at;
+              const createdBy = getTraceableUserName(fileReference, "created_by");
+
+              return (
+                <article className={`patient-file-card${isExpanded ? " patient-file-card--expanded" : ""}`} key={fileReference.id}>
+                  <span className="patient-file-card__icon icon-bubble icon-bubble--blue">
+                    {getFileReferenceIcon(fileReference)}
+                  </span>
+                  <div className="patient-file-card__main">
+                    <span className="badge badge--blue patient-file-card__badge">
                       {fileReference.object_path ? "Archivo cargado" : "Referencia"}
                     </span>
-                  </div>
-                  <h3>{fileReference.name}</h3>
-                  <p>{getFileTypeLabel(fileReference.file_type)}</p>
-                  {fileReference.description ? <p>{fileReference.description}</p> : null}
-                  {fileReference.original_filename ? (
-                    <p>Archivo original: {fileReference.original_filename}</p>
-                  ) : null}
-                  {fileReference.size_bytes ? <p>Tamaño: {formatFileSize(fileReference.size_bytes)}</p> : null}
-                  {fileReference.uploaded_at ? <p>Subido: {formatDateTime(fileReference.uploaded_at)}</p> : null}
-                  {getTraceableUserName(fileReference, "created_by") ? (
-                    <p className="traceability-meta traceability-meta--compact">
-                      <strong>Registrado por:</strong>{" "}
-                      {getTraceableUserName(fileReference, "created_by")}
+                    <h3>{fileReference.name}</h3>
+                    <p>
+                      {getFileTypeLabel(fileReference.file_type)}
+                      {fileDate ? ` · ${formatDateTime(fileDate)}` : ""}
                     </p>
-                  ) : null}
-                  {!fileReference.object_path && !fileReference.external_url ? (
-                    <p>Referencia sin archivo cargado</p>
-                  ) : null}
-                  <div className="record-card__actions">
-                    <button
-                      className="secondary-button"
-                      disabled={state.isFileOpening || (!fileReference.object_path && !fileReference.external_url)}
-                      type="button"
-                      onClick={() => void handleOpenFileReference(fileReference)}
-                    >
-                      {fileReference.object_path ? (
-                        <Download aria-hidden="true" size={16} />
-                      ) : (
-                        <ExternalLink aria-hidden="true" size={16} />
-                      )}
-                      Ver / Descargar
-                    </button>
-                    <button
-                      className="secondary-button secondary-button--danger"
-                      type="button"
-                      onClick={() => openFileDeleteModal(fileReference)}
-                    >
-                      <Trash2 aria-hidden="true" size={16} /> Eliminar
-                    </button>
                   </div>
-                </div>
-              </article>
-            ))}
+                  <button
+                    aria-expanded={isExpanded}
+                    aria-label={isExpanded ? "Contraer archivo" : "Expandir archivo"}
+                    className="patient-file-card__toggle"
+                    type="button"
+                    onClick={() => toggleFileItem(fileReference.id)}
+                  >
+                    <ChevronDown aria-hidden="true" size={16} />
+                  </button>
+
+                  {isExpanded ? (
+                    <div className="patient-file-card__expanded">
+                      <div className="patient-file-card__details">
+                        {fileReference.description ? (
+                          <p><strong>Descripción:</strong> {fileReference.description}</p>
+                        ) : null}
+                        {fileReference.original_filename ? (
+                          <p><strong>Archivo original:</strong> {fileReference.original_filename}</p>
+                        ) : null}
+                        {fileReference.size_bytes ? (
+                          <p><strong>Tamaño:</strong> {formatFileSize(fileReference.size_bytes)}</p>
+                        ) : null}
+                        {createdBy ? (
+                          <p><strong>Registrado por:</strong> {createdBy}</p>
+                        ) : null}
+                        {!fileReference.object_path && !fileReference.external_url ? (
+                          <p>Referencia sin archivo cargado</p>
+                        ) : null}
+                      </div>
+                      <div className="patient-file-card__actions">
+                        <button
+                          className="secondary-button"
+                          disabled={state.isFileOpening || (!fileReference.object_path && !fileReference.external_url)}
+                          type="button"
+                          onClick={() => void handleOpenFileReference(fileReference)}
+                        >
+                          {fileReference.object_path ? (
+                            <Download aria-hidden="true" size={16} />
+                          ) : (
+                            <ExternalLink aria-hidden="true" size={16} />
+                          )}
+                          Ver / Descargar
+                        </button>
+                        <button
+                          className="secondary-button secondary-button--danger"
+                          type="button"
+                          onClick={() => openFileDeleteModal(fileReference)}
+                        >
+                          <Trash2 aria-hidden="true" size={16} /> Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
