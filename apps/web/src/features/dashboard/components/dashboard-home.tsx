@@ -2,7 +2,12 @@
 
 import {
   ArrowRight,
+  Calendar,
+  ChevronDown,
+  Package,
+  PawPrint,
   RefreshCw,
+  SlidersHorizontal,
   Stethoscope,
 } from "lucide-react";
 import Link from "next/link";
@@ -12,7 +17,6 @@ import {
   buildDashboardSummaryFilters,
   dashboardQuickPeriods,
   DashboardQuickPeriod,
-  formatDashboardDate,
   formatDashboardDateTime,
   formatDashboardTime,
   getConsultationStatusClass,
@@ -20,7 +24,6 @@ import {
   getDashboardAppointmentStatusClass,
   getDashboardAppointmentStatusLabel,
   getDashboardAppointmentTypeLabel,
-  getDashboardCardHelper,
   getDashboardCardLabel,
   getDashboardFollowUpStatusClass,
   getDashboardFollowUpStatusLabel,
@@ -28,8 +31,6 @@ import {
   getDashboardFollowUpTypeLabel,
   getDashboardFileTypeLabel,
   getKpiIcon,
-  getPreventiveCareBadgeClass,
-  getPreventiveCareLabel,
 } from "@/features/dashboard/components/dashboard-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import { getClinicTeam } from "@/services/clinic";
@@ -40,7 +41,6 @@ import type {
   DashboardConsultationItem,
   DashboardFileItem,
   DashboardFollowUpItem,
-  DashboardPreventiveCareItem,
   DashboardSummary,
   DashboardVeterinarianActivityItem,
 } from "@/types/api";
@@ -67,12 +67,15 @@ export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [periodFilter, setPeriodFilter] = useState<DashboardQuickPeriod>("today");
   const [assignedUserId, setAssignedUserId] = useState("all");
+  const [expandedSecondary, setExpandedSecondary] = useState<Record<string, boolean>>({});
   const hasLoadedRef = useRef(false);
 
   const requestFilters = useMemo(
     () => buildDashboardSummaryFilters(periodFilter, assignedUserId),
     [assignedUserId, periodFilter],
   );
+  const showVetFilter = state.team.length > 0;
+  const summary = state.summary;
 
   const criticalFollowUps = useMemo(() => {
     const overdue = state.summary?.overdue_follow_ups ?? [];
@@ -80,6 +83,16 @@ export function DashboardHome() {
 
     return [...overdue.slice(0, 3), ...upcoming.slice(0, Math.max(0, 5 - overdue.length))];
   }, [state.summary]);
+
+  const criticalFollowUpCount =
+    (summary?.overdue_follow_ups.length ?? 0) + (summary?.upcoming_follow_ups.length ?? 0);
+
+  function toggleSecondary(id: string) {
+    setExpandedSecondary((current) => ({
+      ...current,
+      [id]: !current[id],
+    }));
+  }
 
   const loadDashboard = useCallback(async () => {
     const isFirstLoad = !hasLoadedRef.current;
@@ -124,9 +137,6 @@ export function DashboardHome() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
-
-  const showVetFilter = state.team.length > 0;
-  const summary = state.summary;
 
   return (
     <div className="page-stack dashboard-page">
@@ -178,64 +188,38 @@ export function DashboardHome() {
               },
               {
                 href: "/follow-ups",
-                icon: getKpiIcon("upcoming_follow_ups"),
-                label: "Seguimientos",
-                value: summary.cards.follow_ups_upcoming,
-                helper: "Próximos controles",
-                tone: "success",
+                icon: getKpiIcon("overdue_follow_ups"),
+                label: "Alertas",
+                value: criticalFollowUpCount,
+                helper: "Seguimientos críticos",
+                tone: "warning",
               },
               {
-                href: "/patients",
+                href: summary.recent_consultations[0]
+                  ? `/consultations/${summary.recent_consultations[0].id}`
+                  : "/patients",
                 icon: getKpiIcon("consultations"),
                 label: "Consultas",
                 value: summary.cards.consultations_recent,
                 helper: "Actividad reciente",
-                tone: "warning",
+                tone: "success",
+              },
+              {
+                href: summary.upcoming_preventive_care[0]
+                  ? `/patients/${summary.upcoming_preventive_care[0].patient_id}`
+                  : "/patients",
+                icon: getKpiIcon("preventive_care"),
+                label: "Preventivos",
+                value: summary.cards.preventive_care_upcoming,
+                helper: "Próximos vencimientos",
+                tone: "blue",
               },
             ]}
           />
 
-          <section className="dashboard-quick-actions">
-            <Link className="quick-action" href="/patients">
-              Nuevo paciente
-            </Link>
-
-            <Link className="quick-action" href="/patients">
-              Nueva consulta
-            </Link>
-
-            <Link className="quick-action" href="/agenda">
-              Nuevo turno
-            </Link>
-
-            <Link className="quick-action" href="/inventory">
-              Registrar compra
-            </Link>
-          </section>
+          <DashboardQuickActions />
 
           <div className="dashboard-priority-grid">
-            <DashboardSection
-              className="dashboard-section--appointments"
-              title={getDashboardCardLabel(periodFilter, "Turnos de hoy", "Turnos del período")}
-              subtitle="Primeros turnos registrados en agenda"
-              actionHref="/agenda"
-              actionLabel="Ver agenda"
-            >
-              {summary.appointments_today.length > 0 ? (
-                <div className="dashboard-list">
-                  {summary.appointments_today.slice(0, 5).map((appointment) => (
-                    <DashboardAppointmentRow key={appointment.id} appointment={appointment} />
-                  ))}
-                </div>
-              ) : (
-                <DashboardEmptyMessage>
-                  {periodFilter === "today"
-                    ? "No hay turnos programados para hoy."
-                    : "No hay turnos registrados para este período."}
-                </DashboardEmptyMessage>
-              )}
-            </DashboardSection>
-
             <DashboardSection
               className="dashboard-section--critical"
               title="Seguimientos críticos"
@@ -245,7 +229,7 @@ export function DashboardHome() {
             >
               {criticalFollowUps.length > 0 ? (
                 <div className="dashboard-list">
-                  {criticalFollowUps.map((followUp) => (
+                  {criticalFollowUps.slice(0, 3).map((followUp) => (
                     <DashboardFollowUpRow key={`${followUp.id}-${followUp.status}`} followUp={followUp} />
                   ))}
                 </div>
@@ -257,50 +241,61 @@ export function DashboardHome() {
             </DashboardSection>
 
             <DashboardSection
-              className="dashboard-section--consultations"
-              title="Consultas recientes"
-              subtitle="Últimos registros clínicos"
+              className="dashboard-section--appointments"
+              title={getDashboardCardLabel(periodFilter, "Turnos de hoy", "Turnos del período")}
+              subtitle="Primeros turnos registrados en agenda"
+              actionHref="/agenda"
+              actionLabel="Ver agenda"
             >
-              {summary.recent_consultations.length > 0 ? (
+              {summary.appointments_today.length > 0 ? (
                 <div className="dashboard-list">
-                  {summary.recent_consultations.slice(0, 5).map((consultation) => (
-                    <DashboardConsultationRow key={consultation.id} consultation={consultation} />
+                  {summary.appointments_today.slice(0, 3).map((appointment) => (
+                    <DashboardAppointmentRow key={appointment.id} appointment={appointment} />
                   ))}
                 </div>
               ) : (
                 <DashboardEmptyMessage>
-                  No hay consultas recientes.
-                </DashboardEmptyMessage>
-              )}
-            </DashboardSection>
-
-            <DashboardSection
-              className="dashboard-section--preventive"
-              title="Próximas vacunas y desparasitaciones"
-              subtitle="Preventivos con vencimiento cercano"
-            >
-              {summary.upcoming_preventive_care.length > 0 ? (
-                <div className="dashboard-list">
-                  {summary.upcoming_preventive_care.slice(0, 5).map((record) => (
-                    <DashboardPreventiveCareRow key={record.id} record={record} />
-                  ))}
-                </div>
-              ) : (
-                <DashboardEmptyMessage>
-                  No hay vacunas o desparasitaciones próximas.
+                  {periodFilter === "today"
+                    ? "No hay turnos programados para hoy."
+                    : "No hay turnos registrados para este período."}
                 </DashboardEmptyMessage>
               )}
             </DashboardSection>
           </div>
 
           <div className="dashboard-secondary-grid">
-            <DashboardSection
+            <DashboardSecondaryPreview
+              actionHref="/patients"
+              count={summary.recent_consultations.length}
+              id="consultations"
+              isExpanded={Boolean(expandedSecondary.consultations)}
+              onToggle={toggleSecondary}
+              summary="Últimos registros clínicos"
+              title="Consultas recientes"
+            >
+              {summary.recent_consultations.length > 0 ? (
+                <div className="dashboard-list">
+                  {summary.recent_consultations.slice(0, 3).map((consultation) => (
+                    <DashboardConsultationRow key={consultation.id} consultation={consultation} />
+                  ))}
+                </div>
+              ) : (
+                <DashboardEmptyMessage>No hay consultas recientes.</DashboardEmptyMessage>
+              )}
+            </DashboardSecondaryPreview>
+
+            <DashboardSecondaryPreview
+              actionHref="/patients"
+              count={summary.recent_files.length}
+              id="files"
+              isExpanded={Boolean(expandedSecondary.files)}
+              onToggle={toggleSecondary}
+              summary="Documentos y resultados recientes"
               title="Archivos recientes"
-              subtitle="Documentos y resultados subidos a la historia clínica"
             >
               {summary.recent_files.length > 0 ? (
                 <div className="dashboard-list">
-                  {summary.recent_files.slice(0, 5).map((file) => (
+                  {summary.recent_files.slice(0, 3).map((file) => (
                     <DashboardFileRow key={file.id} file={file} />
                   ))}
                 </div>
@@ -309,15 +304,20 @@ export function DashboardHome() {
                   No hay archivos recientes.
                 </DashboardEmptyMessage>
               )}
-            </DashboardSection>
+            </DashboardSecondaryPreview>
 
-            <DashboardSection
+            <DashboardSecondaryPreview
+              actionHref="/settings"
+              count={summary.activity_by_veterinarian.length}
+              id="activity"
+              isExpanded={Boolean(expandedSecondary.activity)}
+              onToggle={toggleSecondary}
+              summary="Carga operativa del equipo"
               title="Actividad por veterinario"
-              subtitle="Resumen de carga operativa del equipo"
             >
               {summary.activity_by_veterinarian.length > 0 ? (
                 <div className="dashboard-activity-list">
-                  {summary.activity_by_veterinarian.map((activity) => (
+                  {summary.activity_by_veterinarian.slice(0, 3).map((activity) => (
                     <DashboardActivityRow key={activity.user_id} activity={activity} />
                   ))}
                 </div>
@@ -326,11 +326,51 @@ export function DashboardHome() {
                   No hay actividad registrada.
                 </DashboardEmptyMessage>
               )}
-            </DashboardSection>
+            </DashboardSecondaryPreview>
           </div>
         </>
       ) : null}
     </div>
+  );
+}
+
+function DashboardQuickActions() {
+  const actions = [
+    {
+      href: "/patients",
+      icon: <PawPrint aria-hidden="true" size={24} />,
+      label: "Nuevo paciente",
+    },
+    {
+      href: "/patients",
+      icon: <Stethoscope aria-hidden="true" size={24} />,
+      label: "Nueva consulta",
+    },
+    {
+      href: "/inventory",
+      icon: <Package aria-hidden="true" size={24} />,
+      label: "Registrar compra",
+    },
+    {
+      href: "/agenda",
+      icon: <Calendar aria-hidden="true" size={24} />,
+      label: "Crear turno",
+    },
+  ];
+
+  return (
+    <section className="dashboard-quick-actions-panel" aria-label="Acciones rápidas">
+      <h2>Acciones rápidas</h2>
+
+      <div className="dashboard-quick-actions">
+        {actions.map((action) => (
+          <Link className="quick-action" href={action.href} key={action.label}>
+            <span className="quick-action__icon">{action.icon}</span>
+            <span className="quick-action__label">{action.label}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -355,61 +395,124 @@ function DashboardHeader({
   showVetFilter: boolean;
   team: ClinicTeamMember[];
 }) {
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+
   return (
     <section className="dashboard-top">
       <div className="dashboard-heading-row">
         <div>
-          <p className="eyebrow">Clínica</p>
           <h1>Dashboard</h1>
-          <p>Operación clínica en tiempo real</p>
+          <p>Resumen de tu clínica veterinaria</p>
         </div>
-        <button
-          className="secondary-button dashboard-refresh-button"
-          type="button"
-          onClick={onRefresh}
-          disabled={isLoading || isRefreshing}
-        >
-          <RefreshCw
-            size={16}
-            className={isRefreshing ? "dashboard-spin" : undefined}
-          />
-          <span>{isRefreshing ? "Actualizando..." : "Actualizar"}</span>
-        </button>
+        <div className="dashboard-header-actions">
+          <button
+            aria-expanded={isFilterPanelOpen}
+            aria-label={isFilterPanelOpen ? "Cerrar filtros" : "Abrir filtros"}
+            className="dashboard-icon-button"
+            type="button"
+            onClick={() => setIsFilterPanelOpen((current) => !current)}
+          >
+            <SlidersHorizontal aria-hidden="true" size={18} />
+          </button>
+          <button
+            aria-label={isRefreshing ? "Actualizando dashboard" : "Actualizar dashboard"}
+            className="dashboard-icon-button"
+            type="button"
+            onClick={onRefresh}
+            disabled={isLoading || isRefreshing}
+          >
+            <RefreshCw
+              aria-hidden="true"
+              size={18}
+              className={isRefreshing ? "dashboard-spin" : undefined}
+            />
+          </button>
+        </div>
       </div>
 
-      <div className="dashboard-filters" aria-label="Filtros del dashboard">
-        <div className="dashboard-period-filter">
-          <span className="dashboard-filter-label">Periodo</span>
-          <div className="tab-list" role="tablist" aria-label="Periodo del dashboard">
-            {dashboardQuickPeriods.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`tab-pill${periodFilter === option.value ? " tab-pill--active" : ""}`}
-                onClick={() => onPeriodChange(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
+      {isFilterPanelOpen ? (
+        <div className="dashboard-filter-popover" role="dialog" aria-label="Filtros del dashboard">
+          <div className="dashboard-filters">
+            <div className="dashboard-period-filter">
+              <span className="dashboard-filter-label">Periodo</span>
+              <div className="tab-list" role="tablist" aria-label="Periodo del dashboard">
+                {dashboardQuickPeriods.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`tab-pill${periodFilter === option.value ? " tab-pill--active" : ""}`}
+                    onClick={() => onPeriodChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {showVetFilter ? (
+              <label className="compact-filter dashboard-vet-filter">
+                <span className="dashboard-filter-label">Veterinario</span>
+                <select
+                  value={assignedUserId}
+                  onChange={(event) => onAssignedUserChange(event.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  {team.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
         </div>
+      ) : null}
+    </section>
+  );
+}
 
-        {showVetFilter ? (
-          <label className="compact-filter dashboard-vet-filter">
-            <span className="dashboard-filter-label">Veterinario</span>
-            <select
-              value={assignedUserId}
-              onChange={(event) => onAssignedUserChange(event.target.value)}
-            >
-              <option value="all">Todos</option>
-              {team.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+function DashboardSecondaryPreview({
+  actionHref,
+  children,
+  count,
+  id,
+  isExpanded,
+  onToggle,
+  summary,
+  title,
+}: {
+  actionHref: string;
+  children: ReactNode;
+  count: number;
+  id: string;
+  isExpanded: boolean;
+  onToggle: (id: string) => void;
+  summary: string;
+  title: string;
+}) {
+  return (
+    <section className={`panel dashboard-secondary-preview${isExpanded ? " dashboard-secondary-preview--expanded" : ""}`}>
+      <div className="dashboard-secondary-preview__header">
+        <button
+          aria-expanded={isExpanded}
+          className="dashboard-secondary-preview__toggle"
+          onClick={() => onToggle(id)}
+          type="button"
+        >
+          <span>
+            <strong>{title}</strong>
+            <small>{count} registros · {summary}</small>
+          </span>
+          <ChevronDown aria-hidden="true" size={18} />
+        </button>
+        <Link className="dashboard-section-link" href={actionHref}>
+          <span>Ver todo</span>
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+      <div className="dashboard-secondary-preview__body">
+        {children}
       </div>
     </section>
   );
@@ -452,11 +555,16 @@ function DashboardKpiCard({
   tone: DashboardKpiTone;
 }) {
   return (
-    <Link className={`kpi-card kpi-card--${tone} dashboard-kpi-link`} href={href}>
+    <Link
+      aria-label={`${label}: ${value}. ${helper}`}
+      className={`kpi-card kpi-card--${tone} dashboard-kpi-link`}
+      href={href}
+    >
       <span className="kpi-card__icon">{icon}</span>
-      <span className="kpi-card__value">{value}</span>
-      <h2>{label}</h2>
-      <p>{helper}</p>
+      <span className="kpi-card__content">
+        <span className="kpi-card__value">{value}</span>
+        <span className="kpi-card__label">{label}</span>
+      </span>
     </Link>
   );
 }
@@ -572,30 +680,6 @@ function DashboardConsultationRow({
         <p>
           {consultation.reason}
           {veterinarian ? ` · ${veterinarian}` : ""}
-        </p>
-      </div>
-    </Link>
-  );
-}
-
-function DashboardPreventiveCareRow({
-  record,
-}: {
-  record: DashboardPreventiveCareItem;
-}) {
-  return (
-    <Link className="dashboard-row" href={`/patients/${record.patient_id}`}>
-      <div className="dashboard-row__main">
-        <div className="dashboard-row__meta">
-          <span className="dashboard-row__time">{formatDashboardDate(record.next_due_at)}</span>
-          <span className={getPreventiveCareBadgeClass(record.care_type)}>
-            {getPreventiveCareLabel(record.care_type)}
-          </span>
-        </div>
-        <h3>{record.name}</h3>
-        <p>
-          {record.patient_name || "Paciente sin nombre"}
-          {record.created_by_user_name ? ` · ${record.created_by_user_name}` : ""}
         </p>
       </div>
     </Link>

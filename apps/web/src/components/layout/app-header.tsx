@@ -89,7 +89,7 @@ export function AppHeader() {
             type="button"
             onClick={() => setIsMenuOpen(true)}
           >
-            <Menu size={22} />
+            <Menu size={16} />
           </button>
 
           <Link className="brand mobile-brand" href="/">
@@ -109,7 +109,7 @@ export function AppHeader() {
             type="button"
             onClick={() => setIsSearchOpen((current) => !current)}
           >
-            <Search size={22} />
+            <Search size={16} />
           </button>
         </div>
 
