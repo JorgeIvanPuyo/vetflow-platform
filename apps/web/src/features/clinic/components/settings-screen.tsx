@@ -1,6 +1,16 @@
 "use client";
 
-import { Image as ImageIcon, Mail, Trash2, Upload, Users, X } from "lucide-react";
+import {
+  Building2,
+  ChevronDown,
+  Image as ImageIcon,
+  Mail,
+  MapPin,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useClinic } from "@/features/clinic/clinic-context";
@@ -69,6 +79,7 @@ export function SettingsScreen() {
   const [formState, setFormState] = useState<ClinicProfileFormState>(initialFormState);
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [expandedSettingsSections, setExpandedSettingsSections] = useState<Record<string, boolean>>({});
   const [isTeamOpen, setIsTeamOpen] = useState(false);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
 
@@ -247,6 +258,13 @@ export function SettingsScreen() {
     }
   }
 
+  function toggleSettingsSection(section: string) {
+    setExpandedSettingsSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  }
+
   return (
     <div className="page-stack settings-layout">
       <section className="screen-heading list-page__header">
@@ -259,205 +277,256 @@ export function SettingsScreen() {
       {state.successMessage ? <div className="success-state">{state.successMessage}</div> : null}
 
       {!state.isLoading && state.profile ? (
-        <>
-          <section className="panel patient-detail-section">
-            <div className="section-heading section-heading--row">
-              <div>
-                <h2>Perfil de clínica</h2>
-                <p>Datos visibles para documentos, agenda y futuras comunicaciones.</p>
-              </div>
-            </div>
+        <div className="settings-section-list">
+          <section className="panel settings-section-card">
+            <button
+              aria-expanded={Boolean(expandedSettingsSections.profile)}
+              className="settings-section-card__header"
+              type="button"
+              onClick={() => toggleSettingsSection("profile")}
+            >
+              <span className="settings-section-card__icon" aria-hidden="true">
+                <Building2 size={20} />
+              </span>
+              <span className="settings-section-card__copy">
+                <strong>Perfil de clínica</strong>
+                <small>Datos visibles para documentos, agenda y comunicaciones.</small>
+              </span>
+              <ChevronDown aria-hidden="true" size={16} />
+            </button>
 
-            {state.flowMessage ? <div className="error-state">{state.flowMessage}</div> : null}
+            {expandedSettingsSections.profile ? (
+              <div className="settings-section-card__content">
+                {state.flowMessage ? <div className="error-state">{state.flowMessage}</div> : null}
 
-            <section className="clinic-logo-manager" aria-label="Logo de clínica">
-              <div className="clinic-logo-preview">
-                {logoPreviewUrl || state.profile.logo_url ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt="Logo de la clínica"
-                      src={logoPreviewUrl ?? state.profile.logo_url ?? ""}
-                    />
-                  </>
-                ) : (
-                  <span className="clinic-logo-placeholder" aria-hidden="true">
-                    <ImageIcon size={30} />
-                  </span>
-                )}
-              </div>
-
-              <div className="clinic-logo-manager__body">
-                <div>
-                  <h3>Logo de la clínica</h3>
-                  <p className="muted-text">
-                    Usa PNG, JPG o WebP. Tamaño máximo: 5 MB.
-                  </p>
-                </div>
-
-                {selectedLogoFile ? (
-                  <div className="selected-file-summary">
-                    <span>{selectedLogoFile.name}</span>
-                    <span>{formatLogoSize(selectedLogoFile.size)}</span>
+                <section className="clinic-logo-manager" aria-label="Logo de clínica">
+                  <div className="clinic-logo-preview">
+                    {logoPreviewUrl || state.profile.logo_url ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          alt="Logo de la clínica"
+                          src={logoPreviewUrl ?? state.profile.logo_url ?? ""}
+                        />
+                      </>
+                    ) : (
+                      <span className="clinic-logo-placeholder" aria-hidden="true">
+                        <ImageIcon size={30} />
+                      </span>
+                    )}
                   </div>
-                ) : null}
 
-                {state.logoMessage ? <div className="error-state">{state.logoMessage}</div> : null}
+                  <div className="clinic-logo-manager__body">
+                    <div>
+                      <h3>Logo de la clínica</h3>
+                      <p className="muted-text">
+                        Usa PNG, JPG o WebP. Tamaño máximo: 5 MB.
+                      </p>
+                    </div>
 
-                <div className="clinic-logo-actions">
-                  <label className="secondary-button clinic-logo-file-button">
-                    <Upload aria-hidden="true" size={17} />
-                    {state.profile.logo_url ? "Reemplazar logo" : "Subir logo"}
-                    <input
-                      accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                      className="sr-only"
-                      type="file"
-                      onChange={(event) => {
-                        handleLogoSelection(event.target.files?.[0] ?? null);
-                        event.target.value = "";
-                      }}
+                    {selectedLogoFile ? (
+                      <div className="selected-file-summary">
+                        <span>{selectedLogoFile.name}</span>
+                        <span>{formatLogoSize(selectedLogoFile.size)}</span>
+                      </div>
+                    ) : null}
+
+                    {state.logoMessage ? <div className="error-state">{state.logoMessage}</div> : null}
+
+                    <div className="clinic-logo-actions">
+                      <label className="secondary-button clinic-logo-file-button">
+                        <Upload aria-hidden="true" size={17} />
+                        {state.profile.logo_url ? "Reemplazar logo" : "Subir logo"}
+                        <input
+                          accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                          className="sr-only"
+                          type="file"
+                          onChange={(event) => {
+                            handleLogoSelection(event.target.files?.[0] ?? null);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        className="primary-button"
+                        disabled={!selectedLogoFile || state.isLogoUploading}
+                        onClick={() => void handleUploadLogo()}
+                        type="button"
+                      >
+                        {state.isLogoUploading ? "Subiendo logo..." : "Guardar logo"}
+                      </button>
+
+                      {state.profile.logo_url ? (
+                        <button
+                          className="secondary-button secondary-button--danger"
+                          disabled={state.isLogoDeleting}
+                          onClick={() => {
+                            setState((current) => ({ ...current, logoMessage: null }));
+                            setIsLogoDeleteOpen(true);
+                          }}
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={17} />
+                          Eliminar logo
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+
+                <form className="entity-form" onSubmit={handleSaveProfile}>
+                  <div className="form-grid">
+                    <label className="field">
+                      <span>Nombre visible</span>
+                      <input
+                        value={formState.display_name}
+                        placeholder={state.profile.name}
+                        onChange={(event) =>
+                          setFormState((current) => ({
+                            ...current,
+                            display_name: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Teléfono</span>
+                      <input
+                        value={formState.phone}
+                        onChange={(event) =>
+                          setFormState((current) => ({
+                            ...current,
+                            phone: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Email</span>
+                      <input
+                        inputMode="email"
+                        value={formState.email}
+                        onChange={(event) =>
+                          setFormState((current) => ({
+                            ...current,
+                            email: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <label className="field settings-field--full">
+                    <span>Dirección</span>
+                    <textarea
+                      rows={2}
+                      value={formState.address}
+                      onChange={(event) =>
+                        setFormState((current) => ({
+                          ...current,
+                          address: event.target.value,
+                        }))
+                      }
                     />
                   </label>
 
-                  <button
-                    className="primary-button"
-                    disabled={!selectedLogoFile || state.isLogoUploading}
-                    onClick={() => void handleUploadLogo()}
-                    type="button"
-                  >
-                    {state.isLogoUploading ? "Subiendo logo..." : "Guardar logo"}
-                  </button>
+                  <label className="field settings-field--full">
+                    <span>Notas</span>
+                    <textarea
+                      rows={3}
+                      value={formState.notes}
+                      onChange={(event) =>
+                        setFormState((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
 
-                  {state.profile.logo_url ? (
-                    <button
-                      className="secondary-button secondary-button--danger"
-                      disabled={state.isLogoDeleting}
-                      onClick={() => {
-                        setState((current) => ({ ...current, logoMessage: null }));
-                        setIsLogoDeleteOpen(true);
-                      }}
-                      type="button"
-                    >
-                      <Trash2 aria-hidden="true" size={17} />
-                      Eliminar logo
+                  <div className="modal-actions">
+                    <button className="secondary-button" onClick={resetForm} type="button">
+                      Cancelar
                     </button>
-                  ) : null}
-                </div>
+                    <button className="primary-button" disabled={state.isSaving} type="submit">
+                      {state.isSaving ? "Guardando..." : "Guardar cambios"}
+                    </button>
+                  </div>
+                </form>
               </div>
-            </section>
-
-            <form className="entity-form" onSubmit={handleSaveProfile}>
-              <div className="form-grid">
-                <label className="field">
-                  <span>Nombre visible</span>
-                  <input
-                    value={formState.display_name}
-                    placeholder={state.profile.name}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        display_name: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Teléfono</span>
-                  <input
-                    value={formState.phone}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        phone: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="field">
-                  <span>Email</span>
-                  <input
-                    inputMode="email"
-                    value={formState.email}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        email: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-
-              </div>
-
-              <label className="field">
-                <span>Dirección</span>
-                <textarea
-                  rows={2}
-                  value={formState.address}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      address: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <label className="field">
-                <span>Notas</span>
-                <textarea
-                  rows={3}
-                  value={formState.notes}
-                  onChange={(event) =>
-                    setFormState((current) => ({
-                      ...current,
-                      notes: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <div className="modal-actions">
-                <button className="secondary-button" onClick={resetForm} type="button">
-                  Cancelar
-                </button>
-                <button className="primary-button" disabled={state.isSaving} type="submit">
-                  {state.isSaving ? "Guardando..." : "Guardar cambios"}
-                </button>
-              </div>
-            </form>
+            ) : null}
           </section>
 
-          <section className="panel patient-detail-section">
-            <div className="section-heading section-heading--row">
-              <div>
-                <h2>Equipo de clínica</h2>
-                <p>Veterinarios activos disponibles para asignar turnos.</p>
-              </div>
-              <button className="secondary-button" onClick={() => setIsTeamOpen(true)} type="button">
-                <Users aria-hidden="true" size={18} />
-                Ver equipo
-              </button>
-            </div>
+          <section className="panel settings-section-card">
+            <button
+              aria-expanded={Boolean(expandedSettingsSections.team)}
+              className="settings-section-card__header"
+              type="button"
+              onClick={() => toggleSettingsSection("team")}
+            >
+              <span className="settings-section-card__icon" aria-hidden="true">
+                <Users size={20} />
+              </span>
+              <span className="settings-section-card__copy">
+                <strong>Equipo de clínica</strong>
+                <small>Veterinarios disponibles para asignar turnos.</small>
+              </span>
+              <ChevronDown aria-hidden="true" size={16} />
+            </button>
 
-            {state.team.length === 0 ? (
-              <div className="empty-state">No hay integrantes registrados.</div>
-            ) : (
-              <div className="clinic-team-preview">
-                {state.team.slice(0, 3).map((member) => (
-                  <span className="badge badge--success" key={member.id}>
-                    {member.full_name}
-                  </span>
-                ))}
-                {state.team.length > 3 ? (
-                  <span className="badge">+{state.team.length - 3}</span>
-                ) : null}
+            {expandedSettingsSections.team ? (
+              <div className="settings-section-card__content">
+                {state.team.length === 0 ? (
+                  <div className="empty-state">No hay integrantes registrados.</div>
+                ) : (
+                  <div className="clinic-team-preview">
+                    {state.team.slice(0, 3).map((member) => (
+                      <span className="badge badge--success" key={member.id}>
+                        {member.full_name}
+                      </span>
+                    ))}
+                    {state.team.length > 3 ? (
+                      <span className="badge">+{state.team.length - 3}</span>
+                    ) : null}
+                  </div>
+                )}
+                <button className="secondary-button settings-team-button" onClick={() => setIsTeamOpen(true)} type="button">
+                  <Users aria-hidden="true" size={16} />
+                  Ver equipo
+                </button>
               </div>
-            )}
+            ) : null}
           </section>
-        </>
+
+          <section className="panel settings-section-card">
+            <button
+              aria-expanded={Boolean(expandedSettingsSections.location)}
+              className="settings-section-card__header"
+              type="button"
+              onClick={() => toggleSettingsSection("location")}
+            >
+              <span className="settings-section-card__icon" aria-hidden="true">
+                <MapPin size={20} />
+              </span>
+              <span className="settings-section-card__copy">
+                <strong>Ubicación y zona horaria</strong>
+                <small>País, ciudad y zona horaria de operación.</small>
+              </span>
+              <ChevronDown aria-hidden="true" size={16} />
+            </button>
+
+            {expandedSettingsSections.location ? (
+              <div className="settings-section-card__content">
+                <p className="settings-placeholder-text">
+                  Próximamente podrás configurar país, ciudad y zona horaria de la clínica.
+                </p>
+              </div>
+            ) : null}
+          </section>
+        </div>
       ) : null}
 
       {isTeamOpen ? (
