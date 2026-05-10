@@ -6,16 +6,16 @@ import { useEffect, useState } from "react";
 
 import { ClinicBrandMark } from "@/components/layout/clinic-brand-mark";
 import { navigationItems } from "@/components/layout/navigation-items";
+import { useAuth } from "@/features/auth/auth-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 import { GlobalSearch } from "@/features/search/components/global-search";
-import { useAuth } from "@/features/auth/auth-context";
 
 export function AppHeader() {
   const { displayName, profile, refreshProfile } = useClinic();
+  const { logout } = useAuth();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { logout } = useAuth();
 
   useEffect(() => {
     function handleCloseMobileMenu() {
@@ -33,17 +33,11 @@ export function AppHeader() {
   }, []);
 
   const mobileMenu = isMenuOpen ? (
-    <div
-      className="mobile-menu-overlay"
-      onClick={() => setIsMenuOpen(false)}
-    >
-      <nav
-        className="mobile-menu"
-        onClick={(event) => event.stopPropagation()}
-      >
+    <div className="mobile-menu-overlay" onClick={() => setIsMenuOpen(false)}>
+      <nav className="mobile-menu" onClick={(event) => event.stopPropagation()}>
         <div className="mobile-menu__header">
           <span className="mobile-menu__title">Menú</span>
-          
+
           <button
             className="icon-button"
             type="button"
@@ -70,6 +64,7 @@ export function AppHeader() {
             );
           })}
         </div>
+
         <button
           className="mobile-menu__logout"
           type="button"
@@ -105,8 +100,12 @@ export function AppHeader() {
             <span>{displayName}</span>
           </Link>
 
+          <div className="desktop-header-search">
+            <GlobalSearch />
+          </div>
+
           <button
-            className="icon-button"
+            className="icon-button mobile-search-trigger"
             type="button"
             onClick={() => setIsSearchOpen((current) => !current)}
           >
