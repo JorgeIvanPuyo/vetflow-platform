@@ -249,8 +249,7 @@ export function SettingsScreen() {
 
   return (
     <div className="page-stack settings-layout">
-      <section className="screen-heading">
-        <p className="eyebrow">Clínica</p>
+      <section className="screen-heading list-page__header">
         <h1>Ajustes</h1>
         <p>Configuración de clínica</p>
       </section>
@@ -264,7 +263,6 @@ export function SettingsScreen() {
           <section className="panel patient-detail-section">
             <div className="section-heading section-heading--row">
               <div>
-                <p className="eyebrow">Perfil</p>
                 <h2>Perfil de clínica</h2>
                 <p>Datos visibles para documentos, agenda y futuras comunicaciones.</p>
               </div>
@@ -291,7 +289,6 @@ export function SettingsScreen() {
 
               <div className="clinic-logo-manager__body">
                 <div>
-                  <p className="eyebrow">Branding</p>
                   <h3>Logo de la clínica</h3>
                   <p className="muted-text">
                     Usa PNG, JPG o WebP. Tamaño máximo: 5 MB.
@@ -436,7 +433,6 @@ export function SettingsScreen() {
           <section className="panel patient-detail-section">
             <div className="section-heading section-heading--row">
               <div>
-                <p className="eyebrow">Equipo</p>
                 <h2>Equipo de clínica</h2>
                 <p>Veterinarios activos disponibles para asignar turnos.</p>
               </div>
@@ -469,7 +465,6 @@ export function SettingsScreen() {
           <section aria-labelledby="clinic-team-title" aria-modal="true" className="bottom-sheet" role="dialog">
             <div className="bottom-sheet__header">
               <div>
-                <p className="eyebrow">Equipo</p>
                 <h2 id="clinic-team-title">Equipo de clínica</h2>
               </div>
               <button aria-label="Cerrar" className="icon-button" onClick={() => setIsTeamOpen(false)} type="button">
@@ -508,7 +503,6 @@ export function SettingsScreen() {
           <section aria-labelledby="delete-logo-title" aria-modal="true" className="bottom-sheet" role="dialog">
             <div className="bottom-sheet__header">
               <div>
-                <p className="eyebrow">Logo</p>
                 <h2 id="delete-logo-title">Eliminar logo</h2>
               </div>
               <button aria-label="Cerrar" className="icon-button" onClick={() => setIsLogoDeleteOpen(false)} type="button">

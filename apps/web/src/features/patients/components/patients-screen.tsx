@@ -5,14 +5,12 @@ import {
   Cat,
   ChevronRight,
   Dog,
-  Filter,
   Plus,
-  Search,
   PawPrint,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { createOwner, getOwners } from "@/services/owners";
@@ -97,7 +95,6 @@ export function PatientsScreen() {
   const [ownerFormState, setOwnerFormState] = useState<OwnerFormState>(
     initialOwnerFormState,
   );
-  const [query, setQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creationStep, setCreationStep] = useState<CreationStep>("patient");
   const [selectedSpeciesOption, setSelectedSpeciesOption] = useState<SpeciesOption>("");
@@ -297,24 +294,9 @@ export function PatientsScreen() {
     [state.owners],
   );
 
-  const filteredPatients = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return state.patients;
-    }
-
-    return state.patients.filter((patient) => {
-      const ownerName = getOwnerName(patient.owner_id).toLowerCase();
-      return [patient.name, patient.species, patient.breed ?? "", ownerName]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [getOwnerName, query, state.patients]);
-
   return (
     <div className="page-stack patients-layout">
-      <section className="screen-heading screen-heading--with-action">
+      <section className="screen-heading list-page__header">
         <div>
           <h1>Pacientes</h1>
           <p>
@@ -323,31 +305,16 @@ export function PatientsScreen() {
               : `${state.patients.length} paciente${state.patients.length === 1 ? "" : "s"} registrado${state.patients.length === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
-        <button
-          className="floating-add-button"
-          type="button"
-          aria-label="Crear paciente"
-          onClick={openCreateFlow}
-        >
-          <Plus aria-hidden="true" size={24} />
-        </button>
       </section>
 
-      <section className="toolbar-card" aria-label="Buscar y filtrar pacientes">
-        <label className="search-field">
-          <Search aria-hidden="true" size={18} />
-          <span className="sr-only">Buscar pacientes</span>
-          <input
-            placeholder="Buscar por nombre, especie o propietario"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-        <button className="filter-button" type="button" aria-label="Filtros">
-          <Filter aria-hidden="true" size={18} />
-          <span>Filtros</span>
-        </button>
-      </section>
+      <button
+        className="floating-add-button list-page__fab"
+        type="button"
+        aria-label="Crear paciente"
+        onClick={openCreateFlow}
+      >
+        <Plus aria-hidden="true" size={24} />
+      </button>
 
       {state.successMessage ? (
         <div className="success-state">{state.successMessage}</div>
@@ -359,16 +326,16 @@ export function PatientsScreen() {
         <div className="error-state">{state.errorMessage}</div>
       ) : null}
 
-      {!state.isLoading && !state.errorMessage && filteredPatients.length === 0 ? (
-        <div className="empty-state">No hay pacientes de la clínica que coincidan con la búsqueda.</div>
+      {!state.isLoading && !state.errorMessage && state.patients.length === 0 ? (
+        <div className="empty-state">No hay pacientes registrados en la clínica.</div>
       ) : null}
 
-      {!state.isLoading && !state.errorMessage && filteredPatients.length > 0 ? (
+      {!state.isLoading && !state.errorMessage && state.patients.length > 0 ? (
         <section className="patient-card-list" aria-label="Lista de pacientes">
-          {filteredPatients.map((patient) => (
+          {state.patients.map((patient) => (
             <Link className="patient-card" href={`/patients/${patient.id}`} key={patient.id}>
               <span className="pet-avatar" aria-hidden="true">
-                <PawPrint size={24} />
+                <PawPrint size={20} />
               </span>
               <span className="patient-card__body">
                 <span className="patient-card__title-row">
@@ -389,7 +356,9 @@ export function PatientsScreen() {
                   Propietario: {getOwnerName(patient.owner_id)}
                 </span>
               </span>
-              <ChevronRight aria-hidden="true" className="patient-card__chevron" size={20} />
+              <span className="list-page__chevron" aria-hidden="true">
+                <ChevronRight size={16} />
+              </span>
             </Link>
           ))}
         </section>

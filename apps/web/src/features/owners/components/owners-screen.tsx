@@ -145,9 +145,8 @@ export function OwnersScreen() {
 
   return (
     <div className="page-stack owners-layout">
-      <section className="screen-heading screen-heading--with-action">
+      <section className="screen-heading list-page__header">
         <div>
-          <p className="eyebrow">Clientes</p>
           <h1>Propietarios</h1>
           <p>
             {state.isLoading
@@ -155,15 +154,16 @@ export function OwnersScreen() {
               : `${state.owners.length} propietario${state.owners.length === 1 ? "" : "s"} registrado${state.owners.length === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
-        <button
-          aria-label="Crear propietario"
-          className="floating-add-button"
-          onClick={openCreateModal}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={24} />
-        </button>
       </section>
+
+      <button
+        aria-label="Crear propietario"
+        className="floating-add-button list-page__fab"
+        onClick={openCreateModal}
+        type="button"
+      >
+        <Plus aria-hidden="true" size={24} />
+      </button>
 
       {state.successMessage ? <div className="success-state">{state.successMessage}</div> : null}
 
@@ -198,7 +198,9 @@ export function OwnersScreen() {
                   {owner.email ? <span><Mail size={14} /> {owner.email}</span> : null}
                   {owner.address ? <span><MapPin size={14} /> {owner.address}</span> : null}
                 </span>
-                <ChevronRight aria-hidden="true" className="patient-card__chevron" size={20} />
+                <span className="list-page__chevron" aria-hidden="true">
+                  <ChevronRight size={16} />
+                </span>
               </Link>
             );
           })}

@@ -143,21 +143,18 @@ export function InventoryScreen() {
 
   return (
     <div className="page-stack inventory-page">
-      <section className="screen-heading">
-        <div className="screen-heading--with-action inventory-heading-row">
-          <div>
-            <p className="eyebrow">Clínica</p>
-            <h1>Inventario</h1>
-            <p>
-              {state.summary?.total_items ?? 0} items registrados
-            </p>
-          </div>
-          <Link className="primary-button inventory-create-button" href="/inventory/new" aria-label="Nuevo item">
-            <Plus size={18} />
-            <span>Nuevo item</span>
-          </Link>
+      <section className="screen-heading list-page__header">
+        <div>
+          <h1>Inventario</h1>
+          <p>
+            {state.summary?.total_items ?? 0} items registrados
+          </p>
         </div>
       </section>
+
+      <Link className="floating-add-button list-page__fab" href="/inventory/new" aria-label="Nuevo item">
+        <Plus aria-hidden="true" size={24} />
+      </Link>
 
       <section className="inventory-summary-grid" aria-label="Resumen de inventario">
         <button

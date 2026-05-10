@@ -5054,3 +5054,410 @@ code {
     font-size: 0.8rem;
   }
 }
+
+/* Patients + Owners list page refinement */
+.patients-layout,
+.owners-layout,
+.agenda-layout,
+.inventory-page,
+.settings-layout {
+  gap: 14px;
+  padding-bottom: 104px;
+}
+
+.list-page__header {
+  min-height: 96px;
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.list-page__header .eyebrow {
+  margin-bottom: 6px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.list-page__header h1 {
+  margin: 0 0 5px;
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.list-page__header p:last-child {
+  max-width: 240px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.list-page__fab {
+  position: fixed;
+  right: 20px;
+  bottom: 88px;
+  z-index: 55;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 18px;
+  cursor: pointer;
+}
+
+.patient-card-list,
+.owner-card-list {
+  gap: 10px;
+}
+
+.patients-layout .patient-card,
+.owners-layout .owner-card-link {
+  min-height: 86px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.patients-layout .patient-card__body,
+.owners-layout .owner-card-link__body {
+  gap: 2px;
+}
+
+.patients-layout .pet-avatar,
+.owners-layout .contact-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+}
+
+.patients-layout .pet-avatar svg {
+  width: 18px;
+  height: 18px;
+}
+
+.owners-layout .contact-avatar {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.patients-layout .patient-card__title-row strong,
+.owners-layout .owner-card-link__title-row strong {
+  font-size: 15px;
+  line-height: 19px;
+  font-weight: 600;
+}
+
+.patients-layout .patient-card__meta {
+  font-size: 13px;
+  line-height: 17px;
+  font-weight: 400;
+}
+
+.patients-layout .patient-card__owner,
+.owners-layout .owner-card-link__body span:not(.badge) {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.list-page__chevron {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  color: var(--color-text-soft);
+}
+
+.list-page__chevron svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (min-width: 760px) {
+  .patients-layout,
+  .owners-layout,
+  .agenda-layout,
+  .inventory-page,
+  .settings-layout {
+    gap: 16px;
+    padding-bottom: 32px;
+  }
+
+  .list-page__header {
+    min-height: 88px;
+    padding: 20px 22px;
+    border-radius: 18px;
+  }
+
+  .list-page__header h1 {
+    font-size: 28px;
+    line-height: 32px;
+  }
+
+  .list-page__header p:last-child {
+    max-width: none;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .list-page__fab {
+    right: 24px;
+    bottom: 24px;
+  }
+
+  .patients-layout .patient-card,
+  .owners-layout .owner-card-link {
+    min-height: 68px;
+    padding: 12px 16px;
+  }
+
+  .patients-layout .pet-avatar,
+  .owners-layout .contact-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .owners-layout .contact-avatar {
+    font-size: 14px;
+  }
+}
+
+/* Agenda, Inventory and Settings compact density */
+.agenda-layout .tabbed-card {
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.agenda-layout .tab-list {
+  gap: 8px;
+  padding-bottom: 0;
+}
+
+.agenda-layout .tab-pill {
+  height: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.agenda-date-card {
+  min-height: 120px;
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.agenda-filters {
+  padding: 14px;
+  border-radius: 18px;
+}
+
+.appointment-list,
+.inventory-card-list {
+  gap: 10px;
+}
+
+.agenda-layout .appointment-card {
+  min-height: 86px;
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.agenda-layout .appointment-card__body {
+  gap: 4px;
+}
+
+.agenda-layout .appointment-card__title-row h2 {
+  font-size: 15px;
+  line-height: 19px;
+  font-weight: 600;
+}
+
+.agenda-layout .appointment-card__body p,
+.agenda-layout .appointment-card__meta {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.inventory-summary-card {
+  min-height: 104px;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.inventory-summary-card__label {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.inventory-summary-card strong {
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.inventory-summary-card small {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.inventory-toolbar {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.inventory-toolbar .search-input,
+.inventory-toolbar .search-field input {
+  min-height: 44px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.inventory-toolbar .search-button,
+.inventory-toolbar .filter-button {
+  min-height: 44px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 14px;
+}
+
+.inventory-toolbar .filter-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.inventory-card {
+  min-height: 128px;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.inventory-card__body {
+  gap: 6px;
+}
+
+.inventory-card__title-row h2 {
+  font-size: 15px;
+  line-height: 19px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.inventory-card__meta,
+.inventory-card__stats {
+  font-size: 13px;
+  line-height: 17px;
+}
+
+.inventory-card .badge,
+.inventory-card .status-pill,
+.inventory-card .type-label,
+.inventory-card .timeline-card__badges span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.inventory-pagination {
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.settings-layout .patient-detail-section {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.settings-layout .section-heading {
+  margin-bottom: 12px;
+}
+
+.settings-layout .section-heading h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+}
+
+.settings-layout .section-heading p,
+.settings-layout .muted-text {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.settings-layout .clinic-logo-manager {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.settings-layout .clinic-logo-preview {
+  width: 88px;
+  height: 88px;
+}
+
+.settings-layout .field input,
+.settings-layout .field select,
+.settings-layout .form-field input {
+  min-height: 44px;
+  border-radius: 14px;
+  font-size: 14px;
+}
+
+.settings-layout .primary-button,
+.settings-layout .secondary-button,
+.settings-layout .danger-button {
+  min-height: 44px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+@media (min-width: 760px) {
+  .agenda-date-card {
+    min-height: 88px;
+    padding: 16px;
+  }
+
+  .agenda-layout .appointment-card {
+    min-height: 68px;
+    padding: 12px 16px;
+  }
+
+  .inventory-summary-card {
+    min-height: 96px;
+    padding: 16px;
+  }
+
+  .inventory-card {
+    min-height: 92px;
+    padding: 12px 16px;
+  }
+
+  .settings-layout .patient-detail-section {
+    padding: 20px;
+  }
+
+  .settings-layout .clinic-logo-manager {
+    padding: 16px;
+  }
+
+  .settings-layout .clinic-logo-preview {
+    width: 96px;
+    height: 96px;
+  }
+}

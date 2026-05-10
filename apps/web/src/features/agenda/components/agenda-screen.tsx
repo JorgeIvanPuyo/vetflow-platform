@@ -519,21 +519,21 @@ export function AgendaScreen({
 
   return (
     <div className="page-stack agenda-layout">
-      <section className="screen-heading screen-heading--with-action">
+      <section className="screen-heading list-page__header">
         <div>
-          <p className="eyebrow">Clínica</p>
           <h1>Agenda</h1>
           <p>Turnos y seguimientos clínicos de la clínica</p>
         </div>
-        <button
-          className="primary-button agenda-new-button"
-          onClick={activeTab === "appointments" ? openCreateModal : openFollowUpModal}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={18} />
-          <span>{activeTab === "appointments" ? "Nuevo turno" : "Nuevo seguimiento"}</span>
-        </button>
       </section>
+
+      <button
+        aria-label={activeTab === "appointments" ? "Nuevo turno" : "Nuevo seguimiento"}
+        className="floating-add-button list-page__fab"
+        onClick={activeTab === "appointments" ? openCreateModal : openFollowUpModal}
+        type="button"
+      >
+        <Plus aria-hidden="true" size={24} />
+      </button>
 
       <section className="panel tabbed-card">
         <div className="tab-list" aria-label="Secciones de agenda">
