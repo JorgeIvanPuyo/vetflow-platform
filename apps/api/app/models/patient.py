@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text, Uuid
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -40,6 +40,16 @@ class Patient(BaseModel):
     weight_kg: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     allergies: Mapped[str | None] = mapped_column(Text, nullable=True)
     chronic_conditions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_bucket_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    photo_object_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    photo_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    photo_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    photo_uploaded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     tenant: Mapped[Tenant] = relationship("Tenant")
     owner: Mapped[Owner] = relationship("Owner", back_populates="patients")

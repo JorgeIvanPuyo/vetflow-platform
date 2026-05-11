@@ -14,7 +14,6 @@ import {
   History,
   Image as ImageIcon,
   Info,
-  PawPrint,
   Plus,
   Stethoscope,
   Syringe,
@@ -28,6 +27,12 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { FollowUpFormModal } from "@/features/follow-ups/components/follow-up-form-modal";
+import {
+  PatientAvatar,
+  PatientPhotoInput,
+  getPatientPhotoDeleteErrorMessage,
+  getPatientPhotoUploadErrorMessage,
+} from "@/features/patients/components/patient-photo";
 import {
   FollowUpFormState,
   buildFollowUpPayload,
@@ -51,7 +56,13 @@ import {
 } from "@/services/file-references";
 import { createFollowUp } from "@/services/follow-ups";
 import { getOwner, getOwners } from "@/services/owners";
-import { deletePatient, getPatientClinicalHistory, updatePatient } from "@/services/patients";
+import {
+  deletePatient,
+  deletePatientPhoto,
+  getPatientClinicalHistory,
+  updatePatient,
+  uploadPatientPhoto,
+} from "@/services/patients";
 import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
   ClinicTeamMember,
@@ -325,6 +336,10 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [editHasNoKnownAllergies, setEditHasNoKnownAllergies] = useState(false);
   const [editHasNoKnownChronicConditions, setEditHasNoKnownChronicConditions] =
     useState(false);
+  const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [editPhotoPreviewUrl, setEditPhotoPreviewUrl] = useState<string | null>(null);
+  const [editPhotoErrorMessage, setEditPhotoErrorMessage] = useState<string | null>(null);
+  const [shouldDeletePhoto, setShouldDeletePhoto] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [fileDeleteConfirmation, setFileDeleteConfirmation] = useState("");
   const [pdfExportError, setPdfExportError] = useState<string | null>(null);
@@ -388,6 +403,18 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   useEffect(() => {
     void loadPatientDetail();
   }, [loadPatientDetail]);
+
+  useEffect(() => {
+    if (!editPhotoFile) {
+      setEditPhotoPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(editPhotoFile);
+    setEditPhotoPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [editPhotoFile]);
 
   async function handleCreatePreventiveCare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -835,6 +862,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     setCustomEditSpecies(speciesOption === "Otro" ? patient.species : "");
     setEditHasNoKnownAllergies(!hasClinicalText(patient.allergies));
     setEditHasNoKnownChronicConditions(!hasClinicalText(patient.chronic_conditions));
+    setEditPhotoFile(null);
+    setEditPhotoErrorMessage(null);
+    setShouldDeletePhoto(false);
     setIsPatientEditOpen(true);
     setState((current) => ({
       ...current,
@@ -854,6 +884,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     setCustomEditSpecies("");
     setEditHasNoKnownAllergies(false);
     setEditHasNoKnownChronicConditions(false);
+    setEditPhotoFile(null);
+    setEditPhotoErrorMessage(null);
+    setShouldDeletePhoto(false);
   }
 
   function openPatientDeleteModal() {
@@ -920,14 +953,27 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       successMessage: null,
     }));
 
+    let patientDataSaved = false;
+
     try {
       await updatePatient(patientId, payload);
+      patientDataSaved = true;
+
+      if (editPhotoFile) {
+        await uploadPatientPhoto(patientId, editPhotoFile);
+      } else if (shouldDeletePhoto) {
+        await deletePatientPhoto(patientId);
+      }
+
       setIsPatientEditOpen(false);
       setPatientEditFormState(initialPatientEditFormState);
       setEditSpeciesOption("");
       setCustomEditSpecies("");
       setEditHasNoKnownAllergies(false);
       setEditHasNoKnownChronicConditions(false);
+      setEditPhotoFile(null);
+      setEditPhotoErrorMessage(null);
+      setShouldDeletePhoto(false);
       setState((current) => ({
         ...current,
         isPatientSaving: false,
@@ -935,10 +981,15 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       }));
       await loadPatientDetail();
     } catch (error) {
+      const photoErrorMessage = patientDataSaved
+        ? editPhotoFile
+          ? getPatientPhotoUploadErrorMessage()
+          : getPatientPhotoDeleteErrorMessage()
+        : getApiErrorMessage(error);
       setState((current) => ({
         ...current,
         isPatientSaving: false,
-        errorMessage: getApiErrorMessage(error),
+        errorMessage: photoErrorMessage,
       }));
     }
   }
@@ -998,9 +1049,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     <div className="page-stack patient-detail-page">
       <section className="detail-hero patient-detail-hero">
         <div className="detail-hero__main patient-detail-hero__main">
-          <span className={`pet-avatar pet-avatar--large ${getSexAvatarClass(patient.sex)}`} aria-hidden="true">
-            {getSpeciesIcon(patient.species, 22)}
-          </span>
+          <PatientAvatar patient={patient} size="large" />
           <div>
             <h1>{patient.name}</h1>
             <p>
@@ -1436,6 +1485,37 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           {state.errorMessage ? <div className="error-state">{state.errorMessage}</div> : null}
 
           <form className="entity-form" onSubmit={handleUpdatePatient}>
+            <PatientPhotoInput
+              currentPhotoUrl={patient.photo_url}
+              disabled={state.isPatientSaving}
+              errorMessage={editPhotoErrorMessage}
+              name={patientEditFormState.name || patient.name}
+              previewUrl={editPhotoPreviewUrl}
+              selectedFile={editPhotoFile}
+              shouldDelete={shouldDeletePhoto}
+              species={getSelectedSpecies(
+                editSpeciesOption,
+                patientEditFormState.species,
+                customEditSpecies,
+              )}
+              onChange={(file) => {
+                setEditPhotoFile(file);
+                if (file) {
+                  setShouldDeletePhoto(false);
+                }
+              }}
+              onError={setEditPhotoErrorMessage}
+              onMarkDelete={() => {
+                setShouldDeletePhoto(true);
+                setEditPhotoFile(null);
+                setEditPhotoErrorMessage(null);
+              }}
+              onRestore={() => {
+                setShouldDeletePhoto(false);
+                setEditPhotoErrorMessage(null);
+              }}
+            />
+
             <label className="field">
               <span>Propietario</span>
               <select
@@ -2509,28 +2589,6 @@ function getFileUploadErrorMessage(error: unknown) {
 
 function readableLabel(value: string) {
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
-}
-
-function getSpeciesIcon(species: string, size = 24) {
-  const normalized = species.trim().toLowerCase();
-  if (["canino", "perro", "dog", "canine"].some((word) => normalized.includes(word))) {
-    return <Dog size={size} />;
-  }
-  if (["felino", "gato", "cat", "feline"].some((word) => normalized.includes(word))) {
-    return <Cat size={size} />;
-  }
-  return <PawPrint size={size} />;
-}
-
-function getSexAvatarClass(sex: string | null) {
-  const normalized = sex?.trim().toLowerCase() ?? "";
-  if (["macho", "masculino", "male"].includes(normalized)) {
-    return "pet-avatar--male";
-  }
-  if (["hembra", "femenino", "female"].includes(normalized)) {
-    return "pet-avatar--female";
-  }
-  return "pet-avatar--neutral";
 }
 
 function toPatientEditFormState(patient: Patient): PatientEditFormState {

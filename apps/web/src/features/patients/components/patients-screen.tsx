@@ -6,15 +6,18 @@ import {
   ChevronRight,
   Dog,
   Plus,
-  PawPrint,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
+import {
+  PatientAvatar,
+  PatientPhotoInput,
+} from "@/features/patients/components/patient-photo";
 import { getApiErrorMessage } from "@/lib/api";
 import { createOwner, getOwners } from "@/services/owners";
-import { createPatient, getPatients } from "@/services/patients";
+import { createPatient, getPatients, uploadPatientPhoto } from "@/services/patients";
 import type {
   CreateOwnerPayload,
   CreatePatientPayload,
@@ -101,6 +104,9 @@ export function PatientsScreen() {
   const [customSpecies, setCustomSpecies] = useState("");
   const [hasNoKnownAllergies, setHasNoKnownAllergies] = useState(false);
   const [hasNoKnownChronicConditions, setHasNoKnownChronicConditions] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  const [selectedPhotoPreviewUrl, setSelectedPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoErrorMessage, setPhotoErrorMessage] = useState<string | null>(null);
 
   async function loadPatientsScreen() {
     setState((current) => ({
@@ -134,6 +140,18 @@ export function PatientsScreen() {
     void loadPatientsScreen();
   }, []);
 
+  useEffect(() => {
+    if (!selectedPhoto) {
+      setSelectedPhotoPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedPhoto);
+    setSelectedPhotoPreviewUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedPhoto]);
+
   function openCreateFlow() {
     setIsCreateOpen(true);
     setCreationStep("patient");
@@ -155,6 +173,8 @@ export function PatientsScreen() {
     setCustomSpecies("");
     setHasNoKnownAllergies(false);
     setHasNoKnownChronicConditions(false);
+    setSelectedPhoto(null);
+    setPhotoErrorMessage(null);
     setState((current) => ({
       ...current,
       isSubmitting: false,
@@ -218,18 +238,31 @@ export function PatientsScreen() {
     }));
 
     try {
-      await createPatient(payload);
+      const createdPatientResponse = await createPatient(payload);
+      let photoUploadWarning: string | null = null;
+
+      if (selectedPhoto) {
+        try {
+          await uploadPatientPhoto(createdPatientResponse.data.id, selectedPhoto);
+        } catch {
+          photoUploadWarning =
+            "El paciente fue creado, pero no se pudo subir la foto. Puedes intentarlo nuevamente desde editar paciente.";
+        }
+      }
+
       setFormState(initialPatientFormState);
       setSelectedSpeciesOption("");
       setCustomSpecies("");
       setHasNoKnownAllergies(false);
       setHasNoKnownChronicConditions(false);
+      setSelectedPhoto(null);
+      setPhotoErrorMessage(null);
       setIsCreateOpen(false);
       setCreationStep("patient");
       setState((current) => ({
         ...current,
         isSubmitting: false,
-        successMessage: "Paciente creado correctamente.",
+        successMessage: photoUploadWarning ?? "Paciente creado correctamente.",
       }));
       await loadPatientsScreen();
     } catch (error) {
@@ -334,9 +367,7 @@ export function PatientsScreen() {
         <section className="patient-card-list" aria-label="Lista de pacientes">
           {state.patients.map((patient) => (
             <Link className="patient-card" href={`/patients/${patient.id}`} key={patient.id}>
-              <span className="pet-avatar" aria-hidden="true">
-                <PawPrint size={20} />
-              </span>
+              <PatientAvatar patient={patient} />
               <span className="patient-card__body">
                 <span className="patient-card__title-row">
                   <strong>{patient.name}</strong>
@@ -397,6 +428,20 @@ export function PatientsScreen() {
 
             {creationStep === "patient" ? (
               <form className="entity-form" onSubmit={handleCreatePatient}>
+                <PatientPhotoInput
+                  errorMessage={photoErrorMessage}
+                  name={formState.name}
+                  previewUrl={selectedPhotoPreviewUrl}
+                  selectedFile={selectedPhoto}
+                  species={getSelectedSpecies(
+                    selectedSpeciesOption,
+                    formState.species,
+                    customSpecies,
+                  )}
+                  onChange={setSelectedPhoto}
+                  onError={setPhotoErrorMessage}
+                />
+
                 <label className="field">
                   <span>Propietario</span>
                   <select

@@ -43,6 +43,20 @@ export function updatePatient(patientId: string, payload: UpdatePatientPayload) 
   return api.patch<ApiItemResponse<Patient>>(`/api/v1/patients/${patientId}`, payload);
 }
 
+export function uploadPatientPhoto(patientId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return api.postFormData<ApiItemResponse<Patient>>(
+    `/api/v1/patients/${patientId}/photo`,
+    formData,
+  );
+}
+
+export function deletePatientPhoto(patientId: string) {
+  return api.delete<ApiItemResponse<Patient>>(`/api/v1/patients/${patientId}/photo`);
+}
+
 export function deletePatient(patientId: string) {
   return api.delete<void>(`/api/v1/patients/${patientId}`);
 }

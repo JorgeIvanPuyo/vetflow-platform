@@ -61,6 +61,11 @@ export type Patient = {
   weight_kg: string | null;
   allergies: string | null;
   chronic_conditions: string | null;
+  photo_url?: string | null;
+  photo_original_filename?: string | null;
+  photo_content_type?: string | null;
+  photo_size_bytes?: number | null;
+  photo_uploaded_at?: string | null;
   created_at: string;
   updated_at: string;
 };

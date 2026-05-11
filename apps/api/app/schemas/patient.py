@@ -44,6 +44,11 @@ class PatientRead(PatientBase):
     created_by_user_id: uuid.UUID | None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
+    photo_url: str | None = None
+    photo_original_filename: str | None = None
+    photo_content_type: str | None = None
+    photo_size_bytes: int | None = None
+    photo_uploaded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
