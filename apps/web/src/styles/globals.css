@@ -3847,6 +3847,49 @@ code {
   box-shadow: var(--shadow-card);
 }
 
+@media (max-width: 759px) {
+  .auth-screen {
+    align-items: center;
+    padding: 18px 16px 28px;
+    background:
+      radial-gradient(circle at 50% -8%, rgba(78, 165, 141, 0.18), transparent 17rem),
+      radial-gradient(circle at 96% 18%, rgba(223, 244, 238, 0.54), transparent 14rem),
+      linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(250, 248, 243, 0.94) 54%, rgba(246, 243, 236, 0.96)),
+      var(--color-bg);
+  }
+
+  .auth-layout {
+    gap: 18px;
+    align-content: center;
+    transform: translateY(-2vh);
+  }
+
+  .auth-brand--mobile {
+    justify-content: center;
+    gap: 9px;
+    color: var(--color-primary-dark);
+    font-size: 1.08rem;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+
+  .auth-brand--mobile .brand__mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(53, 126, 109, 0.2);
+  }
+
+  .auth-card {
+    gap: 17px;
+    padding: 20px;
+    border-color: rgba(228, 222, 211, 0.78);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 18px 44px rgba(17, 24, 39, 0.1), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  }
+}
+
 @media (min-width: 760px) {
   .auth-screen {
     place-items: center;
