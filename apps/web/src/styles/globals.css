@@ -3850,30 +3850,55 @@ code {
 @media (min-width: 760px) {
   .auth-screen {
     place-items: center;
-    padding: 28px 36px;
+    padding: 30px 36px;
   }
 
   .auth-layout {
+    width: min(100%, 1100px);
     grid-template-columns: minmax(0, 1fr) minmax(340px, 410px);
     align-items: start;
-    gap: 34px;
+    gap: 40px;
   }
 
   .auth-brand-panel {
-    min-height: 450px;
+    min-height: 490px;
     align-content: start;
-    gap: 22px;
-    padding: 30px;
+    gap: 30px;
+    padding: 34px 38px 32px;
+    overflow: hidden;
+    border-color: rgba(228, 222, 211, 0.44);
+    border-radius: 30px;
+    background:
+      linear-gradient(102deg, rgba(255, 251, 243, 0.88) 0%, rgba(255, 251, 243, 0.72) 34%, rgba(223, 244, 238, 0.2) 62%, rgba(255, 255, 255, 0.04) 100%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(250, 248, 243, 0.18)),
+      url("/vetclinic_3.png");
+    background-position: center;
+    background-size: cover;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48), 0 16px 36px rgba(17, 24, 39, 0.07);
   }
 
   .auth-brand-panel__copy {
-    gap: 8px;
+    gap: 12px;
+    max-width: 430px;
   }
 
   .auth-brand-panel__copy h1 {
-    max-width: 14ch;
-    font-size: clamp(2rem, 3.4vw, 3.05rem);
-    line-height: 0.98;
+    max-width: 13.5ch;
+    font-size: clamp(1.95rem, 2.85vw, 2.65rem);
+    font-weight: 700;
+    line-height: 1.06;
+  }
+
+  .auth-brand-panel__copy p:last-child {
+    max-width: 44ch;
+    color: #3f4d4f;
+    line-height: 1.7;
+  }
+
+  .auth-value-list span {
+    border-color: rgba(78, 165, 141, 0.14);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.045);
   }
 
   .auth-card {
