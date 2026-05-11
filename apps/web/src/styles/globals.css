@@ -1658,7 +1658,7 @@ code {
   cursor: pointer;
 }
 
-.patient-photo-field__button--desktop {
+.patient-photo-field__actions .patient-photo-field__button--desktop {
   display: none;
 }
 
@@ -1675,12 +1675,12 @@ code {
 }
 
 @media (min-width: 760px) {
-  .patient-photo-field__button--camera,
-  .patient-photo-field__button--gallery {
+  .patient-photo-field__actions .patient-photo-field__button--camera,
+  .patient-photo-field__actions .patient-photo-field__button--gallery {
     display: none;
   }
 
-  .patient-photo-field__button--desktop {
+  .patient-photo-field__actions .patient-photo-field__button--desktop {
     display: inline-flex;
   }
 }
