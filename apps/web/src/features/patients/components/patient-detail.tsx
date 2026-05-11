@@ -59,6 +59,7 @@ import { getOwner, getOwners } from "@/services/owners";
 import {
   deletePatient,
   deletePatientPhoto,
+  getPatient,
   getPatientClinicalHistory,
   updatePatient,
   uploadPatientPhoto,
@@ -350,12 +351,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     try {
       const [
         historyResponse,
+        patientResponse,
         preventiveResponse,
         fileReferenceResponse,
         ownersResponse,
         teamResponse,
       ] = await Promise.all([
         getPatientClinicalHistory(patientId),
+        getPatient(patientId),
         getPatientPreventiveCare(patientId),
         getPatientFileReferences(patientId),
         getOwners(),
@@ -377,7 +380,10 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       setState((current) => ({
         ...current,
         isLoading: false,
-        clinicalHistory: historyResponse.data,
+        clinicalHistory: {
+          ...historyResponse.data,
+          patient: patientResponse.data,
+        },
         preventiveCare: preventiveResponse.data,
         fileReferences: fileReferenceResponse.data,
         owner,

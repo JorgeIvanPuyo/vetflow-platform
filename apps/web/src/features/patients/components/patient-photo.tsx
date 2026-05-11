@@ -125,7 +125,7 @@ export function PatientPhotoInput({
       <div className="patient-photo-field__body">
         <div>
           <strong>Foto del paciente</strong>
-          <span>PNG, JPG o WEBP. Máximo 5 MB.</span>
+          <span>Tomar foto o seleccionar imagen. PNG, JPG o WEBP. Máximo 5 MB.</span>
         </div>
 
         {selectedFile ? (
@@ -146,7 +146,8 @@ export function PatientPhotoInput({
             {visiblePhotoUrl ? "Cambiar foto" : "Agregar foto"}
           </label>
           <input
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            accept="image/*"
+            capture="environment"
             disabled={disabled}
             id={inputId}
             type="file"
