@@ -1658,6 +1658,10 @@ code {
   cursor: pointer;
 }
 
+.patient-photo-field__button--desktop {
+  display: none;
+}
+
 .patient-photo-field__button--disabled {
   cursor: not-allowed;
   opacity: 0.62;
@@ -1668,6 +1672,17 @@ code {
   color: var(--color-danger);
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+@media (min-width: 760px) {
+  .patient-photo-field__button--camera,
+  .patient-photo-field__button--gallery {
+    display: none;
+  }
+
+  .patient-photo-field__button--desktop {
+    display: inline-flex;
+  }
 }
 
 .patient-card {

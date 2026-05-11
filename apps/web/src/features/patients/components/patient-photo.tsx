@@ -90,9 +90,11 @@ export function PatientPhotoInput({
   shouldDelete = false,
   species = "",
 }: PatientPhotoInputProps) {
-  const inputId = useId();
+  const cameraInputId = useId();
+  const galleryInputId = useId();
   const visiblePhotoUrl = previewUrl ?? (shouldDelete ? null : currentPhotoUrl ?? null);
   const hasCurrentPhoto = Boolean(currentPhotoUrl && !shouldDelete);
+  const desktopActionLabel = visiblePhotoUrl ? "Cambiar foto" : "Elegir imagen";
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -140,16 +142,36 @@ export function PatientPhotoInput({
 
         <div className="patient-photo-field__actions">
           <label
-            className={`secondary-button patient-photo-field__button${disabled ? " patient-photo-field__button--disabled" : ""}`}
-            htmlFor={inputId}
+            className={`secondary-button patient-photo-field__button patient-photo-field__button--camera${disabled ? " patient-photo-field__button--disabled" : ""}`}
+            htmlFor={cameraInputId}
           >
-            {visiblePhotoUrl ? "Cambiar foto" : "Agregar foto"}
+            Tomar foto
           </label>
           <input
             accept="image/*"
             capture="environment"
             disabled={disabled}
-            id={inputId}
+            id={cameraInputId}
+            type="file"
+            onChange={handleFileChange}
+          />
+
+          <label
+            className={`secondary-button patient-photo-field__button patient-photo-field__button--gallery${disabled ? " patient-photo-field__button--disabled" : ""}`}
+            htmlFor={galleryInputId}
+          >
+            Elegir de galería
+          </label>
+          <label
+            className={`secondary-button patient-photo-field__button patient-photo-field__button--desktop${disabled ? " patient-photo-field__button--disabled" : ""}`}
+            htmlFor={galleryInputId}
+          >
+            {desktopActionLabel}
+          </label>
+          <input
+            accept="image/*"
+            disabled={disabled}
+            id={galleryInputId}
             type="file"
             onChange={handleFileChange}
           />
