@@ -28,6 +28,10 @@ import {
 } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import {
+  AiClinicalRewriteAction,
+  AiConsultationSummaryAction,
+} from "@/features/consultations/components/ai-clinical-assist";
 import { getTraceableUserName } from "@/lib/user-traceability";
 import {
   formatInventoryCurrency,
@@ -53,6 +57,8 @@ import type {
   ConsultationMedication,
   ConsultationStudyRequest,
   ConsultationStudyRequestType,
+  AiPatientContext,
+  ConsultationSummaryPayload,
   CreateMedicationPayload,
   CreateStudyRequestPayload,
   InventoryItem,
@@ -99,6 +105,19 @@ type FormState = {
   reminder_requested: boolean;
   consultation_summary: string;
 };
+
+type ClinicalTextField =
+  | "symptoms"
+  | "relevant_history"
+  | "physical_exam_findings"
+  | "presumptive_diagnosis"
+  | "diagnostic_plan_notes"
+  | "diagnostic_results"
+  | "therapeutic_plan"
+  | "therapeutic_plan_notes"
+  | "final_diagnosis"
+  | "indications"
+  | "consultation_summary";
 
 type StudyFormState = {
   name: string;
@@ -245,6 +264,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       ? "Consulta de control"
       : "Consulta";
   const patientDescription = getPatientDescription(patient);
+  const aiPatientContext = useMemo(() => buildAiPatientContext(patient), [patient]);
   const attendingUserName = getTraceableUserName(consultation, "attending");
   const registeredByName = getTraceableUserName(consultation, "created_by");
   const localStorageKeyPrefix = consultationId
@@ -438,6 +458,26 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       toastTimeoutRef.current = null;
     }
     setToast(nextToast);
+  }
+
+  function showAiToast(
+    title: string,
+    detail?: string,
+    variant: "success" | "error" = "success",
+  ) {
+    showToast({ title, detail, variant });
+  }
+
+  function renderAiRewriteAction(field: string, key: ClinicalTextField) {
+    return (
+      <AiClinicalRewriteAction
+        field={field}
+        text={formState[key]}
+        patientContext={aiPatientContext}
+        onUseSuggestion={(value) => updateField(key, value)}
+        onToast={showAiToast}
+      />
+    );
   }
 
   async function saveStep(targetStep = activeStep, status: "draft" | "completed" = "draft") {
@@ -992,7 +1032,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           </label>
         </div>
         <label className="field">
-          <span>Síntomas</span>
+          <FieldLabelWithAiAction
+            label="Síntomas"
+            action={renderAiRewriteAction("sintomas", "symptoms")}
+          />
           <textarea
             rows={3}
             value={formState.symptoms}
@@ -1018,7 +1061,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           </label>
         </div>
         <label className="field">
-          <span>Antecedentes relevantes</span>
+          <FieldLabelWithAiAction
+            label="Antecedentes relevantes"
+            action={renderAiRewriteAction("antecedentes_relevantes", "relevant_history")}
+          />
           <textarea
             rows={3}
             value={formState.relevant_history}
@@ -1093,7 +1139,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           </label>
         </div>
         <label className="field">
-          <span>Hallazgos del examen físico</span>
+          <FieldLabelWithAiAction
+            label="Hallazgos del examen físico"
+            action={renderAiRewriteAction(
+              "hallazgos_examen_fisico",
+              "physical_exam_findings",
+            )}
+          />
           <textarea
             rows={5}
             value={formState.physical_exam_findings}
@@ -1114,7 +1166,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           description="Hipótesis clínica y etiquetas de orientación."
         />
         <label className="field">
-          <span>Diagnóstico presuntivo</span>
+          <FieldLabelWithAiAction
+            label="Diagnóstico presuntivo"
+            action={renderAiRewriteAction(
+              "diagnostico_presuntivo",
+              "presumptive_diagnosis",
+            )}
+          />
           <textarea
             rows={5}
             value={formState.presumptive_diagnosis}
@@ -1207,7 +1265,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           )}
         />
         <label className="field">
-          <span>Notas del plan diagnóstico</span>
+          <FieldLabelWithAiAction
+            label="Notas del plan diagnóstico"
+            action={renderAiRewriteAction(
+              "notas_plan_diagnostico",
+              "diagnostic_plan_notes",
+            )}
+          />
           <textarea
             rows={4}
             value={formState.diagnostic_plan_notes}
@@ -1228,7 +1292,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           description="Resumen clínico de los resultados obtenidos."
         />
         <label className="field">
-          <span>Resultados del plan diagnóstico</span>
+          <FieldLabelWithAiAction
+            label="Resultados del plan diagnóstico"
+            action={renderAiRewriteAction(
+              "resultados_diagnosticos",
+              "diagnostic_results",
+            )}
+          />
           <textarea
             rows={5}
             placeholder="Ej. Hemograma compatible con proceso infeccioso leve. Radiografía sin hallazgos relevantes. Ecografía con signos compatibles con gastritis."
@@ -1478,7 +1548,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           )}
         />
         <label className="field">
-          <span>Plan terapéutico</span>
+          <FieldLabelWithAiAction
+            label="Plan terapéutico"
+            action={renderAiRewriteAction("plan_terapeutico", "therapeutic_plan")}
+          />
           <textarea
             rows={3}
             value={formState.therapeutic_plan}
@@ -1486,7 +1559,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           />
         </label>
         <label className="field">
-          <span>Notas del plan terapéutico</span>
+          <FieldLabelWithAiAction
+            label="Notas del plan terapéutico"
+            action={renderAiRewriteAction(
+              "notas_plan_terapeutico",
+              "therapeutic_plan_notes",
+            )}
+          />
           <textarea
             rows={4}
             value={formState.therapeutic_plan_notes}
@@ -1507,7 +1586,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           description="Conclusión diagnóstica cuando ya esté disponible."
         />
         <label className="field">
-          <span>Diagnóstico final</span>
+          <FieldLabelWithAiAction
+            label="Diagnóstico final"
+            action={renderAiRewriteAction("diagnostico_final", "final_diagnosis")}
+          />
           <textarea
             rows={5}
             value={formState.final_diagnosis}
@@ -1528,7 +1610,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           description="Instrucciones para casa, control y cierre de la consulta."
         />
         <label className="field">
-          <span>Indicaciones</span>
+          <FieldLabelWithAiAction
+            label="Indicaciones"
+            action={renderAiRewriteAction("indicaciones", "indications")}
+          />
           <textarea
             rows={5}
             placeholder="Tratamiento en casa, signos de alarma, cuidados, dieta..."
@@ -1560,7 +1645,16 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           <div className="empty-state">Funcionalidad de recordatorios en desarrollo.</div>
         ) : null}
         <label className="field">
-          <span>Resumen de consulta</span>
+          <FieldLabelWithAiAction
+            label="Resumen de consulta"
+            action={
+              <AiConsultationSummaryAction
+                consultation={buildConsultationSummaryPayload(formState, patient)}
+                onInsertSummary={(value) => updateField("consultation_summary", value)}
+                onToast={showAiToast}
+              />
+            }
+          />
           <textarea
             rows={4}
             value={formState.consultation_summary}
@@ -1678,6 +1772,21 @@ function NumberField({
   );
 }
 
+function FieldLabelWithAiAction({
+  label,
+  action,
+}: {
+  label: string;
+  action: ReactNode;
+}) {
+  return (
+    <span className="field-label-row">
+      <span>{label}</span>
+      {action}
+    </span>
+  );
+}
+
 function getMedicationSubtitle(medication: ConsultationMedication) {
   const detailParts = [medication.dose_or_quantity, medication.instructions].filter(Boolean);
 
@@ -1776,6 +1885,63 @@ function toFormState(consultation: Consultation): FormState {
     next_control_date: consultation.next_control_date ?? "",
     reminder_requested: consultation.reminder_requested,
     consultation_summary: consultation.consultation_summary ?? "",
+  };
+}
+
+function buildAiPatientContext(patient: Patient | null): AiPatientContext | null {
+  if (!patient) {
+    return null;
+  }
+
+  return {
+    name: patient.name,
+    species: patient.species,
+    breed: patient.breed,
+    sex: patient.sex,
+    age: patient.estimated_age,
+    weight_kg: parseOptionalNumber(patient.weight_kg),
+  };
+}
+
+function buildConsultationSummaryPayload(
+  formState: FormState,
+  patient: Patient | null,
+): ConsultationSummaryPayload {
+  return {
+    patient_name: patient?.name ?? null,
+    species: patient?.species ?? null,
+    breed: patient?.breed ?? null,
+    sex: patient?.sex ?? null,
+    age: patient?.estimated_age ?? null,
+    weight_kg: parseOptionalNumber(patient?.weight_kg),
+    reason: formState.reason.trim() || null,
+    anamnesis:
+      formState.anamnesis.trim() ||
+      joinClinicalParts([
+        ["Síntomas", formState.symptoms],
+        ["Duración", formState.symptom_duration],
+        ["Antecedentes", formState.relevant_history],
+        ["Hábitos y dieta", formState.habits_and_diet],
+      ]),
+    physical_exam:
+      formState.physical_exam_findings.trim() ||
+      joinClinicalParts([
+        ["Temperatura", formState.temperature_c ? `${formState.temperature_c} °C` : ""],
+        ["Peso actual", formState.current_weight_kg ? `${formState.current_weight_kg} kg` : ""],
+        ["Mucosas", formState.mucous_membranes],
+        ["Hidratación", formState.hydration],
+      ]),
+    presumptive_diagnosis: formState.presumptive_diagnosis.trim() || null,
+    diagnostic_plan:
+      formState.diagnostic_plan_notes.trim() ||
+      formState.diagnostic_results.trim() ||
+      null,
+    therapeutic_plan:
+      joinClinicalParts([
+        ["Plan terapéutico", formState.therapeutic_plan],
+        ["Notas", formState.therapeutic_plan_notes],
+      ]) || null,
+    instructions: formState.indications.trim() || null,
   };
 }
 
@@ -1947,6 +2113,26 @@ function toOptionalNumber(value: string) {
 
   const parsed = Number(value);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseOptionalNumber(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function joinClinicalParts(parts: Array<[string, string]>) {
+  const values = parts
+    .map(([label, value]) => {
+      const text = value.trim();
+      return text ? `${label}: ${text}` : null;
+    })
+    .filter(Boolean);
+
+  return values.length > 0 ? values.join(". ") : null;
 }
 
 function toInputNumber(value: number | null) {

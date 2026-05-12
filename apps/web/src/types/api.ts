@@ -267,6 +267,52 @@ export type ClinicalHistoryPdfExportPayload = {
   detail_level: "summary" | "full";
 };
 
+export type AiPatientContext = {
+  name?: string | null;
+  species?: string | null;
+  breed?: string | null;
+  sex?: string | null;
+  age?: string | null;
+  weight_kg?: number | null;
+};
+
+export type RewriteClinicalNoteRequest = {
+  field: string;
+  text: string;
+  patient_context?: AiPatientContext | null;
+};
+
+export type RewriteClinicalNoteResponse = {
+  suggestion: string;
+  disclaimer?: string;
+};
+
+export type ConsultationSummaryPayload = {
+  patient_name?: string | null;
+  species?: string | null;
+  breed?: string | null;
+  sex?: string | null;
+  age?: string | null;
+  weight_kg?: number | null;
+  reason?: string | null;
+  anamnesis?: string | null;
+  physical_exam?: string | null;
+  presumptive_diagnosis?: string | null;
+  diagnostic_plan?: string | null;
+  therapeutic_plan?: string | null;
+  instructions?: string | null;
+};
+
+export type GenerateConsultationSummaryRequest = {
+  consultation: ConsultationSummaryPayload;
+  summary_type?: "clinical" | "owner_friendly";
+};
+
+export type GenerateConsultationSummaryResponse = {
+  summary: string;
+  disclaimer?: string;
+};
+
 export type ClinicProfile = {
   id: string;
   name: string;

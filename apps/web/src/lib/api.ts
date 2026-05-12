@@ -3,6 +3,7 @@ type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 type RequestOptions = {
   body?: unknown;
   isMultipart?: boolean;
+  retryTransient?: boolean;
 };
 
 type BlobResponse = {
@@ -70,6 +71,7 @@ async function request<T>(
   const response = await fetchWithTransientRetry(
     `${API_BASE_URL}${path}`,
     requestInit,
+    { retryTransient: options.retryTransient ?? true },
   );
 
   if (!response.ok) {
@@ -77,11 +79,12 @@ async function request<T>(
 
     try {
       const errorBody = (await response.json()) as {
+        detail?: string;
         error?: { code?: string; message?: string };
       };
 
       throw new ApiClientError(
-        errorBody.error?.message ?? fallbackMessage,
+        errorBody.error?.message ?? errorBody.detail ?? fallbackMessage,
         response.status,
         errorBody.error?.code ?? "request_failed",
       );
@@ -191,14 +194,23 @@ async function waitForAuthToken() {
   return null;
 }
 
-async function fetchWithTransientRetry(url: string, init: RequestInit) {
+async function fetchWithTransientRetry(
+  url: string,
+  init: RequestInit,
+  options: { retryTransient?: boolean } = {},
+) {
   let lastError: unknown = null;
+  const retryTransient = options.retryTransient ?? true;
 
   for (let attempt = 0; attempt <= REQUEST_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
       const response = await fetch(url, init);
 
-      if (!isTransientStatus(response.status) || attempt === REQUEST_RETRY_DELAYS_MS.length) {
+      if (
+        !retryTransient ||
+        !isTransientStatus(response.status) ||
+        attempt === REQUEST_RETRY_DELAYS_MS.length
+      ) {
         return response;
       }
     } catch (error) {
@@ -270,8 +282,12 @@ export const api = {
   get<T>(path: string): Promise<T> {
     return request<T>(path, "GET");
   },
-  post<T>(path: string, body: unknown): Promise<T> {
-    return request<T>(path, "POST", { body });
+  post<T>(
+    path: string,
+    body: unknown,
+    options: Pick<RequestOptions, "retryTransient"> = {},
+  ): Promise<T> {
+    return request<T>(path, "POST", { body, ...options });
   },
   postFormData<T>(path: string, body: FormData): Promise<T> {
     return request<T>(path, "POST", { body, isMultipart: true });

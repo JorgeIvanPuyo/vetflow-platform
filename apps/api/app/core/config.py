@@ -23,6 +23,14 @@ class Settings:
         self.max_clinical_file_size_mb = int(
             os.getenv("MAX_CLINICAL_FILE_SIZE_MB", "25")
         )
+        self.ai_provider = os.getenv("AI_PROVIDER", "openai")
+        self.ai_model = os.getenv("AI_MODEL", "gpt-4o-mini")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.ai_features_enabled = (
+            os.getenv("AI_FEATURES_ENABLED", "false").lower() == "true"
+        )
+        self.ai_debug_logs = os.getenv("AI_DEBUG_LOGS", "false").lower() == "true"
         self.api_v1_prefix = "/api/v1"
 
 

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.ai import router as ai_router
 from app.api.appointments import router as appointments_router
 from app.api.clinic import router as clinic_router
 from app.api.consultations import router as consultations_router
@@ -49,6 +50,7 @@ api_v1_router.include_router(search_router)
 api_v1_router.include_router(appointments_router)
 api_v1_router.include_router(clinic_router)
 api_v1_router.include_router(inventory_router)
+api_v1_router.include_router(ai_router)
 
 app.include_router(health_router)
 app.include_router(api_v1_router)
