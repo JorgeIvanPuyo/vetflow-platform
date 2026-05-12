@@ -73,5 +73,5 @@ jobs:
             --region $REGION \
             --project $PROJECT_ID \
             --allow-unauthenticated \
-            --update-env-vars APP_ENV=production,DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}",FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}",CLINICAL_FILES_BUCKET_NAME=vetflow-clinical-files-prod,MAX_CLINICAL_FILE_SIZE_MB=25 \
-            --set-secrets FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest
+            --update-env-vars APP_ENV=production,DATABASE_URL="${{ secrets.DATABASE_URL_PROD }}",FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}",CLINICAL_FILES_BUCKET_NAME=vetflow-clinical-files-prod,MAX_CLINICAL_FILE_SIZE_MB=25,AI_PROVIDER=gemini,AI_MODEL=gemini-2.5-flash-lite,AI_FEATURES_ENABLED=true \
+            --set-secrets FIREBASE_SERVICE_ACCOUNT_JSON=firebase-service-account-json:latest,GEMINI_API_KEY=gemini-api-key:latest
