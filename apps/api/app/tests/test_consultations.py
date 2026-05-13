@@ -1,5 +1,10 @@
+import uuid
+
+from fastapi import HTTPException
 from sqlalchemy import func, select
 
+from app.core.config import get_settings
+from app.models.consultation import Consultation
 from app.models.inventory_movement import InventoryMovement
 
 
@@ -876,6 +881,332 @@ def test_clinical_history_returns_patient_and_consultations(client, tenant):
     body = response.json()
     assert body["data"]["patient"]["id"] == patient["id"]
     assert body["data"]["consultations"][0]["id"] == consultation["id"]
+
+
+def test_generate_consultation_ai_summary_persists_summary(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setenv("AI_MODEL", "gemini-2.5-flash-lite")
+    get_settings.cache_clear()
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        symptoms="Itching and redness",
+        physical_exam_findings="Mild erythema on abdomen",
+    )
+    calls = []
+
+    def fake_generate_summary(self, **kwargs):
+        calls.append(kwargs)
+        ai_input = kwargs["consultation"]
+        assert ai_input.patient_name == "Luna"
+        assert ai_input.species == "Canine"
+        assert "Sintomas: Itching and redness" in ai_input.anamnesis
+        assert "Mild erythema on abdomen" in ai_input.physical_exam
+        return "AI clinical summary"
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        fake_generate_summary,
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["consultation_id"] == consultation["id"]
+    assert body["summary"] == "AI clinical summary"
+    assert body["model"] == "gemini-2.5-flash-lite"
+    assert body["generated_at"] is not None
+    assert body["disclaimer"] == "Texto sugerido por IA. Revisa antes de guardar."
+    assert len(calls) == 1
+    assert calls[0]["summary_type"] == "clinical"
+    assert calls[0]["tenant_id"] == tenant.id
+
+    saved = db_session.get(Consultation, uuid.UUID(consultation["id"]))
+    assert saved.ai_summary == "AI clinical summary"
+    assert saved.ai_summary_generated_at is not None
+    assert saved.ai_summary_model == "gemini-2.5-flash-lite"
+
+
+def test_generate_consultation_ai_summary_regenerates_existing_summary(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    monkeypatch.setenv("AI_MODEL", "gemini-2.5-flash-lite")
+    get_settings.cache_clear()
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+    summaries = iter(["First AI summary", "Second AI summary"])
+
+    def fake_generate_summary(self, **kwargs):
+        return next(summaries)
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        fake_generate_summary,
+    )
+
+    first_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    second_response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["summary"] == "Second AI summary"
+    saved = db_session.get(Consultation, uuid.UUID(consultation["id"]))
+    assert saved.ai_summary == "Second AI summary"
+    assert saved.ai_summary_generated_at is not None
+    assert saved.ai_summary_model == "gemini-2.5-flash-lite"
+
+
+def test_consultation_detail_returns_ai_summary_fields(client, tenant, monkeypatch):
+    monkeypatch.setenv("AI_MODEL", "gemini-2.5-flash-lite")
+    get_settings.cache_clear()
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        lambda self, **kwargs: "Persisted AI summary",
+    )
+    client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    response = client.get(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["ai_summary"] == "Persisted AI summary"
+    assert body["ai_summary_generated_at"] is not None
+    assert body["ai_summary_model"] == "gemini-2.5-flash-lite"
+
+
+def test_clinical_history_includes_consultation_ai_summary(
+    client,
+    tenant,
+    monkeypatch,
+):
+    monkeypatch.setenv("AI_MODEL", "gemini-2.5-flash-lite")
+    get_settings.cache_clear()
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        lambda self, **kwargs: "History AI summary",
+    )
+    client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    response = client.get(
+        f"/api/v1/patients/{patient['id']}/clinical-history",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 200
+    body = response.json()["data"]
+    assert body["consultations"][0]["ai_summary"] == "History AI summary"
+    timeline_item = body["timeline"][0]
+    assert timeline_item["type"] == "consultation"
+    assert timeline_item["ai_summary"] == "History AI summary"
+    assert timeline_item["ai_summary_generated_at"] is not None
+    assert timeline_item["ai_summary_model"] == "gemini-2.5-flash-lite"
+
+
+def test_generate_consultation_ai_summary_is_tenant_safe(
+    client,
+    tenant,
+    other_tenant,
+    monkeypatch,
+):
+    foreign_owner = _create_owner(client, other_tenant, "Foreign Owner")
+    foreign_patient = _create_patient(client, other_tenant, foreign_owner["id"], "Nina")
+    foreign_consultation = _create_consultation(
+        client,
+        other_tenant,
+        foreign_patient["id"],
+    )
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        lambda self, **kwargs: "Should not run",
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{foreign_consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "consultation_not_found"
+
+
+def test_generate_consultation_ai_summary_returns_404_when_missing(client, tenant):
+    response = client.post(
+        f"/api/v1/consultations/{uuid.uuid4()}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "consultation_not_found"
+
+
+def test_generate_consultation_ai_summary_requires_clinical_information(
+    client,
+    tenant,
+    monkeypatch,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        anamnesis=None,
+        clinical_exam=None,
+        presumptive_diagnosis=None,
+        diagnostic_plan=None,
+        diagnostic_results=None,
+        therapeutic_plan=None,
+        final_diagnosis=None,
+        indications=None,
+        symptoms=None,
+        symptom_duration=None,
+        relevant_history=None,
+        habits_and_diet=None,
+        physical_exam_findings=None,
+        diagnostic_tags=None,
+        diagnostic_plan_notes=None,
+        therapeutic_plan_notes=None,
+        consultation_summary=None,
+    )
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        lambda self, **kwargs: "Should not run",
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "Not enough clinical information to generate an AI summary."
+    }
+
+
+def test_generate_consultation_ai_summary_propagates_provider_429(
+    client,
+    tenant,
+    monkeypatch,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    def fake_generate_summary(self, **kwargs):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "AI provider quota exceeded. Please wait and try again later or "
+                "upgrade the provider plan."
+            ),
+        )
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        fake_generate_summary,
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == (
+        "AI provider quota exceeded. Please wait and try again later or upgrade the "
+        "provider plan."
+    )
+
+
+def test_generate_consultation_ai_summary_propagates_provider_502(
+    client,
+    tenant,
+    monkeypatch,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    def fake_generate_summary(self, **kwargs):
+        raise HTTPException(status_code=502, detail="AI provider request failed.")
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        fake_generate_summary,
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "AI provider request failed."
+
+
+def test_generate_consultation_ai_summary_propagates_not_configured(
+    client,
+    tenant,
+    monkeypatch,
+):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    def fake_generate_summary(self, **kwargs):
+        raise HTTPException(status_code=503, detail="AI service is not configured.")
+
+    monkeypatch.setattr(
+        "app.services.consultation.AIService.generate_consultation_summary",
+        fake_generate_summary,
+    )
+
+    response = client.post(
+        f"/api/v1/consultations/{consultation['id']}/ai-summary",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI service is not configured."
 
 
 def test_clinical_history_consultation_item_uses_expected_summary_fallback(

@@ -28,6 +28,7 @@ import {
 } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
 import {
   AiClinicalRewriteAction,
   AiConsultationSummaryAction,
@@ -54,6 +55,7 @@ import { searchInventoryMedications } from "@/services/inventory";
 import { getPatientClinicalHistory } from "@/services/patients";
 import type {
   Consultation,
+  ConsultationAiSummaryResponse,
   ConsultationMedication,
   ConsultationStudyRequest,
   ConsultationStudyRequestType,
@@ -466,6 +468,19 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     variant: "success" | "error" = "success",
   ) {
     showToast({ title, detail, variant });
+  }
+
+  function handlePersistedAiSummaryChange(response: ConsultationAiSummaryResponse) {
+    setConsultation((current) =>
+      current
+        ? {
+            ...current,
+            ai_summary: response.summary,
+            ai_summary_generated_at: response.generated_at,
+            ai_summary_model: response.model,
+          }
+        : current,
+    );
   }
 
   function renderAiRewriteAction(field: string, key: ClinicalTextField) {
@@ -1601,6 +1616,12 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   }
 
   function renderIndicationsStep() {
+    const currentConsultation = consultation;
+
+    if (!currentConsultation) {
+      return null;
+    }
+
     return (
       <>
         <StepHeading
@@ -1661,6 +1682,14 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             onChange={(event) => updateField("consultation_summary", event.target.value)}
           />
         </label>
+        <AiConsultationSummaryCard
+          consultationId={currentConsultation.id}
+          summary={currentConsultation.ai_summary}
+          generatedAt={currentConsultation.ai_summary_generated_at}
+          model={currentConsultation.ai_summary_model}
+          onSummaryChange={handlePersistedAiSummaryChange}
+          onToast={showAiToast}
+        />
       </>
     );
   }

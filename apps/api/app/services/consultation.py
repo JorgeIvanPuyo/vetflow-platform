@@ -2,8 +2,10 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.models.consultation import (
     Consultation,
@@ -23,11 +25,18 @@ from app.repositories.follow_up import FollowUpRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.preventive_care import PreventiveCareRepository
+from app.schemas.ai import ConsultationSummaryInput
 from app.schemas.consultation import (
     ConsultationCreate,
     ConsultationMedicationCreate,
     ConsultationStudyRequestCreate,
     ConsultationUpdate,
+)
+from app.services.ai_service import AIService
+
+
+AI_SUMMARY_NOT_ENOUGH_INFORMATION_MESSAGE = (
+    "Not enough clinical information to generate an AI summary."
 )
 
 
@@ -163,6 +172,41 @@ class ConsultationService:
         updated_consultation = self.consultation_repository.update(
             consultation,
             updates,
+        )
+        self.db.commit()
+        return updated_consultation
+
+    def generate_ai_summary(
+        self,
+        tenant_id: uuid.UUID,
+        consultation_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None,
+    ) -> Consultation:
+        consultation = self.get_consultation(tenant_id, consultation_id)
+        if not self._has_enough_ai_summary_content(consultation):
+            raise HTTPException(
+                status_code=422,
+                detail=AI_SUMMARY_NOT_ENOUGH_INFORMATION_MESSAGE,
+            )
+
+        summary_input = self._build_ai_summary_input(consultation)
+        summary = AIService().generate_consultation_summary(
+            consultation=summary_input,
+            summary_type="clinical",
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+        generated_at = datetime.now(timezone.utc)
+        model = get_settings().ai_model.strip()
+
+        updated_consultation = self.consultation_repository.update(
+            consultation,
+            {
+                "ai_summary": summary,
+                "ai_summary_generated_at": generated_at,
+                "ai_summary_model": model,
+            },
         )
         self.db.commit()
         return updated_consultation
@@ -380,3 +424,122 @@ class ConsultationService:
 
     def _quantize_money(self, value: Decimal) -> Decimal:
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    def _build_ai_summary_input(
+        self,
+        consultation: Consultation,
+    ) -> ConsultationSummaryInput:
+        patient = consultation.patient
+        return ConsultationSummaryInput(
+            patient_name=patient.name,
+            species=patient.species,
+            breed=patient.breed,
+            sex=patient.sex,
+            age=patient.estimated_age,
+            weight_kg=self._float_or_none(
+                consultation.current_weight_kg or patient.weight_kg,
+            ),
+            reason=consultation.reason,
+            anamnesis=self._join_ai_sections(
+                [
+                    ("Anamnesis", consultation.anamnesis),
+                    ("Sintomas", consultation.symptoms),
+                    ("Duracion de sintomas", consultation.symptom_duration),
+                    ("Antecedentes relevantes", consultation.relevant_history),
+                    ("Habitos y dieta", consultation.habits_and_diet),
+                ],
+            ),
+            physical_exam=self._join_ai_sections(
+                [
+                    ("Examen clinico", consultation.clinical_exam),
+                    ("Hallazgos del examen fisico", consultation.physical_exam_findings),
+                    ("Temperatura C", consultation.temperature_c),
+                    ("Peso actual kg", consultation.current_weight_kg),
+                    ("Frecuencia cardiaca", consultation.heart_rate),
+                    ("Frecuencia respiratoria", consultation.respiratory_rate),
+                    ("Mucosas", consultation.mucous_membranes),
+                    ("Hidratacion", consultation.hydration),
+                ],
+            ),
+            presumptive_diagnosis=self._join_ai_sections(
+                [
+                    ("Diagnostico presuntivo", consultation.presumptive_diagnosis),
+                    ("Diagnostico final", consultation.final_diagnosis),
+                ],
+            ),
+            diagnostic_plan=self._join_ai_sections(
+                [
+                    ("Plan diagnostico", consultation.diagnostic_plan),
+                    ("Notas del plan diagnostico", consultation.diagnostic_plan_notes),
+                    ("Resultados diagnosticos", consultation.diagnostic_results),
+                    (
+                        "Etiquetas diagnosticas",
+                        ", ".join(consultation.diagnostic_tags or []),
+                    ),
+                ],
+            ),
+            therapeutic_plan=self._join_ai_sections(
+                [
+                    ("Plan terapeutico", consultation.therapeutic_plan),
+                    ("Notas del plan terapeutico", consultation.therapeutic_plan_notes),
+                ],
+            ),
+            instructions=self._join_ai_sections(
+                [
+                    ("Indicaciones", consultation.indications),
+                    ("Resumen registrado", consultation.consultation_summary),
+                    (
+                        "Proximo control",
+                        consultation.next_control_date.isoformat()
+                        if consultation.next_control_date
+                        else None,
+                    ),
+                ],
+            ),
+        )
+
+    def _has_enough_ai_summary_content(self, consultation: Consultation) -> bool:
+        clinical_values = [
+            consultation.anamnesis,
+            consultation.symptoms,
+            consultation.symptom_duration,
+            consultation.relevant_history,
+            consultation.habits_and_diet,
+            consultation.clinical_exam,
+            consultation.physical_exam_findings,
+            consultation.presumptive_diagnosis,
+            consultation.diagnostic_plan,
+            consultation.diagnostic_plan_notes,
+            consultation.diagnostic_results,
+            consultation.therapeutic_plan,
+            consultation.therapeutic_plan_notes,
+            consultation.final_diagnosis,
+            consultation.indications,
+            consultation.consultation_summary,
+        ]
+        return any(self._has_text(value) for value in clinical_values)
+
+    def _join_ai_sections(self, sections: list[tuple[str, object]]) -> str | None:
+        values = []
+        for label, value in sections:
+            if not self._has_text(value):
+                continue
+            values.append(f"{label}: {value}")
+
+        if not values:
+            return None
+
+        return self._truncate_ai_field("\n".join(values), max_length=4000)
+
+    def _truncate_ai_field(self, value: str, *, max_length: int) -> str:
+        if len(value) <= max_length:
+            return value
+        return value[:max_length].rstrip()
+
+    def _has_text(self, value: object) -> bool:
+        return value is not None and bool(str(value).strip())
+
+    def _float_or_none(self, value: object) -> float | None:
+        if value is None:
+            return None
+        return float(value)

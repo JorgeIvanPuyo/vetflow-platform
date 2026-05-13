@@ -9,6 +9,7 @@ from app.schemas.common import ListMeta
 from app.schemas.consultation import (
     ClinicalHistoryRead,
     ClinicalHistoryTimelineItem,
+    ConsultationAISummaryResponse,
     ConsultationCreate,
     ConsultationMedicationCreate,
     ConsultationMedicationRead,
@@ -61,6 +62,29 @@ def get_consultation(
         "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),
         "meta": {},
     }
+
+
+@router.post("/consultations/{consultation_id}/ai-summary")
+def generate_consultation_ai_summary(
+    consultation_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    consultation = ConsultationService(db).generate_ai_summary(
+        tenant.tenant_id,
+        consultation_id,
+        user_id=tenant.user_id,
+    )
+    generated_at = consultation.ai_summary_generated_at
+    if generated_at is None:
+        raise RuntimeError("AI summary generated_at was not persisted")
+
+    return ConsultationAISummaryResponse(
+        consultation_id=consultation.id,
+        summary=consultation.ai_summary or "",
+        generated_at=generated_at,
+        model=consultation.ai_summary_model or "",
+    ).model_dump(mode="json")
 
 
 @router.post(
@@ -252,6 +276,9 @@ def get_patient_clinical_history(
                 summary=_consultation_summary(consultation),
                 created_by=_user_trace(consultation.created_by_user, tenant.tenant_id),
                 attended_by=_user_trace(consultation.attending_user, tenant.tenant_id),
+                ai_summary=consultation.ai_summary,
+                ai_summary_generated_at=consultation.ai_summary_generated_at,
+                ai_summary_model=consultation.ai_summary_model,
             )
             for consultation in consultations
         ],
@@ -331,7 +358,15 @@ def get_patient_clinical_history(
     )
     body = clinical_history.model_dump(mode="json")
     for item in body["timeline"]:
-        for key in ("created_by", "attended_by", "requested_by", "assigned_user"):
+        for key in (
+            "created_by",
+            "attended_by",
+            "requested_by",
+            "assigned_user",
+            "ai_summary",
+            "ai_summary_generated_at",
+            "ai_summary_model",
+        ):
             if item.get(key) is None:
                 item.pop(key, None)
 

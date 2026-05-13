@@ -149,6 +149,9 @@ export type Consultation = {
   therapeutic_plan_notes: string | null;
   next_control_date: string | null;
   consultation_summary: string | null;
+  ai_summary?: string | null;
+  ai_summary_generated_at?: string | null;
+  ai_summary_model?: string | null;
   reminder_requested: boolean;
   medications: ConsultationMedication[];
   study_requests: ConsultationStudyRequest[];
@@ -242,6 +245,9 @@ export type ClinicalHistoryTimelineItem = {
   follow_up_status?: FollowUpStatus | null;
   consultation_type?: ConsultationType | null;
   parent_consultation_id?: string | null;
+  ai_summary?: string | null;
+  ai_summary_generated_at?: string | null;
+  ai_summary_model?: string | null;
 };
 
 export type ClinicalHistory = {
@@ -311,6 +317,14 @@ export type GenerateConsultationSummaryRequest = {
 export type GenerateConsultationSummaryResponse = {
   summary: string;
   disclaimer?: string;
+};
+
+export type ConsultationAiSummaryResponse = {
+  consultation_id: string;
+  summary: string;
+  generated_at: string;
+  model: string;
+  disclaimer: string;
 };
 
 export type ClinicProfile = {

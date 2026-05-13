@@ -107,6 +107,12 @@ class Consultation(BaseModel):
     therapeutic_plan_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_control_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     consultation_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_summary_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    ai_summary_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     reminder_requested: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

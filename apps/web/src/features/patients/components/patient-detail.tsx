@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
 import { FollowUpFormModal } from "@/features/follow-ups/components/follow-up-form-modal";
 import {
   PatientAvatar,
@@ -71,6 +72,7 @@ import type {
   ClinicalHistoryPdfExportPayload,
   ClinicalHistoryTimelineItem,
   Consultation,
+  ConsultationAiSummaryResponse,
   CreatePatientFileReferencePayload,
   CreatePreventiveCarePayload,
   FollowUp,
@@ -573,6 +575,56 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         errorMessage: "No fue posible crear la consulta de control.",
       }));
     }
+  }
+
+  function showAiSummaryToast(
+    title: string,
+    detail?: string,
+    variant: "success" | "error" = "success",
+  ) {
+    setState((current) => ({
+      ...current,
+      successMessage: variant === "success" ? detail ?? title : null,
+      errorMessage: variant === "error" ? detail ?? title : null,
+    }));
+  }
+
+  function handleTimelineAiSummaryChange(response: ConsultationAiSummaryResponse) {
+    setState((current) => {
+      if (!current.clinicalHistory) {
+        return current;
+      }
+
+      const updateConsultationSummary = (consultation: Consultation) =>
+        consultation.id === response.consultation_id
+          ? {
+              ...consultation,
+              ai_summary: response.summary,
+              ai_summary_generated_at: response.generated_at,
+              ai_summary_model: response.model,
+            }
+          : consultation;
+
+      const updateTimelineSummary = (item: ClinicalHistoryTimelineItem) =>
+        item.type === "consultation" && item.id === response.consultation_id
+          ? {
+              ...item,
+              ai_summary: response.summary,
+              ai_summary_generated_at: response.generated_at,
+              ai_summary_model: response.model,
+            }
+          : item;
+
+      return {
+        ...current,
+        clinicalHistory: {
+          ...current.clinicalHistory,
+          consultations:
+            current.clinicalHistory.consultations.map(updateConsultationSummary),
+          timeline: current.clinicalHistory.timeline?.map(updateTimelineSummary),
+        },
+      };
+    });
   }
 
   async function handleCreateFileReference(event: FormEvent<HTMLFormElement>) {
@@ -1198,7 +1250,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                               className="secondary-button secondary-button--compact"
                               href={`/consultations/${item.id}`}
                             >
-                              Ver consulta
+                              Editar consulta
                             </Link>
                             <button
                               className="secondary-button secondary-button--compact"
@@ -1207,6 +1259,15 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                             >
                               Consulta de control
                             </button>
+                            <AiConsultationSummaryCard
+                              consultationId={item.id}
+                              mode="button"
+                              summary={item.ai_summary}
+                              generatedAt={item.ai_summary_generated_at}
+                              model={item.ai_summary_model}
+                              onSummaryChange={handleTimelineAiSummaryChange}
+                              onToast={showAiSummaryToast}
+                            />
                           </div>
                         ) : href ? (
                           <div className="timeline-card__actions">
@@ -2401,19 +2462,38 @@ function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryT
       (clinicalHistory.follow_ups ?? []).map((followUp) => [followUp.id, followUp]),
     );
 
-    return clinicalHistory.timeline.map((item) => ({
-      ...item,
-      follow_up_status:
-        item.type === "follow_up" ? followUpsById.get(item.id)?.status ?? null : null,
-      consultation_type:
-        item.type === "consultation"
-          ? consultationsById.get(item.id)?.consultation_type ?? "initial"
-          : undefined,
-      parent_consultation_id:
-        item.type === "consultation"
-          ? consultationsById.get(item.id)?.parent_consultation_id ?? null
-          : undefined,
-    }));
+    return clinicalHistory.timeline.map((item) => {
+      const consultation =
+        item.type === "consultation" ? consultationsById.get(item.id) : undefined;
+
+      return {
+        ...item,
+        follow_up_status:
+          item.type === "follow_up" ? followUpsById.get(item.id)?.status ?? null : null,
+        consultation_type:
+          item.type === "consultation"
+            ? consultation?.consultation_type ?? "initial"
+            : undefined,
+        parent_consultation_id:
+          item.type === "consultation"
+            ? consultation?.parent_consultation_id ?? null
+            : undefined,
+        ai_summary:
+          item.type === "consultation"
+            ? item.ai_summary ?? consultation?.ai_summary ?? null
+            : undefined,
+        ai_summary_generated_at:
+          item.type === "consultation"
+            ? item.ai_summary_generated_at ??
+              consultation?.ai_summary_generated_at ??
+              null
+            : undefined,
+        ai_summary_model:
+          item.type === "consultation"
+            ? item.ai_summary_model ?? consultation?.ai_summary_model ?? null
+            : undefined,
+      };
+    });
   }
 
   return clinicalHistory.consultations.map((consultation) => ({
@@ -2424,6 +2504,9 @@ function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryT
     summary: getConsultationSummary(consultation),
     consultation_type: consultation.consultation_type,
     parent_consultation_id: consultation.parent_consultation_id,
+    ai_summary: consultation.ai_summary,
+    ai_summary_generated_at: consultation.ai_summary_generated_at,
+    ai_summary_model: consultation.ai_summary_model,
     created_by: getTraceableUserName(consultation, "created_by")
       ? {
           full_name: getTraceableUserName(consultation, "created_by"),

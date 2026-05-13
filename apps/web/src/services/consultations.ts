@@ -3,6 +3,7 @@ import type {
   ApiItemResponse,
   ApiListResponse,
   Consultation,
+  ConsultationAiSummaryResponse,
   ConsultationMedication,
   ConsultationStudyRequest,
   CreateConsultationPayload,
@@ -32,6 +33,14 @@ export function createFollowUpConsultation(consultationId: string) {
 export function getConsultation(consultationId: string) {
   return api.get<ApiItemResponse<Consultation>>(
     `/api/v1/consultations/${consultationId}`,
+  );
+}
+
+export function generateConsultationAiSummary(consultationId: string) {
+  return api.post<ConsultationAiSummaryResponse>(
+    `/api/v1/consultations/${consultationId}/ai-summary`,
+    {},
+    { retryTransient: false },
   );
 }
 

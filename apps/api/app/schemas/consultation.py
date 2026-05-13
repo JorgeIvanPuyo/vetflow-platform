@@ -10,6 +10,7 @@ from app.schemas.file_reference import FileReferenceRead
 from app.schemas.follow_up import FollowUpRead
 from app.schemas.patient import PatientRead
 from app.schemas.preventive_care import PreventiveCareRead
+from app.schemas.ai import AI_DISCLAIMER
 
 
 CONSULTATION_STATUSES = {"draft", "completed"}
@@ -152,6 +153,9 @@ class ConsultationRead(ConsultationBase):
     attending_user_id: uuid.UUID | None
     attending_user_name: str | None = None
     attending_user_email: str | None = None
+    ai_summary: str | None = None
+    ai_summary_generated_at: datetime | None = None
+    ai_summary_model: str | None = None
     created_at: datetime
     updated_at: datetime
     medications: list[ConsultationMedicationRead] = Field(default_factory=list)
@@ -192,6 +196,17 @@ class ClinicalHistoryTimelineItem(BaseModel):
     attended_by: TimelineUserTrace | None = None
     requested_by: TimelineUserTrace | None = None
     assigned_user: TimelineUserTrace | None = None
+    ai_summary: str | None = None
+    ai_summary_generated_at: datetime | None = None
+    ai_summary_model: str | None = None
+
+
+class ConsultationAISummaryResponse(BaseModel):
+    consultation_id: uuid.UUID
+    summary: str
+    generated_at: datetime
+    model: str
+    disclaimer: str = AI_DISCLAIMER
 
 
 class ClinicalHistoryRead(BaseModel):
