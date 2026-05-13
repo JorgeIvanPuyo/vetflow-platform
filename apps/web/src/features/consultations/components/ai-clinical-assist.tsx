@@ -52,6 +52,7 @@ type AiConsultationSummaryActionProps = {
 };
 
 type AiAssistButtonProps = {
+  ariaLabel: string;
   disabled: boolean;
   isLoading: boolean;
   label: string;
@@ -124,9 +125,10 @@ export function AiClinicalRewriteAction({
   return (
     <span className="ai-assist">
       <AiAssistButton
+        ariaLabel="Mejorar redacción clínica con IA"
         disabled={isLoading || !hasEnoughText}
         isLoading={isLoading}
-        label="Mejorar con IA"
+        label="Asistente IA"
         loadingLabel="IA trabajando..."
         onClick={() => void handleGenerate()}
       />
@@ -207,9 +209,10 @@ export function AiConsultationSummaryAction({
   return (
     <span className="ai-assist">
       <AiAssistButton
+        ariaLabel="Generar resumen clínico con IA"
         disabled={isLoading || !hasEnoughClinicalContent}
         isLoading={isLoading}
-        label="Resumen con IA"
+        label="Asistente IA"
         loadingLabel="IA trabajando..."
         onClick={() => void handleGenerate()}
       />
@@ -232,6 +235,7 @@ export function AiConsultationSummaryAction({
 }
 
 function AiAssistButton({
+  ariaLabel,
   disabled,
   isLoading,
   label,
@@ -240,10 +244,12 @@ function AiAssistButton({
 }: AiAssistButtonProps) {
   return (
     <button
+      aria-label={ariaLabel}
       aria-busy={isLoading}
       className={`ai-inline-action${isLoading ? " ai-inline-action--loading" : ""}`}
       disabled={disabled}
       onClick={onClick}
+      title="Mejorar redacción clínica"
       type="button"
     >
       {isLoading ? (
@@ -251,7 +257,9 @@ function AiAssistButton({
       ) : (
         <Sparkles aria-hidden="true" className="ai-inline-action__icon" size={15} />
       )}
-      <span>{isLoading ? loadingLabel : label}</span>
+      <span className="ai-inline-action__label">
+        {isLoading ? loadingLabel : label}
+      </span>
     </button>
   );
 }
@@ -288,7 +296,7 @@ function AiSuggestionInlinePanel({
       <span className="ai-suggestion-card__header">
         <span className="ai-suggestion-card__title">
           <Sparkles aria-hidden="true" size={16} />
-          {review.kind === "summary" ? "Resumen IA" : "Sugerencia IA"}
+          {review.kind === "summary" ? "Resumen IA" : "Sugerencia de redacción"}
         </span>
         <button
           aria-label="Descartar sugerencia"
@@ -301,10 +309,26 @@ function AiSuggestionInlinePanel({
       </span>
       <span className="ai-suggestion-card__context">
         {review.kind === "summary"
-          ? "Basado en la información disponible de la consulta."
-          : "Basado en el texto escrito en este campo."}
+          ? "Revisa el resumen antes de aplicarlo."
+          : "Revisa la sugerencia antes de aplicarla."}
       </span>
-      <span className="ai-suggestion-card__text">{review.suggestion}</span>
+      <span className="ai-suggestion-card__comparison">
+        {review.kind === "rewrite" ? (
+          <span className="ai-suggestion-card__block ai-suggestion-card__block--original">
+            <span className="ai-suggestion-card__block-title">Texto original</span>
+            <span className="ai-suggestion-card__text">{review.originalText}</span>
+          </span>
+        ) : null}
+        <span className="ai-suggestion-card__block ai-suggestion-card__block--suggestion">
+          <span className="ai-suggestion-card__block-title">
+            {review.kind === "summary" ? "Resumen sugerido" : "Sugerencia mejorada"}
+          </span>
+          <span className="ai-suggestion-card__text">{review.suggestion}</span>
+        </span>
+      </span>
+      <span className="ai-suggestion-card__clinical-note">
+        La sugerencia mejora la redacción del texto escrito. No reemplaza el criterio médico.
+      </span>
       <span className="ai-disclaimer">{review.disclaimer}</span>
       <span className="ai-suggestion-card__actions">
         <button className="secondary-button" onClick={onClose} type="button">
