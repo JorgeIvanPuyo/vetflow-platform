@@ -6,6 +6,42 @@ from sqlalchemy import func, select
 from app.core.config import get_settings
 from app.models.consultation import Consultation
 from app.models.inventory_movement import InventoryMovement
+from app.models.user import User
+
+
+def _auth_headers(email: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {email}"}
+
+
+def _setup_auth(monkeypatch) -> None:
+    import app.core.tenant as tenant_core
+
+    monkeypatch.setattr(
+        tenant_core,
+        "verify_id_token",
+        lambda token: {"email": token},
+    )
+
+
+def _create_user(
+    db_session,
+    tenant,
+    *,
+    email: str,
+    full_name: str,
+    is_active: bool = True,
+) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email=email,
+        full_name=full_name,
+        is_active=is_active,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
 
 
 def _create_owner(client, tenant, full_name="Owner"):
@@ -28,7 +64,7 @@ def _create_patient(client, tenant, owner_id, name="Luna"):
     return response.json()["data"]
 
 
-def _create_consultation(client, tenant, patient_id, **overrides):
+def _consultation_payload(patient_id: str, **overrides) -> dict:
     payload = {
         "patient_id": patient_id,
         "visit_date": "2026-04-24T10:30:00Z",
@@ -43,10 +79,14 @@ def _create_consultation(client, tenant, patient_id, **overrides):
         "indications": "Return if symptoms worsen",
     }
     payload.update(overrides)
+    return payload
+
+
+def _create_consultation(client, tenant, patient_id, **overrides):
     response = client.post(
         "/api/v1/consultations",
         headers={"X-Tenant-Id": str(tenant.id)},
-        json=payload,
+        json=_consultation_payload(patient_id, **overrides),
     )
     assert response.status_code == 201
     return response.json()["data"]
@@ -97,6 +137,210 @@ def test_create_and_get_consultation(client, tenant):
     assert body["diagnostic_results"] is None
     assert body["medications"] == []
     assert body["study_requests"] == []
+
+
+def test_create_consultation_defaults_attending_user_to_authenticated_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="default-attending@example.com",
+        full_name="Default Attending Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    response = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    )
+
+    assert response.status_code == 201
+    consultation = response.json()["data"]
+    assert consultation["created_by_user_id"] == str(actor.id)
+    assert consultation["attending_user_id"] == str(actor.id)
+
+
+def test_create_consultation_with_selected_attending_user_returns_traceability(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="creator-vet@example.com",
+        full_name="Creator Vet",
+    )
+    attending = _create_user(
+        db_session,
+        tenant,
+        email="attending-vet@example.com",
+        full_name="Attending Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    create_response = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(
+            patient["id"],
+            attending_user_id=str(attending.id),
+        ),
+    )
+
+    assert create_response.status_code == 201
+    consultation = create_response.json()["data"]
+    assert consultation["created_by_user_id"] == str(actor.id)
+    assert consultation["created_by_user_name"] == "Creator Vet"
+    assert consultation["attending_user_id"] == str(attending.id)
+    assert consultation["attending_user_name"] == "Attending Vet"
+    assert consultation["attending_user_email"] == "attending-vet@example.com"
+
+    detail_response = client.get(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers=_auth_headers(actor.email),
+    )
+    list_response = client.get(
+        f"/api/v1/patients/{patient['id']}/consultations",
+        headers=_auth_headers(actor.email),
+    )
+    history_response = client.get(
+        f"/api/v1/patients/{patient['id']}/clinical-history",
+        headers=_auth_headers(actor.email),
+    )
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()["data"]
+    assert detail["attending_user_id"] == str(attending.id)
+    assert detail["attending_user_name"] == "Attending Vet"
+    assert detail["attending_user_email"] == "attending-vet@example.com"
+
+    assert list_response.status_code == 200
+    listed = list_response.json()["data"][0]
+    assert listed["attending_user_id"] == str(attending.id)
+    assert listed["attending_user_name"] == "Attending Vet"
+    assert listed["attending_user_email"] == "attending-vet@example.com"
+
+    assert history_response.status_code == 200
+    history = history_response.json()["data"]
+    assert history["consultations"][0]["attending_user_id"] == str(attending.id)
+    assert history["consultations"][0]["attending_user_name"] == "Attending Vet"
+    assert history["timeline"][0]["attended_by"] == {
+        "id": str(attending.id),
+        "full_name": "Attending Vet",
+        "email": "attending-vet@example.com",
+    }
+
+
+def test_create_consultation_rejects_cross_tenant_attending_user(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="cross-tenant-creator@example.com",
+        full_name="Creator Vet",
+    )
+    foreign_user = _create_user(
+        db_session,
+        other_tenant,
+        email="foreign-attending@example.com",
+        full_name="Foreign Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    response = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(
+            patient["id"],
+            attending_user_id=str(foreign_user.id),
+        ),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+
+
+def test_create_consultation_rejects_inactive_attending_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="inactive-creator@example.com",
+        full_name="Creator Vet",
+    )
+    inactive_user = _create_user(
+        db_session,
+        tenant,
+        email="inactive-attending@example.com",
+        full_name="Inactive Vet",
+        is_active=False,
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    response = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(
+            patient["id"],
+            attending_user_id=str(inactive_user.id),
+        ),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+
+
+def test_create_consultation_rejects_unknown_attending_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="unknown-creator@example.com",
+        full_name="Creator Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    response = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(
+            patient["id"],
+            attending_user_id=str(uuid.uuid4()),
+        ),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
 
 
 def test_create_consultation_with_diagnostic_results(client, tenant):
@@ -223,6 +467,201 @@ def test_patch_consultation_clinical_fields(client, tenant):
     assert body["data"]["clinical_exam"] == "Redness improved"
     assert body["data"]["final_diagnosis"] == "Contact dermatitis"
     assert body["data"]["anamnesis"] == "Owner reports itching for 3 days"
+
+
+def test_update_attending_user_preserves_created_by_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="update-creator@example.com",
+        full_name="Creator Vet",
+    )
+    attending = _create_user(
+        db_session,
+        tenant,
+        email="update-attending@example.com",
+        full_name="Updated Attending Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    ).json()["data"]
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers=_auth_headers(actor.email),
+        json={"attending_user_id": str(attending.id)},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["data"]
+    assert updated["created_by_user_id"] == str(actor.id)
+    assert updated["created_by_user_name"] == "Creator Vet"
+    assert updated["attending_user_id"] == str(attending.id)
+    assert updated["attending_user_name"] == "Updated Attending Vet"
+
+
+def test_step_update_can_change_attending_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="step-creator@example.com",
+        full_name="Creator Vet",
+    )
+    attending = _create_user(
+        db_session,
+        tenant,
+        email="step-attending@example.com",
+        full_name="Step Attending Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    ).json()["data"]
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}/step",
+        headers=_auth_headers(actor.email),
+        json={
+            "attending_user_id": str(attending.id),
+            "current_step": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["data"]
+    assert updated["created_by_user_id"] == str(actor.id)
+    assert updated["attending_user_id"] == str(attending.id)
+    assert updated["attending_user_name"] == "Step Attending Vet"
+    assert updated["current_step"] == 2
+
+
+def test_update_consultation_rejects_cross_tenant_attending_user(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="patch-cross-creator@example.com",
+        full_name="Creator Vet",
+    )
+    foreign_user = _create_user(
+        db_session,
+        other_tenant,
+        email="patch-foreign@example.com",
+        full_name="Foreign Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    ).json()["data"]
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers=_auth_headers(actor.email),
+        json={"attending_user_id": str(foreign_user.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+
+
+def test_update_consultation_rejects_inactive_attending_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="patch-inactive-creator@example.com",
+        full_name="Creator Vet",
+    )
+    inactive_user = _create_user(
+        db_session,
+        tenant,
+        email="patch-inactive@example.com",
+        full_name="Inactive Vet",
+        is_active=False,
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    ).json()["data"]
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers=_auth_headers(actor.email),
+        json={"attending_user_id": str(inactive_user.id)},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+
+
+def test_update_consultation_rejects_null_attending_user(
+    client,
+    db_session,
+    tenant,
+    monkeypatch,
+):
+    _setup_auth(monkeypatch)
+    actor = _create_user(
+        db_session,
+        tenant,
+        email="patch-null-creator@example.com",
+        full_name="Creator Vet",
+    )
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = client.post(
+        "/api/v1/consultations",
+        headers=_auth_headers(actor.email),
+        json=_consultation_payload(patient["id"]),
+    ).json()["data"]
+
+    response = client.patch(
+        f"/api/v1/consultations/{consultation['id']}",
+        headers=_auth_headers(actor.email),
+        json={"attending_user_id": None},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == {
+        "code": "validation_error",
+        "message": "attending_user_id cannot be null",
+    }
 
 
 def test_update_consultation_with_diagnostic_results(client, tenant):

@@ -3067,6 +3067,48 @@ code {
   gap: 5px;
 }
 
+.consultation-responsible-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  padding: 3px 0;
+}
+
+.consultation-responsible-field label {
+  color: var(--color-text);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.consultation-responsible-field select {
+  min-width: min(100%, 230px);
+  min-height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 4px 28px 4px 8px;
+}
+
+.consultation-responsible-field select:focus-visible {
+  border-color: var(--color-primary);
+  outline: 2px solid rgba(47, 111, 99, 0.18);
+  outline-offset: 1px;
+}
+
+.consultation-responsible-field > span {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.consultation-responsible-field .consultation-responsible-field__warning {
+  flex-basis: 100%;
+  color: var(--color-warning-dark, #8a5a12);
+}
+
 .consultation-workflow__context-note {
   margin: -1px 0 0;
   color: var(--color-text-muted);

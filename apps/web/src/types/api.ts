@@ -816,6 +816,7 @@ export type UpdatePatientPayload = Partial<
 
 export type CreateConsultationPayload = {
   patient_id: string;
+  attending_user_id?: string;
   visit_date: string;
   reason: string;
   anamnesis?: string | null;

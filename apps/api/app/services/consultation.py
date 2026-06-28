@@ -25,6 +25,7 @@ from app.repositories.follow_up import FollowUpRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.preventive_care import PreventiveCareRepository
+from app.repositories.user import UserRepository
 from app.schemas.ai import ConsultationSummaryInput
 from app.schemas.consultation import (
     ConsultationCreate,
@@ -50,6 +51,7 @@ class ConsultationService:
         self.follow_up_repository = FollowUpRepository(db)
         self.inventory_repository = InventoryRepository(db)
         self.patient_repository = PatientRepository(db)
+        self.user_repository = UserRepository(db)
 
     def create_consultation(
         self,
@@ -74,11 +76,17 @@ class ConsultationService:
                 "Patient not found for the provided tenant",
             )
 
+        data = payload.model_dump(exclude={"attending_user_id"})
+        resolved_attending_user_id = self._resolve_attending_user_id(
+            tenant_id,
+            payload.attending_user_id,
+            default_user_id=attending_user_id or created_by_user_id,
+        )
         consultation = Consultation(
             tenant_id=tenant_id,
             created_by_user_id=created_by_user_id,
-            attending_user_id=attending_user_id,
-            **payload.model_dump(),
+            attending_user_id=resolved_attending_user_id,
+            **data,
         )
         self.consultation_repository.create(consultation)
         self.db.commit()
@@ -167,6 +175,18 @@ class ConsultationService:
             raise AppError(422, "validation_error", "visit_date cannot be null")
         if "reason" in updates and updates["reason"] is None:
             raise AppError(422, "validation_error", "reason cannot be null")
+        if "attending_user_id" in updates:
+            if updates["attending_user_id"] is None:
+                raise AppError(
+                    422,
+                    "validation_error",
+                    "attending_user_id cannot be null",
+                )
+            updates["attending_user_id"] = self._resolve_attending_user_id(
+                tenant_id,
+                updates["attending_user_id"],
+                default_user_id=None,
+            )
         self._validate_update_numbers(updates)
 
         updated_consultation = self.consultation_repository.update(
@@ -404,6 +424,25 @@ class ConsultationService:
         if patient is None:
             raise AppError(404, "patient_not_found", "Patient not found")
         return patient
+
+    def _resolve_attending_user_id(
+        self,
+        tenant_id: uuid.UUID,
+        attending_user_id: uuid.UUID | None,
+        *,
+        default_user_id: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if attending_user_id is None:
+            return default_user_id
+
+        user = self.user_repository.get_by_id(tenant_id, attending_user_id)
+        if user is None or not user.is_active:
+            raise AppError(
+                404,
+                "team_member_not_found",
+                "Clinic team member not found",
+            )
+        return user.id
 
     def _validate_update_numbers(self, updates: dict) -> None:
         non_negative_fields = {

@@ -28,6 +28,7 @@ import {
 } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { useAuth } from "@/features/auth/auth-context";
 import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
 import {
   AiClinicalRewriteAction,
@@ -51,6 +52,7 @@ import {
   updateConsultation,
   updateConsultationStep,
 } from "@/services/consultations";
+import { getClinicTeam } from "@/services/clinic";
 import { searchInventoryMedications } from "@/services/inventory";
 import { getPatientClinicalHistory } from "@/services/patients";
 import type {
@@ -60,6 +62,7 @@ import type {
   ConsultationStudyRequest,
   ConsultationStudyRequestType,
   AiPatientContext,
+  ClinicTeamMember,
   ConsultationSummaryPayload,
   CreateMedicationPayload,
   CreateStudyRequestPayload,
@@ -81,6 +84,7 @@ type ConsultationWorkflowProps =
     };
 
 type FormState = {
+  attending_user_id: string;
   visit_date: string;
   reason: string;
   anamnesis: string;
@@ -160,6 +164,7 @@ const steps = [
 ] as const;
 
 const initialFormState: FormState = {
+  attending_user_id: "",
   visit_date: toDateTimeLocalValue(new Date()),
   reason: "",
   anamnesis: "",
@@ -231,6 +236,7 @@ function getStepIcon(stepId: (typeof steps)[number]["id"]) {
 }
 
 export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
+  const { user } = useAuth();
   const router = useRouter();
   const hasStartedRef = useRef(false);
   const previousStepRef = useRef<number | null>(null);
@@ -242,6 +248,9 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const [isAddingMedication, setIsAddingMedication] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [consultation, setConsultation] = useState<Consultation | null>(null);
+  const [teamMembers, setTeamMembers] = useState<ClinicTeamMember[]>([]);
+  const [isTeamLoading, setIsTeamLoading] = useState(true);
+  const [teamLoadMessage, setTeamLoadMessage] = useState<string | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [activeStep, setActiveStep] = useState(1);
   const [formState, setFormState] = useState<FormState>(initialFormState);
@@ -269,6 +278,16 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const aiPatientContext = useMemo(() => buildAiPatientContext(patient), [patient]);
   const attendingUserName = getTraceableUserName(consultation, "attending");
   const registeredByName = getTraceableUserName(consultation, "created_by");
+  const activeTeamMembers = useMemo(
+    () => teamMembers.filter((member) => member.is_active),
+    [teamMembers],
+  );
+  const selectedAttendingMember = activeTeamMembers.find(
+    (member) => member.id === formState.attending_user_id,
+  );
+  const hasUnavailableAttendingMember = Boolean(
+    formState.attending_user_id && !selectedAttendingMember,
+  );
   const localStorageKeyPrefix = consultationId
     ? `vetclinic:consultation:${consultationId}`
     : null;
@@ -340,6 +359,66 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   useEffect(() => {
     void initializeWorkflow();
   }, [initializeWorkflow]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadTeam() {
+      setIsTeamLoading(true);
+      setTeamLoadMessage(null);
+
+      try {
+        const response = await getClinicTeam();
+        if (isCurrent) {
+          setTeamMembers(response.data.filter((member) => member.is_active));
+        }
+      } catch {
+        if (isCurrent) {
+          setTeamMembers([]);
+          setTeamLoadMessage(
+            "No pudimos cargar el equipo de clínica. Puedes continuar con la consulta.",
+          );
+        }
+      } finally {
+        if (isCurrent) {
+          setIsTeamLoading(false);
+        }
+      }
+    }
+
+    void loadTeam();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTeamMembers.length === 0) {
+      return;
+    }
+
+    setFormState((current) => {
+      if (current.attending_user_id) {
+        return current;
+      }
+
+      const currentUserEmail = user?.email?.trim().toLocaleLowerCase();
+      const defaultMember =
+        activeTeamMembers.find(
+          (member) => member.id === consultation?.attending_user_id,
+        ) ??
+        activeTeamMembers.find(
+          (member) =>
+            Boolean(currentUserEmail) &&
+            member.email.trim().toLocaleLowerCase() === currentUserEmail,
+        );
+
+      return defaultMember
+        ? { ...current, attending_user_id: defaultMember.id }
+        : current;
+    });
+  }, [activeTeamMembers, consultation?.attending_user_id, user?.email]);
 
   useEffect(() => {
     if (!toast) {
@@ -503,8 +582,16 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     setIsSaving(true);
     setErrorMessage(null);
 
+    const selectedAttendingUserId = activeTeamMembers.some(
+      (member) => member.id === formState.attending_user_id,
+    )
+      ? formState.attending_user_id
+      : undefined;
     const payload: StepUpdatePayload = {
       ...buildPayload(formState),
+      ...(selectedAttendingUserId
+        ? { attending_user_id: selectedAttendingUserId }
+        : {}),
       status,
       current_step: targetStep,
     };
@@ -516,6 +603,11 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           : await updateConsultationStep(consultation.id, payload);
 
       setConsultation(response.data);
+      setFormState((current) => ({
+        ...current,
+        attending_user_id:
+          response.data.attending_user_id ?? current.attending_user_id,
+      }));
       clearLocalStep(localStorageKeyPrefix, activeStep);
       if (targetStep !== activeStep) {
         clearLocalStep(localStorageKeyPrefix, targetStep);
@@ -527,8 +619,22 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       });
       setIsSaving(false);
       return true;
-    } catch {
+    } catch (error) {
       saveLocalStep(localStorageKeyPrefix, activeStep, formState);
+      if (
+        error instanceof ApiClientError &&
+        error.code === "team_member_not_found"
+      ) {
+        showToast({
+          title: "No fue posible asignar al médico responsable",
+          detail:
+            "No fue posible asignar este médico responsable. Actualiza el equipo de clínica e inténtalo nuevamente.",
+          variant: "error",
+        });
+        setIsSaving(false);
+        return false;
+      }
+
       showToast({
         title: "Guardado local disponible",
         detail: "Sin conexión estable. Guardamos el avance localmente y podrás intentar de nuevo.",
@@ -849,6 +955,43 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           <span className="badge badge--blue">
             {consultation.consultation_type === "follow_up" ? "Control" : "Inicial"}
           </span>
+        </div>
+
+        <div className="consultation-responsible-field">
+          <label htmlFor="consultation-attending-user">Médico responsable</label>
+          <select
+            disabled={isTeamLoading || activeTeamMembers.length === 0}
+            id="consultation-attending-user"
+            onChange={(event) =>
+              updateField("attending_user_id", event.target.value)
+            }
+            value={formState.attending_user_id}
+          >
+            <option value="">
+              {isTeamLoading ? "Cargando equipo…" : "Usar usuario de la sesión"}
+            </option>
+            {hasUnavailableAttendingMember ? (
+              <option disabled value={formState.attending_user_id}>
+                {attendingUserName ??
+                  consultation.attending_user_email ??
+                  "Médico actual"}{" "}
+                (no disponible)
+              </option>
+            ) : null}
+            {activeTeamMembers.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.full_name}
+              </option>
+            ))}
+          </select>
+          <span>
+            Se usará en la trazabilidad clínica de esta consulta.
+          </span>
+          {teamLoadMessage ? (
+            <span className="consultation-responsible-field__warning">
+              {teamLoadMessage}
+            </span>
+          ) : null}
         </div>
 
         <div className="consultation-workflow__alert-line">
@@ -1889,6 +2032,7 @@ function RecordRow({
 
 function toFormState(consultation: Consultation): FormState {
   return {
+    attending_user_id: consultation.attending_user_id ?? "",
     visit_date: toDateTimeLocalValue(consultation.visit_date),
     reason: consultation.reason,
     anamnesis: consultation.anamnesis ?? "",

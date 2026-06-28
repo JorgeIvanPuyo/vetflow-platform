@@ -51,9 +51,11 @@ class ConsultationBase(BaseModel):
 
 class ConsultationCreate(ConsultationBase):
     patient_id: uuid.UUID
+    attending_user_id: uuid.UUID | None = None
 
 
 class ConsultationUpdate(BaseModel):
+    attending_user_id: uuid.UUID | None = None
     visit_date: datetime | None = None
     reason: str | None = None
     anamnesis: str | None = None
