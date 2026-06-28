@@ -57,8 +57,18 @@ class InventoryItemBase(BaseModel):
     current_stock: Decimal = Field(default=Decimal("0"), ge=0)
     minimum_stock: Decimal = Field(default=Decimal("0"), ge=0)
     purchase_price_ars: Decimal | None = Field(default=None, ge=0)
+    purchase_tax_rate_percentage: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        le=100,
+    )
     profit_margin_percentage: Decimal = Field(default=Decimal("35"), ge=0)
     sale_price_ars: Decimal | None = Field(default=None, ge=0)
+    sale_tax_rate_percentage: Decimal = Field(
+        default=Decimal("0"),
+        ge=0,
+        le=100,
+    )
     round_sale_price: bool = False
     notes: str | None = None
     is_active: bool = True
@@ -79,8 +89,10 @@ class InventoryItemUpdate(BaseModel):
     current_stock: Decimal | None = Field(default=None, ge=0)
     minimum_stock: Decimal | None = Field(default=None, ge=0)
     purchase_price_ars: Decimal | None = Field(default=None, ge=0)
+    purchase_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
     profit_margin_percentage: Decimal | None = Field(default=None, ge=0)
     sale_price_ars: Decimal | None = Field(default=None, ge=0)
+    sale_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
     round_sale_price: bool | None = None
     notes: str | None = None
     is_active: bool | None = None
@@ -92,6 +104,10 @@ class InventoryItemRead(InventoryItemBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     created_by_user_id: uuid.UUID | None = None
+    purchase_tax_amount_ars: Decimal | None = None
+    purchase_price_with_tax_ars: Decimal | None = None
+    sale_tax_amount_ars: Decimal | None = None
+    sale_price_with_tax_ars: Decimal | None = None
     is_low_stock: bool
     is_expiring_soon: bool
     is_expired: bool

@@ -27,6 +27,7 @@ ALLOWED_SORT_BY = {"name", "current_stock", "expiration_date", "created_at", "up
 ALLOWED_SORT_ORDER = {"asc", "desc"}
 ZERO = Decimal("0")
 TEN = Decimal("10")
+HUNDRED = Decimal("100")
 
 
 class InventoryService:
@@ -48,11 +49,16 @@ class InventoryService:
             payload.profit_margin_percentage,
             payload.sale_price_ars,
         )
+        self._validate_tax_rates(
+            payload.purchase_tax_rate_percentage,
+            payload.sale_tax_rate_percentage,
+        )
         self._validate_optional_user(tenant_id, created_by_user_id)
 
         item_data = payload.model_dump()
         item_data["sale_price_ars"] = self._resolve_sale_price(
             purchase_price_ars=payload.purchase_price_ars,
+            purchase_tax_rate_percentage=payload.purchase_tax_rate_percentage,
             profit_margin_percentage=payload.profit_margin_percentage,
             round_sale_price=payload.round_sale_price,
             manual_sale_price_ars=payload.sale_price_ars,
@@ -120,15 +126,32 @@ class InventoryService:
     ) -> InventoryItem:
         item = self.get_item(tenant_id, item_id)
         updates = payload.model_dump(exclude_unset=True)
+        for field in (
+            "purchase_tax_rate_percentage",
+            "sale_tax_rate_percentage",
+        ):
+            if field in updates and updates[field] is None:
+                updates[field] = ZERO
         self._validate_non_negative_prices(
             updates.get("purchase_price_ars", item.purchase_price_ars),
             updates.get("profit_margin_percentage", item.profit_margin_percentage),
             updates.get("sale_price_ars", item.sale_price_ars),
         )
+        self._validate_tax_rates(
+            updates.get(
+                "purchase_tax_rate_percentage",
+                item.purchase_tax_rate_percentage,
+            ),
+            updates.get("sale_tax_rate_percentage", item.sale_tax_rate_percentage),
+        )
 
         if self._should_recalculate_sale_price(updates):
             updates["sale_price_ars"] = self._resolve_sale_price(
                 purchase_price_ars=updates.get("purchase_price_ars", item.purchase_price_ars),
+                purchase_tax_rate_percentage=updates.get(
+                    "purchase_tax_rate_percentage",
+                    item.purchase_tax_rate_percentage,
+                ),
                 profit_margin_percentage=updates.get(
                     "profit_margin_percentage",
                     item.profit_margin_percentage,
@@ -259,6 +282,7 @@ class InventoryService:
         self,
         *,
         purchase_price_ars: Decimal | None,
+        purchase_tax_rate_percentage: Decimal | None,
         profit_margin_percentage: Decimal | None,
         round_sale_price: bool,
         manual_sale_price_ars: Decimal | None,
@@ -267,7 +291,13 @@ class InventoryService:
             return self._quantize_money(manual_sale_price_ars)
         if purchase_price_ars is None or profit_margin_percentage is None:
             return None
-        sale_price = purchase_price_ars * (Decimal("1") + (profit_margin_percentage / Decimal("100")))
+        purchase_price_with_tax = self._price_with_tax(
+            purchase_price_ars,
+            purchase_tax_rate_percentage,
+        )
+        sale_price = purchase_price_with_tax * (
+            Decimal("1") + (profit_margin_percentage / HUNDRED)
+        )
         sale_price = self._quantize_money(sale_price)
         if round_sale_price:
             sale_price = self._round_to_nearest_ten(sale_price)
@@ -277,8 +307,23 @@ class InventoryService:
         if "sale_price_ars" in updates:
             return True
         return bool(
-            {"purchase_price_ars", "profit_margin_percentage", "round_sale_price"} & set(updates)
+            {
+                "purchase_price_ars",
+                "purchase_tax_rate_percentage",
+                "profit_margin_percentage",
+                "round_sale_price",
+            }
+            & set(updates)
         )
+
+    def _price_with_tax(
+        self,
+        price: Decimal,
+        tax_rate_percentage: Decimal | None,
+    ) -> Decimal:
+        tax_rate = tax_rate_percentage if tax_rate_percentage is not None else ZERO
+        tax_amount = self._quantize_money(price * tax_rate / HUNDRED)
+        return self._quantize_money(price + tax_amount)
 
     def _round_to_nearest_ten(self, value: Decimal) -> Decimal:
         return (value / TEN).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * TEN
@@ -295,6 +340,22 @@ class InventoryService:
         for value in (purchase_price_ars, profit_margin_percentage, sale_price_ars):
             if value is not None and value < ZERO:
                 raise AppError(422, "invalid_price", "Price values cannot be negative")
+
+    def _validate_tax_rates(
+        self,
+        purchase_tax_rate_percentage: Decimal | None,
+        sale_tax_rate_percentage: Decimal | None,
+    ) -> None:
+        for value in (
+            purchase_tax_rate_percentage,
+            sale_tax_rate_percentage,
+        ):
+            if value is not None and (value < ZERO or value > HUNDRED):
+                raise AppError(
+                    422,
+                    "invalid_tax_rate",
+                    "Tax rates must be between 0 and 100",
+                )
 
     def _validate_pagination(self, page: int, page_size: int) -> None:
         if page < 1 or page_size < 1 or page_size > 50:

@@ -509,8 +509,14 @@ export type InventoryItem = {
   current_stock: string;
   minimum_stock: string;
   purchase_price_ars: string | null;
+  purchase_tax_rate_percentage?: string | number | null;
+  purchase_tax_amount_ars?: string | number | null;
+  purchase_price_with_tax_ars?: string | number | null;
   profit_margin_percentage: string;
   sale_price_ars: string | null;
+  sale_tax_rate_percentage?: string | number | null;
+  sale_tax_amount_ars?: string | number | null;
+  sale_price_with_tax_ars?: string | number | null;
   round_sale_price: boolean;
   notes: string | null;
   is_active: boolean;
@@ -541,8 +547,10 @@ export type CreateInventoryItemPayload = {
   current_stock?: number;
   minimum_stock?: number;
   purchase_price_ars?: number | null;
+  purchase_tax_rate_percentage?: number;
   profit_margin_percentage?: number;
   sale_price_ars?: number | null;
+  sale_tax_rate_percentage?: number;
   round_sale_price?: boolean;
   notes?: string | null;
   is_active?: boolean;

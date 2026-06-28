@@ -19,6 +19,7 @@ import {
   formatInventoryCurrency,
   formatInventoryDate,
   formatInventoryDateTime,
+  formatInventoryPercentage,
   formatInventoryQuantity,
   formatInventorySignedQuantity,
   getInventoryCategoryLabel,
@@ -441,10 +442,13 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
   const item = state.item;
   const badges = getInventoryStatusBadges(item);
+  const purchasePriceWithTax =
+    item.purchase_price_with_tax_ars ?? item.purchase_price_ars;
+  const salePriceWithTax = item.sale_price_with_tax_ars ?? item.sale_price_ars;
 
   return (
     <div className="page-stack inventory-detail-page">
-      <section className="detail-hero">
+      <section className="detail-hero inventory-detail-hero">
         <Link className="back-link" href="/inventory">
           Volver a inventario
         </Link>
@@ -494,12 +498,12 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               <dd>{formatInventoryQuantity(item.minimum_stock, item.unit)}</dd>
             </div>
             <div>
-              <dt>Precio compra</dt>
+              <dt>Precio compra sin IVA</dt>
               <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
             </div>
             <div>
-              <dt>Precio venta</dt>
-              <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
+              <dt>Precio venta final con IVA</dt>
+              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
             </div>
           </dl>
 
@@ -533,12 +537,44 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           </div>
           <dl className="detail-grid">
             <div>
+              <dt>Precio compra sin IVA</dt>
+              <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
+            </div>
+            <div>
+              <dt>IVA compra</dt>
+              <dd>
+                {formatInventoryPercentage(item.purchase_tax_rate_percentage)}
+                {item.purchase_tax_amount_ars !== undefined &&
+                item.purchase_tax_amount_ars !== null
+                  ? ` · ${formatInventoryCurrency(item.purchase_tax_amount_ars)}`
+                  : ""}
+              </dd>
+            </div>
+            <div>
+              <dt>Costo compra con IVA</dt>
+              <dd>{formatInventoryCurrency(purchasePriceWithTax)}</dd>
+            </div>
+            <div>
               <dt>Margen de ganancia</dt>
               <dd>{item.profit_margin_percentage}%</dd>
             </div>
             <div>
-              <dt>Precio de venta calculado</dt>
+              <dt>Precio venta sin IVA</dt>
               <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
+            </div>
+            <div>
+              <dt>IVA venta</dt>
+              <dd>
+                {formatInventoryPercentage(item.sale_tax_rate_percentage)}
+                {item.sale_tax_amount_ars !== undefined &&
+                item.sale_tax_amount_ars !== null
+                  ? ` · ${formatInventoryCurrency(item.sale_tax_amount_ars)}`
+                  : ""}
+              </dd>
+            </div>
+            <div>
+              <dt>Precio venta final con IVA</dt>
+              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
             </div>
             <div>
               <dt>Redondear precio</dt>

@@ -102,8 +102,10 @@ export type InventoryFormState = {
   current_stock: string;
   minimum_stock: string;
   purchase_price_ars: string;
+  purchase_tax_rate_percentage: string;
   profit_margin_percentage: string;
   sale_price_ars: string;
+  sale_tax_rate_percentage: string;
   round_sale_price: boolean;
   notes: string;
 };
@@ -146,8 +148,10 @@ export const initialInventoryFormState: InventoryFormState = {
   current_stock: "0",
   minimum_stock: "0",
   purchase_price_ars: "",
+  purchase_tax_rate_percentage: "0",
   profit_margin_percentage: "35",
   sale_price_ars: "",
+  sale_tax_rate_percentage: "0",
   round_sale_price: false,
   notes: "",
 };
@@ -193,8 +197,8 @@ export function getInventoryCategoryIcon(category: InventoryCategory): ReactNode
   return <Box size={20} />;
 }
 
-export function formatInventoryCurrency(value?: string | null) {
-  if (!value) {
+export function formatInventoryCurrency(value?: string | number | null) {
+  if (value === undefined || value === null || value === "") {
     return "ARS -";
   }
 
@@ -204,8 +208,19 @@ export function formatInventoryCurrency(value?: string | null) {
   }
 
   return `ARS ${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(numericValue)}`;
+}
+
+export function formatInventoryPercentage(value?: string | number | null) {
+  const numericValue = Number(value ?? 0);
+  if (Number.isNaN(numericValue)) {
+    return "0%";
+  }
+
+  return `${new Intl.NumberFormat("es-AR", {
+    maximumFractionDigits: 2,
+  }).format(numericValue)}%`;
 }
 
 export function formatInventoryDate(value?: string | null) {
@@ -349,6 +364,11 @@ export function validateInventoryForm(
     return "El precio de compra no puede ser negativo.";
   }
 
+  const purchaseTaxRate = Number(formState.purchase_tax_rate_percentage || "0");
+  if (Number.isNaN(purchaseTaxRate) || purchaseTaxRate < 0 || purchaseTaxRate > 100) {
+    return "El IVA de compra debe estar entre 0 y 100.";
+  }
+
   const marginValue = formState.profit_margin_percentage
     ? Number(formState.profit_margin_percentage)
     : 0;
@@ -361,23 +381,82 @@ export function validateInventoryForm(
     return "El precio de venta no puede ser negativo.";
   }
 
+  const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
+  if (Number.isNaN(saleTaxRate) || saleTaxRate < 0 || saleTaxRate > 100) {
+    return "El IVA de venta debe estar entre 0 y 100.";
+  }
+
   return null;
 }
 
 export function calculateSalePricePreview(formState: InventoryFormState) {
-  const purchasePrice = Number(formState.purchase_price_ars);
-  const margin = Number(formState.profit_margin_percentage);
+  return calculateInventoryPricePreview(formState, false).saleWithoutTax;
+}
 
-  if (Number.isNaN(purchasePrice) || purchasePrice < 0 || Number.isNaN(margin) || margin < 0) {
+export function calculateInventoryPricePreview(
+  formState: InventoryFormState,
+  manualSalePriceOverride: boolean,
+) {
+  const purchasePrice = parseOptionalNonNegativeNumber(formState.purchase_price_ars);
+  const purchaseTaxRate = parseTaxRate(formState.purchase_tax_rate_percentage);
+  const margin = parseOptionalNonNegativeNumber(formState.profit_margin_percentage);
+  const saleTaxRate = parseTaxRate(formState.sale_tax_rate_percentage);
+
+  const purchaseTaxAmount =
+    purchasePrice !== null && purchaseTaxRate !== null
+      ? roundMoney(purchasePrice * purchaseTaxRate / 100)
+      : null;
+  const purchaseWithTax =
+    purchasePrice !== null && purchaseTaxAmount !== null
+      ? roundMoney(purchasePrice + purchaseTaxAmount)
+      : null;
+
+  let saleWithoutTax: number | null = null;
+  if (manualSalePriceOverride) {
+    saleWithoutTax = parseOptionalNonNegativeNumber(formState.sale_price_ars);
+  } else if (purchaseWithTax !== null && margin !== null) {
+    const calculatedPrice = roundMoney(purchaseWithTax * (1 + margin / 100));
+    saleWithoutTax = formState.round_sale_price
+      ? Math.round(calculatedPrice / 10) * 10
+      : calculatedPrice;
+  }
+
+  const saleTaxAmount =
+    saleWithoutTax !== null && saleTaxRate !== null
+      ? roundMoney(saleWithoutTax * saleTaxRate / 100)
+      : null;
+  const saleWithTax =
+    saleWithoutTax !== null && saleTaxAmount !== null
+      ? roundMoney(saleWithoutTax + saleTaxAmount)
+      : null;
+
+  return {
+    purchaseTaxAmount,
+    purchaseWithTax,
+    saleWithoutTax,
+    saleTaxAmount,
+    saleWithTax,
+  };
+}
+
+function parseOptionalNonNegativeNumber(value: string) {
+  if (!value.trim()) {
     return null;
   }
 
-  const calculatedPrice = purchasePrice * (1 + margin / 100);
-  const roundedPrice = formState.round_sale_price
-    ? Math.round(calculatedPrice / 10) * 10
-    : calculatedPrice;
+  const numericValue = Number(value);
+  return Number.isNaN(numericValue) || numericValue < 0 ? null : numericValue;
+}
 
-  return Math.round(roundedPrice * 100) / 100;
+function parseTaxRate(value: string) {
+  const numericValue = Number(value || "0");
+  return Number.isNaN(numericValue) || numericValue < 0 || numericValue > 100
+    ? null
+    : numericValue;
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 export function inventoryFormToCreatePayload(
@@ -390,7 +469,11 @@ export function inventoryFormToCreatePayload(
     unit: formState.unit,
     current_stock: Number(formState.current_stock || "0"),
     minimum_stock: Number(formState.minimum_stock || "0"),
+    purchase_tax_rate_percentage: Number(
+      formState.purchase_tax_rate_percentage || "0",
+    ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
+    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
     is_active: true,
   };
@@ -429,7 +512,11 @@ export function inventoryFormToUpdatePayload(
     category: formState.category,
     unit: formState.unit,
     minimum_stock: Number(formState.minimum_stock || "0"),
+    purchase_tax_rate_percentage: Number(
+      formState.purchase_tax_rate_percentage || "0",
+    ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
+    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
   };
 
@@ -461,8 +548,10 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
     current_stock: item.current_stock,
     minimum_stock: item.minimum_stock,
     purchase_price_ars: item.purchase_price_ars ?? "",
+    purchase_tax_rate_percentage: String(item.purchase_tax_rate_percentage ?? 0),
     profit_margin_percentage: item.profit_margin_percentage,
     sale_price_ars: item.sale_price_ars ?? "",
+    sale_tax_rate_percentage: String(item.sale_tax_rate_percentage ?? 0),
     round_sale_price: item.round_sale_price,
     notes: item.notes ?? "",
   };

@@ -4,7 +4,8 @@ import { Calculator, Package, Save, X } from "lucide-react";
 import { FormEvent } from "react";
 
 import {
-  calculateSalePricePreview,
+  calculateInventoryPricePreview,
+  formatInventoryCurrency,
   getInventoryCategoryIcon,
   inventoryCategoryOptions,
   InventoryFormState,
@@ -40,7 +41,10 @@ export function InventoryItemForm({
   onManualSalePriceOverrideChange,
   isEdit = false,
 }: InventoryItemFormProps) {
-  const salePricePreview = calculateSalePricePreview(formState);
+  const pricePreview = calculateInventoryPricePreview(
+    formState,
+    manualSalePriceOverride,
+  );
 
   function updateField<K extends keyof InventoryFormState>(
     field: K,
@@ -206,61 +210,127 @@ export function InventoryItemForm({
           <h2>Configuración ARS</h2>
         </div>
 
-        <div className="form-grid">
-          <label className="field">
-            <span>Precio de compra (ARS)</span>
-            <input
-              inputMode="decimal"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formState.purchase_price_ars}
-              onChange={(event) => updateField("purchase_price_ars", event.target.value)}
-              placeholder="0"
-            />
-          </label>
+        <div className="inventory-pricing-sections">
+          <section className="inventory-pricing-section" aria-labelledby="purchase-pricing-title">
+            <h3 id="purchase-pricing-title">Compra</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Precio compra sin IVA</span>
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formState.purchase_price_ars}
+                  onChange={(event) => updateField("purchase_price_ars", event.target.value)}
+                  placeholder="0"
+                />
+              </label>
 
-          <label className="field">
-            <span>Margen (%)</span>
-            <input
-              inputMode="decimal"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formState.profit_margin_percentage}
-              onChange={(event) => updateField("profit_margin_percentage", event.target.value)}
-            />
-          </label>
+              <label className="field">
+                <span>IVA compra (%)</span>
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={formState.purchase_tax_rate_percentage}
+                  onChange={(event) =>
+                    updateField("purchase_tax_rate_percentage", event.target.value)
+                  }
+                  placeholder="0"
+                />
+              </label>
 
-          <label className="field">
-            <span>Precio de venta</span>
-            <input
-              inputMode="decimal"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formState.sale_price_ars}
-              onChange={(event) => {
-                updateField("sale_price_ars", event.target.value);
-                onManualSalePriceOverrideChange(Boolean(event.target.value.trim()));
-              }}
-              placeholder={salePricePreview !== null ? String(salePricePreview) : "Calculado automáticamente"}
-            />
-          </label>
+              <div className="clinical-section inventory-price-preview">
+                <strong>
+                  <Calculator size={16} />
+                  Costo compra con IVA
+                </strong>
+                <span>
+                  {pricePreview.purchaseWithTax !== null
+                    ? formatInventoryCurrency(pricePreview.purchaseWithTax)
+                    : "Agrega un precio de compra para ver el total."}
+                </span>
+                {pricePreview.purchaseTaxAmount !== null ? (
+                  <small>
+                    IVA compra: {formatInventoryCurrency(pricePreview.purchaseTaxAmount)}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+          </section>
 
-          <div className="clinical-section inventory-price-preview">
-            <strong>
-              <Calculator size={16} />
-              Vista previa
-            </strong>
-            <span>
-              {salePricePreview !== null
-                ? `Precio calculado: ARS ${new Intl.NumberFormat("es-AR", {
-                    maximumFractionDigits: 0,
-                  }).format(salePricePreview)}`
-                : "Agrega precio de compra y margen para calcular el valor de venta."}
-            </span>
-          </div>
+          <section className="inventory-pricing-section" aria-labelledby="sale-pricing-title">
+            <h3 id="sale-pricing-title">Venta</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Margen de ganancia (%)</span>
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formState.profit_margin_percentage}
+                  onChange={(event) =>
+                    updateField("profit_margin_percentage", event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>Precio venta sin IVA</span>
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formState.sale_price_ars}
+                  onChange={(event) => {
+                    updateField("sale_price_ars", event.target.value);
+                    onManualSalePriceOverrideChange(Boolean(event.target.value.trim()));
+                  }}
+                  placeholder={
+                    pricePreview.saleWithoutTax !== null
+                      ? String(pricePreview.saleWithoutTax)
+                      : "Calculado automáticamente"
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>IVA venta (%)</span>
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={formState.sale_tax_rate_percentage}
+                  onChange={(event) =>
+                    updateField("sale_tax_rate_percentage", event.target.value)
+                  }
+                  placeholder="0"
+                />
+              </label>
+
+              <div className="clinical-section inventory-price-preview">
+                <strong>
+                  <Calculator size={16} />
+                  Precio venta final con IVA
+                </strong>
+                <span>
+                  {pricePreview.saleWithTax !== null
+                    ? formatInventoryCurrency(pricePreview.saleWithTax)
+                    : "Agrega los precios para ver el total de venta."}
+                </span>
+                {pricePreview.saleTaxAmount !== null ? (
+                  <small>IVA venta: {formatInventoryCurrency(pricePreview.saleTaxAmount)}</small>
+                ) : null}
+              </div>
+            </div>
+          </section>
         </div>
 
         <div className="checkbox-card-list">

@@ -2,6 +2,8 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from time import sleep
 
+import pytest
+
 from app.models.consultation import Consultation
 from app.models.user import User
 
@@ -110,7 +112,13 @@ def test_create_inventory_item(client, tenant):
     item = response.json()["data"]
     assert item["tenant_id"] == str(tenant.id)
     assert item["name"] == "Amoxicilina 50mg"
+    assert item["purchase_tax_rate_percentage"] == "0.00"
+    assert item["sale_tax_rate_percentage"] == "0.00"
+    assert item["purchase_tax_amount_ars"] == "0.00"
+    assert item["purchase_price_with_tax_ars"] == "1000.00"
     assert item["sale_price_ars"] == "1350.00"
+    assert item["sale_tax_amount_ars"] == "0.00"
+    assert item["sale_price_with_tax_ars"] == "1350.00"
     assert item["is_low_stock"] is False
     assert item["created_at"] is not None
     assert item["updated_at"] is not None
@@ -130,6 +138,14 @@ def test_list_inventory_items_paginated(client, tenant):
     assert response.status_code == 200
     payload = response.json()
     assert [item["name"] for item in payload["data"]] == ["Item A", "Item B"]
+    assert {
+        "purchase_tax_rate_percentage",
+        "sale_tax_rate_percentage",
+        "purchase_tax_amount_ars",
+        "purchase_price_with_tax_ars",
+        "sale_tax_amount_ars",
+        "sale_price_with_tax_ars",
+    } <= payload["data"][0].keys()
     assert payload["meta"] == {"page": 1, "page_size": 2, "total": 3, "total_pages": 2}
 
 
@@ -225,7 +241,16 @@ def test_get_item_detail(client, tenant):
     response = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant))
 
     assert response.status_code == 200
-    assert response.json()["data"]["id"] == item["id"]
+    data = response.json()["data"]
+    assert data["id"] == item["id"]
+    assert {
+        "purchase_tax_rate_percentage",
+        "sale_tax_rate_percentage",
+        "purchase_tax_amount_ars",
+        "purchase_price_with_tax_ars",
+        "sale_tax_amount_ars",
+        "sale_price_with_tax_ars",
+    } <= data.keys()
 
 
 def test_update_item_and_recalculate_sale_price(client, tenant):
@@ -257,6 +282,134 @@ def test_round_sale_price_to_nearest_10(client, tenant):
 
     assert response.status_code == 201
     assert response.json()["data"]["sale_price_ars"] == "1370.00"
+
+
+def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
+    item = _create_item(
+        client,
+        tenant,
+        purchase_price_ars="1000",
+        purchase_tax_rate_percentage="21",
+        profit_margin_percentage="80",
+        sale_tax_rate_percentage="21",
+        round_sale_price=False,
+    )
+
+    assert item["purchase_tax_amount_ars"] == "210.00"
+    assert item["purchase_price_with_tax_ars"] == "1210.00"
+    assert item["sale_price_ars"] == "2178.00"
+    assert item["sale_tax_amount_ars"] == "457.38"
+    assert item["sale_price_with_tax_ars"] == "2635.38"
+
+
+def test_create_item_preserves_manual_sale_price_and_calculates_tax(client, tenant):
+    item = _create_item(
+        client,
+        tenant,
+        purchase_price_ars="1000",
+        purchase_tax_rate_percentage="21",
+        profit_margin_percentage="80",
+        sale_price_ars="3874",
+        sale_tax_rate_percentage="21",
+    )
+
+    assert item["sale_price_ars"] == "3874.00"
+    assert item["sale_tax_amount_ars"] == "813.54"
+    assert item["sale_price_with_tax_ars"] == "4687.54"
+
+
+def test_round_sale_price_before_calculating_sale_tax(client, tenant):
+    item = _create_item(
+        client,
+        tenant,
+        purchase_price_ars="1000",
+        purchase_tax_rate_percentage="21",
+        profit_margin_percentage="80",
+        sale_tax_rate_percentage="21",
+        round_sale_price=True,
+    )
+
+    assert item["sale_price_ars"] == "2180.00"
+    assert item["sale_tax_amount_ars"] == "457.80"
+    assert item["sale_price_with_tax_ars"] == "2637.80"
+
+
+def test_update_purchase_tax_recalculates_automatic_sale_price(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"purchase_tax_rate_percentage": "21"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["purchase_tax_rate_percentage"] == "21.00"
+    assert data["purchase_price_with_tax_ars"] == "1210.00"
+    assert data["sale_price_ars"] == "1633.50"
+
+
+def test_update_sale_tax_changes_totals_without_changing_sale_price(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"sale_tax_rate_percentage": "21"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sale_price_ars"] == "1350.00"
+    assert data["sale_tax_amount_ars"] == "283.50"
+    assert data["sale_price_with_tax_ars"] == "1633.50"
+
+
+def test_update_manual_sale_price_preserves_value_and_calculates_tax(client, tenant):
+    item = _create_item(client, tenant, sale_tax_rate_percentage="21")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"sale_price_ars": "3874"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sale_price_ars"] == "3874.00"
+    assert data["sale_tax_amount_ars"] == "813.54"
+    assert data["sale_price_with_tax_ars"] == "4687.54"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("purchase_tax_rate_percentage", "-0.01"),
+        ("purchase_tax_rate_percentage", "100.01"),
+        ("sale_tax_rate_percentage", "-0.01"),
+        ("sale_tax_rate_percentage", "100.01"),
+    ],
+)
+def test_reject_invalid_inventory_tax_rates(client, tenant, field, value):
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(**{field: value}),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_tax_totals_are_null_when_prices_are_null(client, tenant):
+    item = _create_item(client, tenant, purchase_price_ars=None)
+
+    assert item["purchase_tax_amount_ars"] is None
+    assert item["purchase_price_with_tax_ars"] is None
+    assert item["sale_price_ars"] is None
+    assert item["sale_tax_amount_ars"] is None
+    assert item["sale_price_with_tax_ars"] is None
 
 
 def test_soft_delete_item(client, tenant):

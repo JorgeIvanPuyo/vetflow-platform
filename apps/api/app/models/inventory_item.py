@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+
+
+MONEY_QUANTUM = Decimal("0.01")
+HUNDRED = Decimal("100")
+ZERO = Decimal("0")
 
 
 class InventoryItem(BaseModel):
@@ -39,6 +44,12 @@ class InventoryItem(BaseModel):
         server_default="0",
     )
     purchase_price_ars: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    purchase_tax_rate_percentage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=ZERO,
+        server_default="0",
+    )
     profit_margin_percentage: Mapped[Decimal] = mapped_column(
         Numeric(8, 2),
         nullable=False,
@@ -46,6 +57,12 @@ class InventoryItem(BaseModel):
         server_default="35",
     )
     sale_price_ars: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    sale_tax_rate_percentage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        nullable=False,
+        default=ZERO,
+        server_default="0",
+    )
     round_sale_price: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -92,6 +109,34 @@ class InventoryItem(BaseModel):
         return today <= self.expiration_date <= today + timedelta(days=30)
 
     @property
+    def purchase_tax_amount_ars(self) -> Decimal | None:
+        return self._tax_amount(
+            self.purchase_price_ars,
+            self.purchase_tax_rate_percentage,
+        )
+
+    @property
+    def purchase_price_with_tax_ars(self) -> Decimal | None:
+        return self._price_with_tax(
+            self.purchase_price_ars,
+            self.purchase_tax_rate_percentage,
+        )
+
+    @property
+    def sale_tax_amount_ars(self) -> Decimal | None:
+        return self._tax_amount(
+            self.sale_price_ars,
+            self.sale_tax_rate_percentage,
+        )
+
+    @property
+    def sale_price_with_tax_ars(self) -> Decimal | None:
+        return self._price_with_tax(
+            self.sale_price_ars,
+            self.sale_tax_rate_percentage,
+        )
+
+    @property
     def created_by_user_name(self) -> str | None:
         if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
             return None
@@ -102,3 +147,29 @@ class InventoryItem(BaseModel):
         if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
             return None
         return self.created_by_user.email
+
+    def _tax_amount(
+        self,
+        price: Decimal | None,
+        tax_rate_percentage: Decimal | None,
+    ) -> Decimal | None:
+        if price is None:
+            return None
+        tax_rate = tax_rate_percentage if tax_rate_percentage is not None else ZERO
+        return (price * tax_rate / HUNDRED).quantize(
+            MONEY_QUANTUM,
+            rounding=ROUND_HALF_UP,
+        )
+
+    def _price_with_tax(
+        self,
+        price: Decimal | None,
+        tax_rate_percentage: Decimal | None,
+    ) -> Decimal | None:
+        if price is None:
+            return None
+        tax_amount = self._tax_amount(price, tax_rate_percentage) or ZERO
+        return (price + tax_amount).quantize(
+            MONEY_QUANTUM,
+            rounding=ROUND_HALF_UP,
+        )

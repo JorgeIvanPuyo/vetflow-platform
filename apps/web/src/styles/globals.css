@@ -1173,6 +1173,13 @@ code {
   padding-bottom: 24px;
 }
 
+.inventory-detail-hero h1 {
+  overflow-wrap: anywhere;
+  font-size: clamp(1.55rem, 7vw, 2.15rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
 .inventory-form-hero {
   grid-template-columns: 1fr;
 }
@@ -1190,6 +1197,28 @@ code {
   gap: 4px;
 }
 
+.inventory-pricing-sections,
+.inventory-pricing-section {
+  display: grid;
+  gap: 14px;
+}
+
+.inventory-pricing-section {
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-soft);
+}
+
+.inventory-pricing-section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inventory-price-preview {
+  grid-column: 1 / -1;
+}
+
 .inventory-price-preview strong {
   display: inline-flex;
   align-items: center;
@@ -1198,6 +1227,10 @@ code {
 
 .inventory-price-preview span {
   color: var(--color-text-muted);
+}
+
+.inventory-price-preview small {
+  color: var(--color-text-soft);
 }
 
 .inventory-form-actions {
