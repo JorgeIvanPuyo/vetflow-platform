@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ClinicProfileRead(BaseModel):
@@ -40,3 +40,12 @@ class ClinicTeamMemberRead(BaseModel):
     full_name: str
     email: str
     is_active: bool
+
+
+class ClinicTeamMemberUpdate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=255)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value

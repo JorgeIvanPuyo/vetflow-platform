@@ -4,6 +4,7 @@ import type {
   ClinicProfile,
   ClinicTeamMember,
   UpdateClinicProfilePayload,
+  UpdateClinicTeamMemberPayload,
 } from "@/types/api";
 
 export function getClinicProfile() {
@@ -34,5 +35,15 @@ export function deleteClinicLogo() {
 export function getClinicTeam() {
   return api.get<{ data: ClinicTeamMember[]; meta: Record<string, never> }>(
     "/api/v1/clinic/team",
+  );
+}
+
+export function updateClinicTeamMember(
+  userId: string,
+  payload: UpdateClinicTeamMemberPayload,
+) {
+  return api.patch<ApiItemResponse<ClinicTeamMember>>(
+    `/api/v1/clinic/team/${userId}`,
+    payload,
   );
 }

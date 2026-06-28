@@ -9,7 +9,7 @@ from app.models.tenant import Tenant
 from app.models.user import User
 from app.repositories.clinic import ClinicRepository
 from app.repositories.user import UserRepository
-from app.schemas.clinic import ClinicProfileUpdate
+from app.schemas.clinic import ClinicProfileUpdate, ClinicTeamMemberUpdate
 from app.services.storage import ClinicalFileStorageService
 
 
@@ -49,6 +49,25 @@ class ClinicService:
     def list_team(self, tenant_id: uuid.UUID) -> list[User]:
         self.get_profile(tenant_id)
         return self.user_repository.list_active_by_tenant(tenant_id)
+
+    def update_team_member(
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        payload: ClinicTeamMemberUpdate,
+    ) -> User:
+        self.get_profile(tenant_id)
+        user = self.user_repository.get_by_id(tenant_id, user_id)
+        if user is None or not user.is_active:
+            raise AppError(
+                404,
+                "team_member_not_found",
+                "Clinic team member not found",
+            )
+
+        updated_user = self.user_repository.update_full_name(user, payload.full_name)
+        self.db.commit()
+        return updated_user
 
     def upload_logo(
         self,

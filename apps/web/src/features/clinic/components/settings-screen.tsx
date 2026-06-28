@@ -14,12 +14,13 @@ import {
 import { FormEvent, useEffect, useState } from "react";
 
 import { useClinic } from "@/features/clinic/clinic-context";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import {
   deleteClinicLogo,
   getClinicProfile,
   getClinicTeam,
   updateClinicProfile,
+  updateClinicTeamMember,
   uploadClinicLogo,
 } from "@/services/clinic";
 import type {
@@ -81,6 +82,10 @@ export function SettingsScreen() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [expandedSettingsSections, setExpandedSettingsSections] = useState<Record<string, boolean>>({});
   const [isTeamOpen, setIsTeamOpen] = useState(false);
+  const [editingTeamMember, setEditingTeamMember] = useState<ClinicTeamMember | null>(null);
+  const [teamEditName, setTeamEditName] = useState("");
+  const [isTeamMemberSaving, setIsTeamMemberSaving] = useState(false);
+  const [teamEditMessage, setTeamEditMessage] = useState<string | null>(null);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
 
   async function loadSettings() {
@@ -263,6 +268,59 @@ export function SettingsScreen() {
       ...current,
       [section]: !current[section],
     }));
+  }
+
+  function openTeamMemberEditor(member: ClinicTeamMember) {
+    setEditingTeamMember(member);
+    setTeamEditName(member.full_name);
+    setTeamEditMessage(null);
+    setState((current) => ({ ...current, successMessage: null }));
+  }
+
+  function closeTeamMemberEditor() {
+    setEditingTeamMember(null);
+    setTeamEditName("");
+    setTeamEditMessage(null);
+  }
+
+  async function handleSaveTeamMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingTeamMember) {
+      return;
+    }
+
+    const trimmedName = teamEditName.trim();
+    if (trimmedName.length < 2) {
+      setTeamEditMessage("Ingresa un nombre válido para el veterinario.");
+      return;
+    }
+
+    if (trimmedName.length > 255) {
+      setTeamEditMessage("El nombre no puede superar 255 caracteres.");
+      return;
+    }
+
+    setIsTeamMemberSaving(true);
+    setTeamEditMessage(null);
+
+    try {
+      const response = await updateClinicTeamMember(editingTeamMember.id, {
+        full_name: trimmedName,
+      });
+      setState((current) => ({
+        ...current,
+        team: current.team.map((member) =>
+          member.id === response.data.id ? response.data : member,
+        ),
+        successMessage: "Nombre del veterinario actualizado.",
+      }));
+      setIsTeamMemberSaving(false);
+      closeTeamMemberEditor();
+    } catch (error) {
+      setIsTeamMemberSaving(false);
+      setTeamEditMessage(getTeamMemberUpdateErrorMessage(error));
+    }
   }
 
   return (
@@ -493,7 +551,14 @@ export function SettingsScreen() {
                     ) : null}
                   </div>
                 )}
-                <button className="secondary-button settings-team-button" onClick={() => setIsTeamOpen(true)} type="button">
+                <button
+                  className="secondary-button settings-team-button"
+                  onClick={() => {
+                    setState((current) => ({ ...current, successMessage: null }));
+                    setIsTeamOpen(true);
+                  }}
+                  type="button"
+                >
                   <Users aria-hidden="true" size={16} />
                   Ver equipo
                 </button>
@@ -529,7 +594,7 @@ export function SettingsScreen() {
         </div>
       ) : null}
 
-      {isTeamOpen ? (
+      {isTeamOpen && !editingTeamMember ? (
         <div className="modal-backdrop" role="presentation">
           <section aria-labelledby="clinic-team-title" aria-modal="true" className="bottom-sheet" role="dialog">
             <div className="bottom-sheet__header">
@@ -540,6 +605,10 @@ export function SettingsScreen() {
                 <X aria-hidden="true" size={20} />
               </button>
             </div>
+
+            {state.successMessage ? (
+              <div className="success-state">{state.successMessage}</div>
+            ) : null}
 
             {state.team.length === 0 ? (
               <div className="empty-state">No hay integrantes registrados.</div>
@@ -558,11 +627,87 @@ export function SettingsScreen() {
                       <p>
                         <Mail aria-hidden="true" size={15} /> {member.email}
                       </p>
+                      <button
+                        className="secondary-button clinic-team-card__edit"
+                        onClick={() => openTeamMemberEditor(member)}
+                        type="button"
+                      >
+                        Editar
+                      </button>
                     </div>
                   </article>
                 ))}
               </section>
             )}
+          </section>
+        </div>
+      ) : null}
+
+      {editingTeamMember ? (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            aria-labelledby="edit-team-member-title"
+            aria-modal="true"
+            className="bottom-sheet"
+            role="dialog"
+          >
+            <div className="bottom-sheet__header">
+              <div>
+                <h2 id="edit-team-member-title">Editar veterinario</h2>
+              </div>
+              <button
+                aria-label="Cerrar"
+                className="icon-button"
+                disabled={isTeamMemberSaving}
+                onClick={closeTeamMemberEditor}
+                type="button"
+              >
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+
+            <form className="entity-form" onSubmit={handleSaveTeamMember}>
+              <label className="field">
+                <span>Nombre visible</span>
+                <input
+                  aria-describedby="team-member-name-help"
+                  autoFocus
+                  value={teamEditName}
+                  onChange={(event) => {
+                    setTeamEditName(event.target.value);
+                    setTeamEditMessage(null);
+                  }}
+                />
+                <small className="muted-text" id="team-member-name-help">
+                  Este nombre se mostrará en agenda, consultas y registros clínicos.
+                </small>
+              </label>
+
+              <p className="muted-text">Email: {editingTeamMember.email}</p>
+
+              {teamEditMessage ? <div className="error-state">{teamEditMessage}</div> : null}
+
+              <div className="modal-actions">
+                <button
+                  className="secondary-button"
+                  disabled={isTeamMemberSaving}
+                  onClick={closeTeamMemberEditor}
+                  type="button"
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={
+                    isTeamMemberSaving ||
+                    teamEditName.trim() === editingTeamMember.full_name
+                  }
+                  type="submit"
+                >
+                  {isTeamMemberSaving ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       ) : null}
@@ -655,4 +800,16 @@ function formatLogoSize(sizeBytes: number) {
   }
 
   return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
+}
+
+function getTeamMemberUpdateErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError && error.status === 422) {
+    return "Ingresa un nombre válido para el veterinario.";
+  }
+
+  if (error instanceof ApiClientError && error.status === 404) {
+    return "No fue posible encontrar este integrante del equipo.";
+  }
+
+  return getApiErrorMessage(error);
 }

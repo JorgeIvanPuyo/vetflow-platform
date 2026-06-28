@@ -354,6 +354,10 @@ export type ClinicTeamMember = {
   is_active: boolean;
 };
 
+export type UpdateClinicTeamMemberPayload = {
+  full_name: string;
+};
+
 export type DashboardPeriod = {
   date_from: string;
   date_to: string;

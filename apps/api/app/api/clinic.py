@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from app.schemas.clinic import (
     ClinicProfileRead,
     ClinicProfileUpdate,
     ClinicTeamMemberRead,
+    ClinicTeamMemberUpdate,
 )
 from app.services.clinic import ClinicService
 from app.services.storage import ClinicalFileStorageService, get_storage_service
@@ -101,5 +104,25 @@ def get_clinic_team(
             ClinicTeamMemberRead.model_validate(member).model_dump(mode="json")
             for member in team
         ],
+        "meta": {},
+    }
+
+
+@router.patch("/team/{user_id}")
+def update_clinic_team_member(
+    user_id: uuid.UUID,
+    payload: ClinicTeamMemberUpdate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    updated_user = ClinicService(db).update_team_member(
+        tenant.tenant_id,
+        user_id,
+        payload,
+    )
+    return {
+        "data": ClinicTeamMemberRead.model_validate(updated_user).model_dump(
+            mode="json"
+        ),
         "meta": {},
     }

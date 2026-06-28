@@ -2,6 +2,7 @@
 
 import { Stethoscope } from "lucide-react";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 export function ClinicBrandMark({
   logoUrl,
@@ -19,9 +20,12 @@ export function ClinicBrandMark({
   if (logoUrl && !hasLogoError) {
     return (
       <span className="brand__mark brand__mark--image" aria-hidden="true">
-        <img
+        <Image
           alt=""
           src={logoUrl}
+          width={40}
+          height={40}
+          unoptimized
           onError={() => {
             setHasLogoError(true);
             void onLogoError();

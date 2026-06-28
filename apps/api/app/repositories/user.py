@@ -31,3 +31,10 @@ class UserRepository:
             .order_by(func.lower(User.full_name).asc())
         )
         return list(self.db.scalars(statement).all())
+
+    def update_full_name(self, user: User, full_name: str) -> User:
+        user.full_name = full_name
+        self.db.add(user)
+        self.db.flush()
+        self.db.refresh(user)
+        return user

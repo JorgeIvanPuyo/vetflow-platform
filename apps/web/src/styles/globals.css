@@ -1535,6 +1535,13 @@ code {
   gap: 6px;
 }
 
+.clinic-team-card__edit {
+  min-height: 36px;
+  margin-top: 10px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+}
+
 .clinic-logo-manager {
   display: grid;
   gap: 14px;

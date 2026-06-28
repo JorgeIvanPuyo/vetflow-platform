@@ -232,6 +232,151 @@ def test_get_clinic_team_excludes_other_tenant_users(
     assert [member["id"] for member in team] == [str(own_user.id)]
 
 
+def test_patch_clinic_team_member_updates_name_and_preserves_email(
+    client,
+    db_session,
+    tenant,
+):
+    user = _create_user(
+        db_session,
+        tenant,
+        email="juliana@example.com",
+        full_name="Dra Juli",
+    )
+
+    response = client.patch(
+        f"/api/v1/clinic/team/{user.id}",
+        headers=_headers(tenant),
+        json={"full_name": "   Mv. Juliana Rojas   "},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "data": {
+            "id": str(user.id),
+            "full_name": "Mv. Juliana Rojas",
+            "email": "juliana@example.com",
+            "is_active": True,
+        },
+        "meta": {},
+    }
+    db_session.refresh(user)
+    assert user.full_name == "Mv. Juliana Rojas"
+    assert user.email == "juliana@example.com"
+
+    team_response = client.get("/api/v1/clinic/team", headers=_headers(tenant))
+
+    assert team_response.status_code == 200
+    assert team_response.json()["data"] == [response.json()["data"]]
+
+
+def test_patch_clinic_team_member_rejects_empty_name(client, db_session, tenant):
+    user = _create_user(
+        db_session,
+        tenant,
+        email="empty-name@example.com",
+        full_name="Original Name",
+    )
+
+    response = client.patch(
+        f"/api/v1/clinic/team/{user.id}",
+        headers=_headers(tenant),
+        json={"full_name": ""},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_patch_clinic_team_member_rejects_whitespace_only_name(
+    client,
+    db_session,
+    tenant,
+):
+    user = _create_user(
+        db_session,
+        tenant,
+        email="whitespace-name@example.com",
+        full_name="Original Name",
+    )
+
+    response = client.patch(
+        f"/api/v1/clinic/team/{user.id}",
+        headers=_headers(tenant),
+        json={"full_name": "     "},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_patch_clinic_team_member_returns_not_found_for_other_tenant_user(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+):
+    user = _create_user(
+        db_session,
+        other_tenant,
+        email="foreign-update@example.com",
+        full_name="Foreign Vet",
+    )
+
+    response = client.patch(
+        f"/api/v1/clinic/team/{user.id}",
+        headers=_headers(tenant),
+        json={"full_name": "Updated Vet"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"] == {
+        "code": "team_member_not_found",
+        "message": "Clinic team member not found",
+    }
+    db_session.refresh(user)
+    assert user.full_name == "Foreign Vet"
+
+
+def test_patch_clinic_team_member_returns_not_found_for_inactive_user(
+    client,
+    db_session,
+    tenant,
+):
+    user = _create_user(
+        db_session,
+        tenant,
+        email="inactive-update@example.com",
+        full_name="Inactive Vet",
+        is_active=False,
+    )
+
+    response = client.patch(
+        f"/api/v1/clinic/team/{user.id}",
+        headers=_headers(tenant),
+        json={"full_name": "Updated Vet"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+    db_session.refresh(user)
+    assert user.full_name == "Inactive Vet"
+
+
+def test_patch_clinic_team_member_returns_not_found_for_unknown_user(
+    client,
+    tenant,
+):
+    response = client.patch(
+        f"/api/v1/clinic/team/{uuid.uuid4()}",
+        headers=_headers(tenant),
+        json={"full_name": "Unknown Vet"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "team_member_not_found"
+
+
 def test_clinic_profile_isolated_by_tenant(client, tenant, other_tenant):
     update_response = client.patch(
         "/api/v1/clinic/profile",
