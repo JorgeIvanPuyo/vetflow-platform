@@ -108,7 +108,6 @@ type PatientDetailState = {
   isFileUploading: boolean;
   isFileDeleting: boolean;
   isFileOpening: boolean;
-  isPdfExporting: boolean;
   isPatientSaving: boolean;
   isPatientDeleting: boolean;
   isFollowUpConsultationCreating: boolean;
@@ -225,7 +224,6 @@ const initialState: PatientDetailState = {
   isFileUploading: false,
   isFileDeleting: false,
   isFileOpening: false,
-  isPdfExporting: false,
   isPatientSaving: false,
   isPatientDeleting: false,
   isFollowUpConsultationCreating: false,
@@ -331,7 +329,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
   const [isPdfPreviewModalOpen, setIsPdfPreviewModalOpen] = useState(false);
-  const [isPdfPreviewLoading, setIsPdfPreviewLoading] = useState(false);
+  const [isGeneratingPdfPreview, setIsGeneratingPdfPreview] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [isDownloadingPreviewPdf, setIsDownloadingPreviewPdf] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewFilename, setPdfPreviewFilename] = useState(
     "historia-clinica.pdf",
@@ -371,6 +371,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [fileDeleteConfirmation, setFileDeleteConfirmation] = useState("");
   const [pdfExportError, setPdfExportError] = useState<string | null>(null);
+  const isPdfConfigurationBusy = isGeneratingPdfPreview || isDownloadingPdf;
 
   const loadPatientDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -874,7 +875,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   function closePdfExportModal() {
-    if (state.isPdfExporting) {
+    if (isPdfConfigurationBusy) {
       return;
     }
 
@@ -891,14 +892,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   function closePdfPreviewModal() {
-    if (state.isPdfExporting) {
+    if (isDownloadingPreviewPdf) {
       return;
     }
 
     pdfPreviewRequestIdRef.current += 1;
     replacePdfPreviewUrl(null);
     setIsPdfPreviewModalOpen(false);
-    setIsPdfPreviewLoading(false);
+    setIsGeneratingPdfPreview(false);
     setPdfPreviewPayload(null);
     setPdfPreviewError(null);
   }
@@ -920,6 +921,10 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   async function handleExportClinicalHistoryPdf(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (isPdfConfigurationBusy) {
+      return;
+    }
+
     const validationError = getPdfExportValidationError(pdfExportFormState);
     if (validationError) {
       setPdfExportError(validationError);
@@ -928,9 +933,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
     const payload = buildPdfExportPayload(pdfExportFormState);
 
+    setIsDownloadingPdf(true);
     setState((current) => ({
       ...current,
-      isPdfExporting: true,
       errorMessage: null,
       successMessage: null,
     }));
@@ -942,19 +947,20 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       setIsPdfExportModalOpen(false);
       setState((current) => ({
         ...current,
-        isPdfExporting: false,
         successMessage: "PDF generado correctamente.",
       }));
     } catch (error) {
-      setState((current) => ({
-        ...current,
-        isPdfExporting: false,
-      }));
       setPdfExportError(getPdfDownloadErrorMessage(error));
+    } finally {
+      setIsDownloadingPdf(false);
     }
   }
 
   async function handlePreviewClinicalHistoryPdf() {
+    if (isPdfConfigurationBusy) {
+      return;
+    }
+
     const validationError = getPdfExportValidationError(pdfExportFormState);
     if (validationError) {
       setPdfExportError(validationError);
@@ -965,10 +971,11 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     const requestId = pdfPreviewRequestIdRef.current + 1;
     pdfPreviewRequestIdRef.current = requestId;
     replacePdfPreviewUrl(null);
+    setIsGeneratingPdfPreview(true);
     setPdfPreviewPayload(payload);
     setPdfPreviewFilename("historia-clinica.pdf");
     setPdfPreviewError(null);
-    setIsPdfPreviewLoading(true);
+    setPdfExportError(null);
     setIsPdfExportModalOpen(false);
     setIsPdfPreviewModalOpen(true);
 
@@ -989,19 +996,19 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       }
     } finally {
       if (pdfPreviewRequestIdRef.current === requestId) {
-        setIsPdfPreviewLoading(false);
+        setIsGeneratingPdfPreview(false);
       }
     }
   }
 
   async function handleDownloadPdfPreview() {
-    if (!pdfPreviewPayload) {
+    if (!pdfPreviewPayload || isDownloadingPreviewPdf) {
       return;
     }
 
+    setIsDownloadingPreviewPdf(true);
     setState((current) => ({
       ...current,
-      isPdfExporting: true,
       errorMessage: null,
       successMessage: null,
     }));
@@ -1015,15 +1022,12 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       downloadBlob(blob, filename ?? pdfPreviewFilename);
       setState((current) => ({
         ...current,
-        isPdfExporting: false,
         successMessage: "PDF descargado correctamente.",
       }));
     } catch (error) {
-      setState((current) => ({
-        ...current,
-        isPdfExporting: false,
-      }));
       setPdfPreviewError(getPdfDownloadErrorMessage(error));
+    } finally {
+      setIsDownloadingPreviewPdf(false);
     }
   }
 
@@ -2024,7 +2028,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <button
               aria-label="Cancelar"
               className="icon-button"
-              disabled={state.isPdfExporting}
+              disabled={isPdfConfigurationBusy}
               onClick={closePdfExportModal}
               type="button"
             >
@@ -2143,22 +2147,44 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <div className="modal-actions modal-actions--three">
               <button
                 className="secondary-button"
-                disabled={state.isPdfExporting}
+                disabled={isPdfConfigurationBusy}
                 onClick={closePdfExportModal}
                 type="button"
               >
                 Cancelar
               </button>
               <button
+                aria-busy={isGeneratingPdfPreview}
                 className="secondary-button"
-                disabled={state.isPdfExporting}
+                disabled={isPdfConfigurationBusy}
                 onClick={() => void handlePreviewClinicalHistoryPdf()}
                 type="button"
               >
-                <Eye aria-hidden="true" size={18} /> Visualizar
+                {isGeneratingPdfPreview ? (
+                  <span
+                    aria-hidden="true"
+                    className="vf-spinner vf-spinner--sm vf-spinner--button"
+                  />
+                ) : (
+                  <Eye aria-hidden="true" size={18} />
+                )}
+                {isGeneratingPdfPreview
+                  ? "Generando vista previa..."
+                  : "Visualizar"}
               </button>
-              <button className="primary-button" disabled={state.isPdfExporting} type="submit">
-                {state.isPdfExporting ? "Generando PDF..." : "Descargar PDF"}
+              <button
+                aria-busy={isDownloadingPdf}
+                className="primary-button"
+                disabled={isPdfConfigurationBusy}
+                type="submit"
+              >
+                {isDownloadingPdf ? (
+                  <span
+                    aria-hidden="true"
+                    className="vf-spinner vf-spinner--sm vf-spinner--button"
+                  />
+                ) : null}
+                {isDownloadingPdf ? "Descargando PDF..." : "Descargar PDF"}
               </button>
             </div>
           </form>
@@ -2168,6 +2194,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   function renderPdfPreviewModal() {
+    const canDownloadPreview = Boolean(pdfPreviewUrl) && !isGeneratingPdfPreview;
+
     return (
       <div className="modal-backdrop" role="presentation">
         <section
@@ -2184,7 +2212,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <button
               aria-label="Cerrar vista previa"
               className="icon-button"
-              disabled={state.isPdfExporting}
+              disabled={isDownloadingPreviewPdf}
               onClick={closePdfPreviewModal}
               type="button"
             >
@@ -2192,11 +2220,21 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </button>
           </div>
 
-          {isPdfPreviewLoading ? (
-            <div className="pdf-preview-status" role="status">
-              <FileText aria-hidden="true" size={28} />
-              <strong>Generando vista previa…</strong>
-              <span>Estamos preparando el documento clínico.</span>
+          {isGeneratingPdfPreview ? (
+            <div
+              aria-live="polite"
+              className="clinical-history-preview-loading"
+              role="status"
+            >
+              <span
+                aria-hidden="true"
+                className="vf-spinner vf-spinner--md"
+              />
+              <strong>Generando vista previa...</strong>
+              <span>
+                Estamos preparando la historia clínica con la configuración
+                seleccionada.
+              </span>
             </div>
           ) : null}
 
@@ -2206,7 +2244,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </div>
           ) : null}
 
-          {pdfPreviewUrl ? (
+          {canDownloadPreview && pdfPreviewUrl ? (
             <div className="pdf-preview-viewer">
               <iframe
                 src={pdfPreviewUrl}
@@ -2215,7 +2253,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </div>
           ) : null}
 
-          {pdfPreviewUrl ? (
+          {canDownloadPreview && pdfPreviewUrl ? (
             <a
               className="secondary-button pdf-preview-open"
               href={pdfPreviewUrl}
@@ -2226,28 +2264,40 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             </a>
           ) : null}
 
-          <div className="modal-actions pdf-preview-actions">
+          <div
+            className={`modal-actions pdf-preview-actions${
+              canDownloadPreview ? "" : " pdf-preview-actions--single"
+            }`}
+          >
             <button
               className="secondary-button"
-              disabled={state.isPdfExporting}
+              disabled={isDownloadingPreviewPdf}
               onClick={closePdfPreviewModal}
               type="button"
             >
               Cerrar
             </button>
-            <button
-              className="primary-button"
-              disabled={
-                !pdfPreviewPayload ||
-                isPdfPreviewLoading ||
-                state.isPdfExporting
-              }
-              onClick={() => void handleDownloadPdfPreview()}
-              type="button"
-            >
-              <Download aria-hidden="true" size={18} />
-              {state.isPdfExporting ? "Descargando…" : "Descargar PDF"}
-            </button>
+            {canDownloadPreview ? (
+              <button
+                aria-busy={isDownloadingPreviewPdf}
+                className="primary-button"
+                disabled={!pdfPreviewPayload || isDownloadingPreviewPdf}
+                onClick={() => void handleDownloadPdfPreview()}
+                type="button"
+              >
+                {isDownloadingPreviewPdf ? (
+                  <span
+                    aria-hidden="true"
+                    className="vf-spinner vf-spinner--sm vf-spinner--button"
+                  />
+                ) : (
+                  <Download aria-hidden="true" size={18} />
+                )}
+                {isDownloadingPreviewPdf
+                  ? "Descargando PDF..."
+                  : "Descargar PDF"}
+              </button>
+            ) : null}
           </div>
         </section>
       </div>

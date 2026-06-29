@@ -14,6 +14,7 @@ class FakeBlob:
         self.uploads: list[dict] = []
         self.deleted = False
         self.signed_url_kwargs: dict | None = None
+        self.download_content = b"downloaded-content"
 
     def upload_from_string(self, content: bytes, *, content_type: str) -> None:
         self.uploads.append({"content": content, "content_type": content_type})
@@ -24,6 +25,9 @@ class FakeBlob:
     def generate_signed_url(self, **kwargs) -> str:
         self.signed_url_kwargs = kwargs
         return "https://signed.example/file"
+
+    def download_as_bytes(self) -> bytes:
+        return self.download_content
 
 
 class FakeBucket:
@@ -157,3 +161,22 @@ def test_storage_client_falls_back_to_adc_when_no_explicit_credentials(monkeypat
         "tenants/t1/patients/p1/files/f1/lab.pdf"
     ]
     assert "credentials" not in blob.signed_url_kwargs
+
+
+def test_download_object_bytes_reads_private_storage_object(monkeypatch):
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("FIREBASE_SERVICE_ACCOUNT_JSON", raising=False)
+    get_settings.cache_clear()
+    _patch_storage_client(monkeypatch)
+    service = ClinicalFileStorageService(bucket_name="clinical-files")
+
+    content = service.download_object_bytes(
+        bucket_name="clinic-branding",
+        object_path="tenants/t1/branding/logo/logo.png",
+    )
+
+    assert content == b"downloaded-content"
+    client = FakeStorageClient.instances[0]
+    assert "tenants/t1/branding/logo/logo.png" in client.buckets[
+        "clinic-branding"
+    ].blobs

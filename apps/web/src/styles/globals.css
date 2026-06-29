@@ -96,6 +96,42 @@ code {
   border: 0;
 }
 
+.vf-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 2px solid rgba(53, 126, 109, 0.2);
+  border-top-color: var(--color-primary-dark);
+  border-radius: 999px;
+  animation: vf-spin 0.75s linear infinite;
+}
+
+.vf-spinner--sm {
+  width: 14px;
+  height: 14px;
+}
+
+.vf-spinner--md {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+}
+
+.vf-spinner--button {
+  border-color: rgba(255, 255, 255, 0.36);
+  border-top-color: currentColor;
+}
+
+.secondary-button .vf-spinner--button {
+  border-color: rgba(53, 126, 109, 0.2);
+  border-top-color: currentColor;
+}
+
+@keyframes vf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -4141,23 +4177,25 @@ code {
   max-height: 94dvh;
 }
 
-.pdf-preview-status {
-  min-height: 48dvh;
+.clinical-history-preview-loading {
+  min-height: 52dvh;
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 7px;
-  border: 1px dashed var(--color-border);
+  gap: 8px;
+  border: 1px solid rgba(78, 165, 141, 0.24);
   border-radius: var(--radius-card);
-  background: var(--color-primary-soft);
+  background: linear-gradient(180deg, var(--color-primary-soft), #f7fbfa);
   color: var(--color-primary-dark);
-  padding: 24px;
+  padding: 28px 20px;
   text-align: center;
 }
 
-.pdf-preview-status span {
+.clinical-history-preview-loading > span:last-child {
+  max-width: 420px;
   color: var(--color-text-muted);
   font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .pdf-preview-viewer {
@@ -4200,6 +4238,10 @@ code {
 
 .modal-actions.pdf-preview-actions {
   padding: 12px 16px 16px;
+}
+
+.pdf-preview-actions--single {
+  grid-template-columns: 1fr;
 }
 
 .danger-callout {

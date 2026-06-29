@@ -1,3 +1,4 @@
+import base64
 import uuid
 
 import pytest
@@ -5,6 +6,33 @@ from sqlalchemy.orm import Session
 
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.clinical_history_pdf import ClinicalHistoryPdfService
+from app.services.storage import get_storage_service
+
+
+TEST_LOGO_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+
+
+class FakeLogoStorageService:
+    def __init__(
+        self,
+        *,
+        logo_bytes: bytes = TEST_LOGO_PNG,
+        should_fail: bool = False,
+    ) -> None:
+        self.bucket_name = "fallback-test-bucket"
+        self.logo_bytes = logo_bytes
+        self.should_fail = should_fail
+        self.downloads: list[dict[str, str]] = []
+
+    def download_object_bytes(self, *, bucket_name: str, object_path: str) -> bytes:
+        self.downloads.append(
+            {"bucket_name": bucket_name, "object_path": object_path}
+        )
+        if self.should_fail:
+            raise RuntimeError("download failed")
+        return self.logo_bytes
 
 
 def _headers(tenant) -> dict:
@@ -339,25 +367,66 @@ def test_export_pdf_includes_clinic_contact_and_report_metadata(
     assert "Nivel de detalle: Historia completa" in lines
 
 
-def test_export_pdf_continues_when_clinic_logo_cannot_be_loaded(
+@pytest.mark.parametrize("endpoint", ["export-pdf", "preview-pdf"])
+def test_pdf_continues_when_clinic_logo_storage_download_fails(
     client,
     tenant,
     db_session,
+    endpoint,
 ):
-    tenant.logo_url = "gs://missing-bucket/unavailable-logo.png"
-    tenant.logo_object_path = "unavailable-logo.png"
+    patient = _create_patient_for_tenant(client, tenant)
+    tenant.logo_url = "gs://clinic-logo-bucket/tenants/tenant/logo.png"
+    tenant.logo_object_path = "tenants/tenant/logo.png"
     db_session.add(tenant)
     db_session.commit()
-    patient = _create_patient_for_tenant(client, tenant)
+    storage = FakeLogoStorageService(should_fail=True)
+    client.app.dependency_overrides[get_storage_service] = lambda: storage
 
     response = client.post(
-        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        f"/api/v1/patients/{patient['id']}/clinical-history/{endpoint}",
         headers=_headers(tenant),
         json={},
     )
 
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
+    assert storage.downloads == [
+        {
+            "bucket_name": "clinic-logo-bucket",
+            "object_path": "tenants/tenant/logo.png",
+        }
+    ]
+
+
+@pytest.mark.parametrize("endpoint", ["export-pdf", "preview-pdf"])
+def test_pdf_loads_and_renders_clinic_logo_bytes(
+    client,
+    tenant,
+    db_session,
+    endpoint,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    tenant.logo_url = "gs://clinic-logo-bucket/tenants/tenant/logo.png"
+    tenant.logo_object_path = "tenants/tenant/logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+    storage = FakeLogoStorageService()
+    client.app.dependency_overrides[get_storage_service] = lambda: storage
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/{endpoint}",
+        headers=_headers(tenant),
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert storage.downloads == [
+        {
+            "bucket_name": "clinic-logo-bucket",
+            "object_path": "tenants/tenant/logo.png",
+        }
+    ]
 
 
 def test_export_pdf_excludes_owner_data_when_disabled(client, tenant, db_session):

@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from html import escape
 from io import BytesIO
+from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
@@ -22,9 +24,13 @@ from app.models.tenant import Tenant
 from app.repositories.owner import OwnerRepository
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.consultation import ConsultationService
+from app.services.storage import ClinicalFileStorageService
 
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_CLINIC_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+MAX_CLINIC_LOGO_SIZE_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -35,8 +41,14 @@ class ClinicalHistoryPdfExport:
 
 
 class ClinicalHistoryPdfService:
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        storage_service: ClinicalFileStorageService | None = None,
+    ) -> None:
         self.db = db
+        self.storage_service = storage_service
         self.consultation_service = ConsultationService(db)
         self.owner_repository = OwnerRepository(db)
 
@@ -369,6 +381,8 @@ class ClinicalHistoryPdfService:
             Paragraph,
             SimpleDocTemplate,
             Spacer,
+            Table,
+            TableStyle,
         )
 
         buffer = BytesIO()
@@ -452,22 +466,63 @@ class ClinicalHistoryPdfService:
         )
 
         clinic_name = (clinic.display_name or clinic.name) if clinic is not None else None
-        if clinic is not None and (clinic.logo_url or clinic.logo_object_path):
-            logger.debug(
-                "Clinic logo omitted from PDF because no storage download is required. "
-                "tenant_id=%s",
-                clinic.id,
-            )
+        logo = self._build_logo_flowable(clinic)
+        header_end = next(
+            (index for index, line in enumerate(text_lines) if not line),
+            len(text_lines),
+        )
+        header_story = []
+        for index, line in enumerate(text_lines[:header_end]):
+            if index == 0:
+                header_story.append(Paragraph(escape(line), title_style))
+                continue
+            if line.startswith("Clínica:"):
+                header_story.append(Paragraph(self._format_pdf_line(line), clinic_style))
+                continue
+            if line.startswith(
+                (
+                    "Teléfono de la clínica:",
+                    "Correo de la clínica:",
+                    "Dirección de la clínica:",
+                    "Generado:",
+                    "Rango:",
+                    "Nivel de detalle:",
+                )
+            ):
+                header_story.append(
+                    Paragraph(self._format_pdf_line(line), metadata_style)
+                )
+                continue
+            header_story.append(Paragraph(self._format_pdf_line(line), body_style))
 
         story = []
-        for index, line in enumerate(text_lines):
+        if logo is not None:
+            logo_column_width = 78
+            story.append(
+                Table(
+                    [[logo, header_story]],
+                    colWidths=[logo_column_width, document.width - logo_column_width],
+                    style=TableStyle(
+                        [
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                            ("RIGHTPADDING", (0, 0), (0, 0), 10),
+                            ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                            ("TOPPADDING", (0, 0), (-1, -1), 0),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                        ]
+                    ),
+                )
+            )
+        else:
+            story.extend(header_story)
+        story.append(Spacer(1, 5))
+        story.append(HRFlowable(width="100%", thickness=1, color=teal))
+        story.append(Spacer(1, 7))
+
+        for line in text_lines[header_end + 1 :]:
             if not line:
                 story.append(Spacer(1, 4))
-                continue
-            if index == 0:
-                story.append(Paragraph(escape(line), title_style))
-                story.append(HRFlowable(width="100%", thickness=1, color=teal))
-                story.append(Spacer(1, 7))
                 continue
             if self._is_section_heading(line):
                 story.append(Paragraph(escape(line), section_style))
@@ -526,6 +581,74 @@ class ClinicalHistoryPdfService:
             onLaterPages=draw_footer,
         )
         return buffer.getvalue()
+
+    def _build_logo_flowable(self, clinic: Tenant | None):
+        logo_bytes = self._load_clinic_logo_bytes(clinic)
+        if logo_bytes is None:
+            return None
+
+        try:
+            from reportlab.platypus import Image
+
+            logo = Image(BytesIO(logo_bytes))
+            scale = min(68 / logo.imageWidth, 54 / logo.imageHeight)
+            logo.drawWidth = logo.imageWidth * scale
+            logo.drawHeight = logo.imageHeight * scale
+            return logo
+        except Exception:
+            logger.warning(
+                "Clinic logo could not be rendered; continuing without it. tenant_id=%s",
+                clinic.id if clinic is not None else None,
+            )
+            return None
+
+    def _load_clinic_logo_bytes(self, clinic: Tenant | None) -> bytes | None:
+        if (
+            clinic is None
+            or self.storage_service is None
+            or not clinic.logo_object_path
+        ):
+            return None
+
+        extension = Path(clinic.logo_object_path).suffix.lower()
+        if extension not in SUPPORTED_CLINIC_LOGO_EXTENSIONS:
+            logger.warning(
+                "Unsupported clinic logo format; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+
+        bucket_name = self._clinic_logo_bucket_name(clinic)
+        if not bucket_name:
+            return None
+
+        try:
+            logo_bytes = self.storage_service.download_object_bytes(
+                bucket_name=bucket_name,
+                object_path=clinic.logo_object_path,
+            )
+        except Exception:
+            logger.warning(
+                "Clinic logo could not be loaded; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+
+        if not logo_bytes or len(logo_bytes) > MAX_CLINIC_LOGO_SIZE_BYTES:
+            logger.warning(
+                "Clinic logo is empty or too large; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+        return logo_bytes
+
+    def _clinic_logo_bucket_name(self, clinic: Tenant) -> str | None:
+        parsed_logo_url = urlparse(clinic.logo_url or "")
+        if parsed_logo_url.scheme == "gs" and parsed_logo_url.netloc:
+            return parsed_logo_url.netloc
+        if self.storage_service is None:
+            return None
+        return self.storage_service.bucket_name
 
     def _page_size_for(self, page_size: str) -> tuple[float, float]:
         from reportlab.lib.pagesizes import A4, legal, letter

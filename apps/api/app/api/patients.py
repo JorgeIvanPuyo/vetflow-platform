@@ -172,8 +172,12 @@ def export_patient_clinical_history_pdf(
     payload: ClinicalHistoryPdfExportRequest,
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
+    storage_service: ClinicalFileStorageService = Depends(get_storage_service),
 ) -> Response:
-    export = ClinicalHistoryPdfService(db).export_patient_history_pdf(
+    export = ClinicalHistoryPdfService(
+        db,
+        storage_service=storage_service,
+    ).export_patient_history_pdf(
         tenant.tenant_id,
         patient_id,
         payload,
@@ -193,8 +197,12 @@ def preview_patient_clinical_history_pdf(
     payload: ClinicalHistoryPdfExportRequest,
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
+    storage_service: ClinicalFileStorageService = Depends(get_storage_service),
 ) -> Response:
-    export = ClinicalHistoryPdfService(db).export_patient_history_pdf(
+    export = ClinicalHistoryPdfService(
+        db,
+        storage_service=storage_service,
+    ).export_patient_history_pdf(
         tenant.tenant_id,
         patient_id,
         payload,

@@ -32,6 +32,11 @@ class ClinicalFileStorageService:
         blob = bucket.blob(object_path)
         blob.delete()
 
+    def download_object_bytes(self, *, bucket_name: str, object_path: str) -> bytes:
+        bucket = self._get_bucket(bucket_name)
+        blob = bucket.blob(object_path)
+        return blob.download_as_bytes()
+
     def generate_signed_download_url(
         self,
         *,
