@@ -56,12 +56,18 @@ Todos los datos clínicos se filtran por tenant_id.
 -   CRUD de propietarios
 -   CRUD de pacientes
 -   Historia clínica por paciente
+-   Exportación y vista previa PDF de historia clínica con filtros y tamaño de hoja
 -   Consultas estructuradas
+-   Médico responsable y trazabilidad del usuario que registra la consulta
 -   Exámenes y resultados
 -   Vacunas/desparasitación
 -   Archivos clínicos con Google Cloud Storage
 -   Búsqueda global
 -   Trazabilidad de usuario
+-   Agenda y seguimientos
+-   Dashboard operativo
+-   Perfil, branding y edición de nombres del equipo de clínica
+-   Inventario con movimientos e IVA de compra/venta
 
 ## Estructura del proyecto
 
@@ -236,7 +242,8 @@ Desplegado y funcional:
 
 ## Próximas prioridades
 
-1.  Exportación PDF de historia clínica
-2.  Agenda
-3.  Inventario
-4.  Ajustes avanzados
+1.  Completar la experiencia de inventario en el plan terapéutico
+2.  Prescripciones
+3.  Notificaciones y recordatorios
+4.  Administración avanzada de clínica
+5.  Estabilización para pilotos

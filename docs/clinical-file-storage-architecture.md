@@ -8,8 +8,8 @@ Vetflow requiere soportar archivos clínicos asociados a pacientes:
 -   Imágenes (radiografías, ecografías, fotos clínicas)
 -   Archivos adjuntos para historia clínica
 
-Actualmente existe el modelo `patient_file_references`, pero solo
-almacena metadata/referencias. No existe carga real de archivos.
+La implementación actual almacena archivos clínicos reales en Google Cloud
+Storage y conserva su metadata en `patient_file_references`.
 
 ------------------------------------------------------------------------
 
@@ -100,6 +100,10 @@ Frontend → FastAPI → Signed URL temporal → Descarga segura
 
 `tenants/{tenant_id}/patients/{patient_id}/files/{file_reference_id}/{filename}`
 
+Los logos de clínica usan una ruta separada de branding:
+
+`tenants/{tenant_id}/branding/logo/{filename}`
+
 ------------------------------------------------------------------------
 
 ## Modelo de datos
@@ -143,7 +147,7 @@ Límite inicial:
 
 ------------------------------------------------------------------------
 
-## Endpoints planeados
+## Endpoints implementados
 
 POST `/api/v1/patients/{patient_id}/files/upload`
 
@@ -179,12 +183,14 @@ Cloud Storage soporta crecimiento sin rediseño.
 
 ### Preparación para PDF export
 
-Los archivos podrán integrarse en exportación futura de historia
-clínica.
+La generación de historia clínica en PDF usa el branding de la clínica. El
+backend puede leer el logo directamente desde el bucket privado para renderizarlo
+en el encabezado. Esta lectura es best-effort: un logo ausente, inválido o no
+disponible no debe impedir la vista previa ni la descarga del PDF.
 
 ------------------------------------------------------------------------
 
-## Slices planeados
+## Slices implementados
 
 ### Slice 1
 

@@ -96,6 +96,17 @@ Do not add heavy state libraries unless the project actually needs them.
 - Avoid spreading fetch logic across unrelated components.
 - Use typed contracts consistently.
 
+## Binary previews and downloads
+
+- Treat the backend-generated PDF as the source of truth; do not create a separate
+  HTML report that can diverge from it.
+- Blob object URLs used for previews must be revoked when replaced, when the viewer
+  closes, and when the component unmounts.
+- Preview generation and file downloads must expose visible loading states and
+  prevent duplicate requests without blocking the entire application.
+- Keep a snapshot of the selected configuration when a preview download must reuse
+  exactly the options that produced the preview.
+
 ## Testing
 At minimum, cover:
 - critical rendering states

@@ -6,7 +6,7 @@ Define the initial API surface for Vetflow Platform so frontend and backend can 
 ## General Rules
 - All business endpoints are tenant-aware.
 - All authenticated requests must resolve tenant context.
-- JSON request/response format only.
+- JSON request/response format unless an endpoint explicitly returns a binary file.
 - Use predictable error responses.
 - Use REST-style resource naming.
 
@@ -21,6 +21,9 @@ Define the initial API surface for Vetflow Platform so frontend and backend can 
 - consultations
 - exams
 - exam-results
+- clinical-history
+- clinic
+- inventory
 - search
 
 ## Authentication
@@ -63,11 +66,41 @@ GET /api/v1/patients
 GET /api/v1/patients/{patient_id}
 PATCH /api/v1/patients/{patient_id}
 
+### Clinical history PDF
+
+Both endpoints accept the same filters and section flags, including:
+
+- optional `date_from` and `date_to`
+- `include_patient_data`, `include_owner_data`, `include_consultations`,
+  `include_exams`, `include_preventive_care`, and `include_file_references`
+- `detail_level`: `summary` or `full`
+- `page_size`: `letter`, `a4`, or `legal` (default: `letter`)
+
+Endpoints:
+
+- `POST /api/v1/patients/{patient_id}/clinical-history/export-pdf`
+  returns `application/pdf` with `Content-Disposition: attachment`.
+- `POST /api/v1/patients/{patient_id}/clinical-history/preview-pdf`
+  returns the same generated PDF with `Content-Disposition: inline`.
+
+Export and preview use the same tenant-scoped report generation service.
+
 ## Consultations
 POST /api/v1/consultations
 GET /api/v1/patients/{patient_id}/consultations
 GET /api/v1/consultations/{consultation_id}
 PATCH /api/v1/consultations/{consultation_id}
+PATCH /api/v1/consultations/{consultation_id}/step
+
+Consultation traceability distinguishes:
+
+- `created_by_user_id`: authenticated user who created or registered the consultation.
+- `attending_user_id`: veterinarian clinically responsible for the consultation.
+
+`POST`, `PATCH`, and step `PATCH` accept `attending_user_id`. On create, omission
+defaults it to the authenticated user. Updates may change it, but explicit `null`
+is rejected with `422`. A supplied value must identify an active user in the same
+tenant; unknown, inactive, and cross-tenant values return `404 team_member_not_found`.
 
 ## Exams
 POST /api/v1/exams
@@ -76,6 +109,28 @@ POST /api/v1/exams/{exam_id}/results
 
 ## Search
 GET /api/v1/search?q=...
+
+## Clinic team
+
+- `GET /api/v1/clinic/team`
+- `PATCH /api/v1/clinic/team/{user_id}`
+
+The team-member update payload accepts only `full_name`. This flow does not edit
+the member id, email, tenant, or active state. Only an active member in the
+authenticated tenant can be updated; otherwise the API returns
+`404 team_member_not_found`.
+
+## Inventory tax fields
+
+Inventory item create/update supports separate purchase and sale tax rates:
+
+- `purchase_tax_rate_percentage`
+- `sale_tax_rate_percentage`
+
+Both default to `0` for backward compatibility and are validated from 0 to 100.
+Inventory responses expose `purchase_tax_amount_ars`,
+`purchase_price_with_tax_ars`, `sale_tax_amount_ars`, and
+`sale_price_with_tax_ars`.
 
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.

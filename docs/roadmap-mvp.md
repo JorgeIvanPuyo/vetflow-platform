@@ -94,6 +94,10 @@ Completed:
 - Timeline filtering by type.
 - PDF export of clinical history with filters.
 - Clinic branding integrated in clinical history PDF.
+- Inline preview and download use the same backend-generated PDF and configuration.
+- Letter, A4, and legal paper sizes are supported.
+- Professional report layout includes clinic/patient metadata, page footer, and
+  best-effort clinic logo rendering from private storage.
 
 ### 🟡 In Progress - Slice 4 - Structured Consultations
 
@@ -114,6 +118,9 @@ Completed:
 - Consultation medication to inventory integration in the backend.
 - Inventory-backed therapeutic plan support in the backend.
 - Backend stock validation and automatic inventory exit movement creation for inventory-backed medications.
+- Responsible veterinarian selection is available in consultation create/edit flows.
+- Consultation traceability distinguishes the attending veterinarian from the user
+  who registered the record.
 
 Pending:
 - Frontend therapeutic plan inventory selector integration.
@@ -224,6 +231,8 @@ Completed:
 - Clinic logo upload to storage.
 - Clinic logo delete flow.
 - Clinic branding consumed by clinical history PDF export.
+- Active clinic team member display names can be edited without changing email,
+  tenant, identity, or active state.
 
 ### ✅ Completed - Slice 13 - Inventory (MVP Core)
 
@@ -238,6 +247,8 @@ Completed:
 - Stock entry registration.
 - Stock exit registration.
 - Inventory movement history.
+- Separate purchase and sale IVA rates, defaulting to 0% for legacy compatibility.
+- Computed purchase/sale tax amounts and prices with IVA.
 - Tenant-aware inventory filtering.
 - Inventory frontend module:
   - list

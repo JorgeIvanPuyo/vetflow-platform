@@ -9,6 +9,14 @@ The MVP must validate the core veterinary workflow for pilot users while keeping
 
 ## Current Status
 
+This document preserves the original implementation sequence. For current feature
+status, use `docs/roadmap-mvp.md` as the source of truth. The core frontend,
+clinical history, consultations, search, exams, agenda, clinic settings, and MVP
+inventory described as pending below have since been implemented.
+
+The status lists and execution sequence below are retained as the original
+baseline snapshot, not as the current implementation status.
+
 ### Completed
 - Monorepo initialized
 - Base documentation for Codex created

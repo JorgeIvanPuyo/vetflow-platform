@@ -51,6 +51,14 @@ Future:
 - modular structure
 - strong validation at API boundary
 
+## Clinical history reporting
+
+Clinical history PDF download and inline preview share one tenant-aware backend
+generation service, ensuring that the preview matches the downloaded document.
+Reports support selectable paper sizes and clinic branding. Clinic logos are read
+server-side from private storage on a best-effort basis; missing or unreadable logos
+must never block report generation.
+
 ## Frontend Principles
 - mobile-first responsive design
 - feature-oriented structure

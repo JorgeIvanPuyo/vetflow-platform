@@ -25,8 +25,8 @@ Every business entity that belongs to a customer account must include `tenant_id
 - exams
 - exam results
 - attachments
-- future inventory items
-- future appointments
+- inventory items and movements
+- appointments and follow-ups
 
 ## Isolation Principle
 No query should return business data without filtering by `tenant_id`.
@@ -35,6 +35,9 @@ No query should return business data without filtering by `tenant_id`.
 - tenant context must be resolved on every authenticated request
 - service layer must never bypass tenant scoping
 - repository/data access layer must apply tenant filters consistently
+- a consultation `attending_user_id` must reference an active user in the same tenant
+- clinical history PDF export and preview must resolve patients and report data only
+  within the authenticated tenant
 
 ## Frontend Requirements
 - session context must include active tenant
@@ -44,10 +47,15 @@ No query should return business data without filtering by `tenant_id`.
 ## MVP Assumption
 Initial release will support 3 pilot users. The architecture must assume future onboarding of multiple veterinary clients without requiring a full redesign.
 
+## Current Team and Branding Rules
+
+- Multiple active users can belong to one tenant and share clinic data.
+- Clinic branding is tenant-specific and may be used in generated clinical reports.
+- Team display-name edits and responsible-veterinarian assignments are restricted
+  to users in the authenticated tenant.
+
 ## Future Evolution
 Potential future improvements:
-- tenant-specific branding
-- multi-user teams inside a tenant
 - role-based permissions
 - usage plans and billing
 - custom domains
