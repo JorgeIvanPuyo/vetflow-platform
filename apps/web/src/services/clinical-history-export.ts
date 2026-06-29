@@ -10,3 +10,13 @@ export function exportClinicalHistoryPdf(
     payload,
   );
 }
+
+export function previewPatientClinicalHistoryPdf(
+  patientId: string,
+  payload: ClinicalHistoryPdfExportPayload,
+) {
+  return api.postBlob(
+    `/api/v1/patients/${patientId}/clinical-history/preview-pdf`,
+    payload,
+  );
+}

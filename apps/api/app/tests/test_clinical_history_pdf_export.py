@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
@@ -167,6 +168,114 @@ def test_export_pdf_success_with_default_options(client, tenant):
     assert "historia-clinica-luna-" in response.headers["content-disposition"]
 
 
+def test_export_pdf_empty_payload_defaults_to_letter():
+    options = ClinicalHistoryPdfExportRequest()
+
+    assert options.page_size == "letter"
+
+
+@pytest.mark.parametrize("page_size", ["letter", "a4", "legal"])
+def test_export_pdf_supports_page_sizes(client, tenant, page_size):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=_headers(tenant),
+        json={"page_size": page_size},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+
+
+def test_page_size_mapping_uses_reportlab_dimensions(db_session):
+    from reportlab.lib.pagesizes import A4, legal, letter
+
+    service = ClinicalHistoryPdfService(db_session)
+
+    assert service._page_size_for("letter") == letter
+    assert service._page_size_for("a4") == A4
+    assert service._page_size_for("legal") == legal
+
+
+def test_pdf_footer_includes_clinic_document_title_and_page_number(db_session):
+    service = ClinicalHistoryPdfService(db_session)
+
+    assert service._footer_text("Clínica Vet Central", 3) == (
+        "VetFlow / Clínica Vet Central · Historia clínica veterinaria · Página 3"
+    )
+
+
+def test_export_pdf_rejects_invalid_page_size(client, tenant):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=_headers(tenant),
+        json={"page_size": "tabloid"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_preview_pdf_success_uses_inline_disposition(client, tenant):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert "inline;" in response.headers["content-disposition"]
+    assert "historia-clinica-luna-" in response.headers["content-disposition"]
+
+
+def test_preview_pdf_passes_shared_export_options(
+    client,
+    tenant,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    captured_options = {}
+    original_export = ClinicalHistoryPdfService.export_patient_history_pdf
+
+    def capture_export(self, tenant_id, patient_id, options):
+        captured_options.update(options.model_dump())
+        return original_export(self, tenant_id, patient_id, options)
+
+    monkeypatch.setattr(
+        ClinicalHistoryPdfService,
+        "export_patient_history_pdf",
+        capture_export,
+    )
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={
+            "date_from": "2026-01-01",
+            "date_to": "2026-12-31",
+            "include_patient_data": False,
+            "detail_level": "full",
+            "page_size": "a4",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_options["date_from"].isoformat() == "2026-01-01"
+    assert captured_options["date_to"].isoformat() == "2026-12-31"
+    assert captured_options["include_patient_data"] is False
+    assert captured_options["detail_level"] == "full"
+    assert captured_options["page_size"] == "a4"
+
+
 def test_export_pdf_includes_patient_and_owner_data_when_enabled(
     client,
     tenant,
@@ -183,6 +292,72 @@ def test_export_pdf_includes_patient_and_owner_data_when_enabled(
     assert "Datos del propietario" in lines
     assert "Nombre: Ana Pérez" in lines
     assert "Correo: maria@example.com" in lines
+
+
+def test_export_pdf_excludes_patient_data_when_disabled(client, tenant, db_session):
+    patient = _create_patient_for_tenant(client, tenant, "Mora")
+
+    lines = _export_text_lines(
+        db_session,
+        tenant,
+        patient["id"],
+        include_patient_data=False,
+    )
+
+    assert "Datos del paciente" not in lines
+    assert "Especie: Canine" not in lines
+    assert "Alergias: Penicilina" not in lines
+
+
+def test_export_pdf_includes_clinic_contact_and_report_metadata(
+    client,
+    tenant,
+    db_session,
+):
+    tenant.display_name = "Clínica Vet Central"
+    tenant.phone = "555-3000"
+    tenant.email = "contacto@vetcentral.test"
+    tenant.address = "Avenida Principal 123"
+    db_session.add(tenant)
+    db_session.commit()
+    patient = _create_patient_for_tenant(client, tenant)
+
+    lines = _export_text_lines(
+        db_session,
+        tenant,
+        patient["id"],
+        date_from="2026-01-01",
+        date_to="2026-12-31",
+        detail_level="full",
+    )
+
+    assert "Clínica: Clínica Vet Central" in lines
+    assert "Teléfono de la clínica: 555-3000" in lines
+    assert "Correo de la clínica: contacto@vetcentral.test" in lines
+    assert "Dirección de la clínica: Avenida Principal 123" in lines
+    assert "Rango: 2026-01-01 a 2026-12-31" in lines
+    assert "Nivel de detalle: Historia completa" in lines
+
+
+def test_export_pdf_continues_when_clinic_logo_cannot_be_loaded(
+    client,
+    tenant,
+    db_session,
+):
+    tenant.logo_url = "gs://missing-bucket/unavailable-logo.png"
+    tenant.logo_object_path = "unavailable-logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+    patient = _create_patient_for_tenant(client, tenant)
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=_headers(tenant),
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
 
 
 def test_export_pdf_excludes_owner_data_when_disabled(client, tenant, db_session):
@@ -342,6 +517,36 @@ def test_export_pdf_patient_from_another_tenant_cannot_be_exported(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "patient_not_found"
+
+
+def test_preview_pdf_patient_from_another_tenant_cannot_be_exported(
+    client,
+    tenant,
+    other_tenant,
+):
+    foreign_patient = _create_patient_for_tenant(client, other_tenant, "Nina")
+
+    response = client.post(
+        f"/api/v1/patients/{foreign_patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "patient_not_found"
+
+
+def test_preview_pdf_invalid_date_range_returns_same_structured_error(client, tenant):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={"date_from": "2026-05-01", "date_to": "2026-01-01"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_date_range"
 
 
 def test_export_pdf_can_include_all_record_types(client, tenant, db_session):

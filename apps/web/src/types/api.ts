@@ -264,6 +264,7 @@ export type ClinicalHistory = {
 export type ClinicalHistoryPdfExportPayload = {
   date_from?: string;
   date_to?: string;
+  page_size?: "letter" | "a4" | "legal";
   include_patient_data: boolean;
   include_owner_data: boolean;
   include_consultations: boolean;

@@ -91,7 +91,11 @@ class ClinicalHistoryPdfService:
                 file_references=filtered_file_references,
                 options=options,
             )
-            pdf_bytes = self._render_pdf(text_lines)
+            pdf_bytes = self._render_pdf(
+                text_lines,
+                options=options,
+                clinic=clinic,
+            )
             filename = self._build_filename(patient.name)
             return ClinicalHistoryPdfExport(
                 pdf_bytes=pdf_bytes,
@@ -143,6 +147,10 @@ class ClinicalHistoryPdfService:
         date_range = self._format_date_range(options)
         if date_range:
             lines.append(f"Rango: {date_range}")
+        lines.append(
+            "Nivel de detalle: "
+            + ("Resumen" if options.detail_level == "summary" else "Historia completa")
+        )
 
         if options.include_patient_data:
             lines.extend(
@@ -346,44 +354,200 @@ class ClinicalHistoryPdfService:
         if registered_by:
             lines.append(f"Registrado por: {registered_by}")
 
-    def _render_pdf(self, text_lines: list[str]) -> bytes:
+    def _render_pdf(
+        self,
+        text_lines: list[str],
+        *,
+        options: ClinicalHistoryPdfExportRequest,
+        clinic: Tenant | None,
+    ) -> bytes:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        from reportlab.platypus import (
+            HRFlowable,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+        )
 
         buffer = BytesIO()
+        page_size = self._page_size_for(options.page_size)
         document = SimpleDocTemplate(
             buffer,
-            pagesize=letter,
+            pagesize=page_size,
             rightMargin=42,
             leftMargin=42,
-            topMargin=42,
-            bottomMargin=42,
+            topMargin=54,
+            bottomMargin=48,
             title="Historia clínica veterinaria",
         )
         styles = getSampleStyleSheet()
-        styles["Title"].textColor = colors.HexColor("#245b4f")
-        styles["Heading2"].textColor = colors.HexColor("#245b4f")
+        teal = colors.HexColor("#245B4F")
+        teal_light = colors.HexColor("#EAF4F1")
+        text_color = colors.HexColor("#27332F")
+        muted = colors.HexColor("#66736E")
+
+        title_style = ParagraphStyle(
+            "ClinicalHistoryTitle",
+            parent=styles["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=18,
+            leading=22,
+            textColor=teal,
+            spaceAfter=5,
+        )
+        clinic_style = ParagraphStyle(
+            "ClinicalHistoryClinic",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=13,
+            textColor=text_color,
+        )
+        metadata_style = ParagraphStyle(
+            "ClinicalHistoryMetadata",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8.2,
+            leading=11,
+            textColor=muted,
+        )
+        section_style = ParagraphStyle(
+            "ClinicalHistorySection",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            leading=14,
+            textColor=teal,
+            backColor=teal_light,
+            borderPadding=(5, 7, 5, 7),
+            spaceBefore=8,
+            spaceAfter=6,
+        )
+        record_style = ParagraphStyle(
+            "ClinicalHistoryRecord",
+            parent=styles["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=9.5,
+            leading=12,
+            textColor=teal,
+            spaceBefore=5,
+            spaceAfter=3,
+        )
+        body_style = ParagraphStyle(
+            "ClinicalHistoryBody",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8.8,
+            leading=12,
+            textColor=text_color,
+            spaceAfter=2,
+        )
+        bullet_style = ParagraphStyle(
+            "ClinicalHistoryBullet",
+            parent=body_style,
+            leftIndent=12,
+            firstLineIndent=-7,
+        )
+
+        clinic_name = (clinic.display_name or clinic.name) if clinic is not None else None
+        if clinic is not None and (clinic.logo_url or clinic.logo_object_path):
+            logger.debug(
+                "Clinic logo omitted from PDF because no storage download is required. "
+                "tenant_id=%s",
+                clinic.id,
+            )
 
         story = []
         for index, line in enumerate(text_lines):
             if not line:
-                story.append(Spacer(1, 8))
+                story.append(Spacer(1, 4))
                 continue
             if index == 0:
-                story.append(Paragraph(escape(line), styles["Title"]))
-                story.append(Spacer(1, 12))
+                story.append(Paragraph(escape(line), title_style))
+                story.append(HRFlowable(width="100%", thickness=1, color=teal))
+                story.append(Spacer(1, 7))
                 continue
             if self._is_section_heading(line):
-                story.append(Spacer(1, 8))
-                story.append(Paragraph(escape(line), styles["Heading2"]))
+                story.append(Paragraph(escape(line), section_style))
                 continue
-            story.append(Paragraph(escape(line), styles["BodyText"]))
-            story.append(Spacer(1, 3))
+            if self._is_record_heading(line):
+                story.append(Paragraph(escape(line), record_style))
+                continue
+            if line.startswith("Clínica:"):
+                story.append(Paragraph(self._format_pdf_line(line), clinic_style))
+                continue
+            if line.startswith(
+                (
+                    "Teléfono de la clínica:",
+                    "Correo de la clínica:",
+                    "Dirección de la clínica:",
+                    "Generado:",
+                    "Rango:",
+                    "Nivel de detalle:",
+                )
+            ):
+                story.append(Paragraph(self._format_pdf_line(line), metadata_style))
+                continue
+            if line.startswith("- "):
+                story.append(
+                    Paragraph(
+                        f"• {escape(line[2:])}",
+                        bullet_style,
+                    )
+                )
+                continue
+            story.append(Paragraph(self._format_pdf_line(line), body_style))
 
-        document.build(story)
+        def draw_footer(canvas, doc) -> None:
+            canvas.saveState()
+            page_width, _page_height = doc.pagesize
+            footer_text = self._footer_text(clinic_name, doc.page)
+            font_name = "Helvetica"
+            font_size = 7.5
+            max_width = page_width - 84
+            while (
+                stringWidth(footer_text, font_name, font_size) > max_width
+                and font_size > 6
+            ):
+                font_size -= 0.5
+            canvas.setStrokeColor(colors.HexColor("#C8D8D3"))
+            canvas.setLineWidth(0.5)
+            canvas.line(42, 34, page_width - 42, 34)
+            canvas.setFillColor(muted)
+            canvas.setFont(font_name, font_size)
+            canvas.drawCentredString(page_width / 2, 21, footer_text)
+            canvas.restoreState()
+
+        document.build(
+            story,
+            onFirstPage=draw_footer,
+            onLaterPages=draw_footer,
+        )
         return buffer.getvalue()
+
+    def _page_size_for(self, page_size: str) -> tuple[float, float]:
+        from reportlab.lib.pagesizes import A4, legal, letter
+
+        return {
+            "letter": letter,
+            "a4": A4,
+            "legal": legal,
+        }[page_size]
+
+    def _format_pdf_line(self, line: str) -> str:
+        label, separator, value = line.partition(":")
+        if separator:
+            return f"<b>{escape(label)}:</b> {escape(value.strip())}"
+        return escape(line)
+
+    def _footer_text(self, clinic_name: str | None, page_number: int) -> str:
+        prefix = f"VetFlow / {clinic_name}" if clinic_name else "VetFlow"
+        return f"{prefix} · Historia clínica veterinaria · Página {page_number}"
+
+    def _is_record_heading(self, line: str) -> bool:
+        return " - " in line and ":" not in line
 
     def _get_owner_for_patient(
         self,

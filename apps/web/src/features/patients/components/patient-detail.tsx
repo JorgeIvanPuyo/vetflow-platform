@@ -8,6 +8,7 @@ import {
   Download,
   Dog,
   Edit,
+  Eye,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -23,7 +24,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
@@ -45,7 +54,10 @@ import {
   validateFollowUpForm,
 } from "@/features/follow-ups/components/follow-up-helpers";
 import { getTraceableUserName, getUserTraceLabel } from "@/lib/user-traceability";
-import { exportClinicalHistoryPdf } from "@/services/clinical-history-export";
+import {
+  exportClinicalHistoryPdf,
+  previewPatientClinicalHistoryPdf,
+} from "@/services/clinical-history-export";
 import { getClinicTeam } from "@/services/clinic";
 import { createFollowUpConsultation } from "@/services/consultations";
 import {
@@ -145,6 +157,7 @@ type FileUploadFormState = {
 type PdfExportFormState = {
   date_from: string;
   date_to: string;
+  page_size: "letter" | "a4" | "legal";
   detail_level: "summary" | "full";
   include_patient_data: boolean;
   include_owner_data: boolean;
@@ -194,6 +207,7 @@ const initialFileUploadFormState: FileUploadFormState = {
 const initialPdfExportFormState: PdfExportFormState = {
   date_from: "",
   date_to: "",
+  page_size: "letter",
   detail_level: "summary",
   include_patient_data: true,
   include_owner_data: true,
@@ -316,6 +330,17 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
   const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
   const [isPdfExportModalOpen, setIsPdfExportModalOpen] = useState(false);
+  const [isPdfPreviewModalOpen, setIsPdfPreviewModalOpen] = useState(false);
+  const [isPdfPreviewLoading, setIsPdfPreviewLoading] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewFilename, setPdfPreviewFilename] = useState(
+    "historia-clinica.pdf",
+  );
+  const [pdfPreviewPayload, setPdfPreviewPayload] =
+    useState<ClinicalHistoryPdfExportPayload | null>(null);
+  const [pdfPreviewError, setPdfPreviewError] = useState<string | null>(null);
+  const pdfPreviewUrlRef = useRef<string | null>(null);
+  const pdfPreviewRequestIdRef = useRef(0);
   const [fileReferenceToDelete, setFileReferenceToDelete] =
     useState<PatientFileReference | null>(null);
   const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
@@ -423,6 +448,16 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
     return () => URL.revokeObjectURL(objectUrl);
   }, [editPhotoFile]);
+
+  useEffect(() => {
+    return () => {
+      pdfPreviewRequestIdRef.current += 1;
+      if (pdfPreviewUrlRef.current) {
+        window.URL.revokeObjectURL(pdfPreviewUrlRef.current);
+        pdfPreviewUrlRef.current = null;
+      }
+    };
+  }, []);
 
   async function handleCreatePreventiveCare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -847,6 +882,27 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     setPdfExportError(null);
   }
 
+  function replacePdfPreviewUrl(nextUrl: string | null) {
+    if (pdfPreviewUrlRef.current) {
+      window.URL.revokeObjectURL(pdfPreviewUrlRef.current);
+    }
+    pdfPreviewUrlRef.current = nextUrl;
+    setPdfPreviewUrl(nextUrl);
+  }
+
+  function closePdfPreviewModal() {
+    if (state.isPdfExporting) {
+      return;
+    }
+
+    pdfPreviewRequestIdRef.current += 1;
+    replacePdfPreviewUrl(null);
+    setIsPdfPreviewModalOpen(false);
+    setIsPdfPreviewLoading(false);
+    setPdfPreviewPayload(null);
+    setPdfPreviewError(null);
+  }
+
   function toggleTimelineItem(itemKey: string) {
     setExpandedTimelineItems((current) => ({
       ...current,
@@ -870,22 +926,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       return;
     }
 
-    const payload: ClinicalHistoryPdfExportPayload = {
-      include_patient_data: pdfExportFormState.include_patient_data,
-      include_owner_data: pdfExportFormState.include_owner_data,
-      include_consultations: pdfExportFormState.include_consultations,
-      include_exams: pdfExportFormState.include_exams,
-      include_preventive_care: pdfExportFormState.include_preventive_care,
-      include_file_references: pdfExportFormState.include_file_references,
-      detail_level: pdfExportFormState.detail_level,
-    };
-
-    if (pdfExportFormState.date_from) {
-      payload.date_from = pdfExportFormState.date_from;
-    }
-    if (pdfExportFormState.date_to) {
-      payload.date_to = pdfExportFormState.date_to;
-    }
+    const payload = buildPdfExportPayload(pdfExportFormState);
 
     setState((current) => ({
       ...current,
@@ -909,7 +950,80 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         ...current,
         isPdfExporting: false,
       }));
-      setPdfExportError(getPdfExportErrorMessage(error));
+      setPdfExportError(getPdfDownloadErrorMessage(error));
+    }
+  }
+
+  async function handlePreviewClinicalHistoryPdf() {
+    const validationError = getPdfExportValidationError(pdfExportFormState);
+    if (validationError) {
+      setPdfExportError(validationError);
+      return;
+    }
+
+    const payload = buildPdfExportPayload(pdfExportFormState);
+    const requestId = pdfPreviewRequestIdRef.current + 1;
+    pdfPreviewRequestIdRef.current = requestId;
+    replacePdfPreviewUrl(null);
+    setPdfPreviewPayload(payload);
+    setPdfPreviewFilename("historia-clinica.pdf");
+    setPdfPreviewError(null);
+    setIsPdfPreviewLoading(true);
+    setIsPdfExportModalOpen(false);
+    setIsPdfPreviewModalOpen(true);
+
+    try {
+      const { blob, filename } = await previewPatientClinicalHistoryPdf(
+        patientId,
+        payload,
+      );
+      if (pdfPreviewRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      replacePdfPreviewUrl(window.URL.createObjectURL(blob));
+      setPdfPreviewFilename(filename ?? "historia-clinica.pdf");
+    } catch (error) {
+      if (pdfPreviewRequestIdRef.current === requestId) {
+        setPdfPreviewError(getPdfPreviewErrorMessage(error));
+      }
+    } finally {
+      if (pdfPreviewRequestIdRef.current === requestId) {
+        setIsPdfPreviewLoading(false);
+      }
+    }
+  }
+
+  async function handleDownloadPdfPreview() {
+    if (!pdfPreviewPayload) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isPdfExporting: true,
+      errorMessage: null,
+      successMessage: null,
+    }));
+    setPdfPreviewError(null);
+
+    try {
+      const { blob, filename } = await exportClinicalHistoryPdf(
+        patientId,
+        pdfPreviewPayload,
+      );
+      downloadBlob(blob, filename ?? pdfPreviewFilename);
+      setState((current) => ({
+        ...current,
+        isPdfExporting: false,
+        successMessage: "PDF descargado correctamente.",
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isPdfExporting: false,
+      }));
+      setPdfPreviewError(getPdfDownloadErrorMessage(error));
     }
   }
 
@@ -1174,6 +1288,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       {isPatientEditOpen ? renderPatientEditModal() : null}
       {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
       {isPdfExportModalOpen ? renderPdfExportModal() : null}
+      {isPdfPreviewModalOpen ? renderPdfPreviewModal() : null}
       {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
       {isFollowUpModalOpen ? renderFollowUpModal(patient) : null}
       {isFileUploadModalOpen ? renderFileUploadModal() : null}
@@ -1200,6 +1315,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 ))}
               </select>
             </label>
+            <button className="secondary-button" type="button" onClick={openPdfExportModal}>
+              <Eye aria-hidden="true" size={18} /> Visualizar historia
+            </button>
             <button className="secondary-button" type="button" onClick={openPdfExportModal}>
               <Download aria-hidden="true" size={18} /> Exportar PDF
             </button>
@@ -1901,7 +2019,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <div className="bottom-sheet__header">
             <div>
               <p className="eyebrow">Historial clínico</p>
-              <h2 id="pdf-export-title">Exportar historia clínica</h2>
+              <h2 id="pdf-export-title">Historia clínica en PDF</h2>
             </div>
             <button
               aria-label="Cancelar"
@@ -1949,6 +2067,23 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 </label>
               </div>
             </fieldset>
+
+            <label className="field">
+              <span>Tamaño de hoja</span>
+              <select
+                value={pdfExportFormState.page_size}
+                onChange={(event) =>
+                  setPdfExportFormState((current) => ({
+                    ...current,
+                    page_size: event.target.value as PdfExportFormState["page_size"],
+                  }))
+                }
+              >
+                <option value="letter">Carta</option>
+                <option value="a4">A4</option>
+                <option value="legal">Oficio</option>
+              </select>
+            </label>
 
             <fieldset className="choice-section">
               <legend>Nivel de detalle</legend>
@@ -2005,7 +2140,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               </div>
             </fieldset>
 
-            <div className="modal-actions">
+            <div className="modal-actions modal-actions--three">
               <button
                 className="secondary-button"
                 disabled={state.isPdfExporting}
@@ -2014,11 +2149,106 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               >
                 Cancelar
               </button>
+              <button
+                className="secondary-button"
+                disabled={state.isPdfExporting}
+                onClick={() => void handlePreviewClinicalHistoryPdf()}
+                type="button"
+              >
+                <Eye aria-hidden="true" size={18} /> Visualizar
+              </button>
               <button className="primary-button" disabled={state.isPdfExporting} type="submit">
                 {state.isPdfExporting ? "Generando PDF..." : "Descargar PDF"}
               </button>
             </div>
           </form>
+        </section>
+      </div>
+    );
+  }
+
+  function renderPdfPreviewModal() {
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <section
+          aria-labelledby="pdf-preview-title"
+          aria-modal="true"
+          className="bottom-sheet pdf-preview-sheet"
+          role="dialog"
+        >
+          <div className="bottom-sheet__header">
+            <div>
+              <p className="eyebrow">Historial clínico</p>
+              <h2 id="pdf-preview-title">Vista previa de historia clínica</h2>
+            </div>
+            <button
+              aria-label="Cerrar vista previa"
+              className="icon-button"
+              disabled={state.isPdfExporting}
+              onClick={closePdfPreviewModal}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+
+          {isPdfPreviewLoading ? (
+            <div className="pdf-preview-status" role="status">
+              <FileText aria-hidden="true" size={28} />
+              <strong>Generando vista previa…</strong>
+              <span>Estamos preparando el documento clínico.</span>
+            </div>
+          ) : null}
+
+          {pdfPreviewError ? (
+            <div className="error-state" role="alert">
+              {pdfPreviewError}
+            </div>
+          ) : null}
+
+          {pdfPreviewUrl ? (
+            <div className="pdf-preview-viewer">
+              <iframe
+                src={pdfPreviewUrl}
+                title="Vista previa de historia clínica"
+              />
+            </div>
+          ) : null}
+
+          {pdfPreviewUrl ? (
+            <a
+              className="secondary-button pdf-preview-open"
+              href={pdfPreviewUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink aria-hidden="true" size={17} /> Abrir PDF
+            </a>
+          ) : null}
+
+          <div className="modal-actions pdf-preview-actions">
+            <button
+              className="secondary-button"
+              disabled={state.isPdfExporting}
+              onClick={closePdfPreviewModal}
+              type="button"
+            >
+              Cerrar
+            </button>
+            <button
+              className="primary-button"
+              disabled={
+                !pdfPreviewPayload ||
+                isPdfPreviewLoading ||
+                state.isPdfExporting
+              }
+              onClick={() => void handleDownloadPdfPreview()}
+              type="button"
+            >
+              <Download aria-hidden="true" size={18} />
+              {state.isPdfExporting ? "Descargando…" : "Descargar PDF"}
+            </button>
+          </div>
         </section>
       </div>
     );
@@ -2638,6 +2868,23 @@ function hasSelectedPdfExportSection(formState: PdfExportFormState) {
   return pdfExportSectionOptions.some((option) => formState[option.key]);
 }
 
+function buildPdfExportPayload(
+  formState: PdfExportFormState,
+): ClinicalHistoryPdfExportPayload {
+  return {
+    ...(formState.date_from ? { date_from: formState.date_from } : {}),
+    ...(formState.date_to ? { date_to: formState.date_to } : {}),
+    page_size: formState.page_size,
+    include_patient_data: formState.include_patient_data,
+    include_owner_data: formState.include_owner_data,
+    include_consultations: formState.include_consultations,
+    include_exams: formState.include_exams,
+    include_preventive_care: formState.include_preventive_care,
+    include_file_references: formState.include_file_references,
+    detail_level: formState.detail_level,
+  };
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -2649,12 +2896,20 @@ function downloadBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
-function getPdfExportErrorMessage(error: unknown) {
+function getPdfDownloadErrorMessage(error: unknown) {
   if (error instanceof ApiClientError && error.code === "invalid_date_range") {
     return "El rango de fechas no es válido.";
   }
 
-  return getApiErrorMessage(error);
+  return "No fue posible descargar la historia clínica.";
+}
+
+function getPdfPreviewErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError && error.code === "invalid_date_range") {
+    return "El rango de fechas no es válido.";
+  }
+
+  return "No fue posible generar la vista previa de la historia clínica.";
 }
 
 function getFileUploadErrorMessage(error: unknown) {

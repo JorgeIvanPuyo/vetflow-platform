@@ -185,3 +185,24 @@ def export_patient_clinical_history_pdf(
             "Content-Disposition": f'attachment; filename="{export.filename}"',
         },
     )
+
+
+@router.post("/{patient_id}/clinical-history/preview-pdf")
+def preview_patient_clinical_history_pdf(
+    patient_id: uuid.UUID,
+    payload: ClinicalHistoryPdfExportRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    export = ClinicalHistoryPdfService(db).export_patient_history_pdf(
+        tenant.tenant_id,
+        patient_id,
+        payload,
+    )
+    return Response(
+        content=export.pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{export.filename}"',
+        },
+    )

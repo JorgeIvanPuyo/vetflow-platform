@@ -72,3 +72,4 @@ class ClinicalHistoryPdfExportRequest(BaseModel):
     include_preventive_care: bool = True
     include_file_references: bool = True
     detail_level: Literal["summary", "full"] = "summary"
+    page_size: Literal["letter", "a4", "legal"] = "letter"
