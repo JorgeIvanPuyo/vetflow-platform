@@ -135,7 +135,13 @@ export function GlobalSearch({ onResultSelected }: GlobalSearchProps) {
                 <li className="search-result-item" key={`${result.type}-${result.id}`}>
                   <Link
                     className="search-result-link"
-                    href={result.type === "patient" && result.patient_id ? `/patients/${result.patient_id}` : "/owners"}
+                    href={
+                      result.type === "patient" && result.patient_id
+                        ? `/patients/${result.patient_id}`
+                        : result.type === "owner" && result.id
+                          ? `/owners/${result.id}`
+                          : "/owners"
+                    }
                     onClick={() => {
                       clearResults();
                       onResultSelected?.();
