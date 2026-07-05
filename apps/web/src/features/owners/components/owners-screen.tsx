@@ -1,8 +1,8 @@
 "use client";
 
-import { ChevronRight, Mail, MapPin, PawPrint, Phone, Plus, UserPlus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mail, MapPin, PawPrint, Phone, Plus, UserPlus, X } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { createOwner, getOwners } from "@/services/owners";
@@ -17,6 +17,11 @@ type OwnersState = {
   errorMessage: string | null;
   successMessage: string | null;
   formMessage: string | null;
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+  };
 };
 
 type OwnerFormState = {
@@ -34,6 +39,11 @@ const initialOwnersState: OwnersState = {
   errorMessage: null,
   successMessage: null,
   formMessage: null,
+  meta: {
+    page: 1,
+    page_size: 12,
+    total: 0,
+  },
 };
 
 const initialFormState: OwnerFormState = {
@@ -47,8 +57,10 @@ export function OwnersScreen() {
   const [state, setState] = useState<OwnersState>(initialOwnersState);
   const [formState, setFormState] = useState<OwnerFormState>(initialFormState);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
 
-  async function loadOwners() {
+  const loadOwners = useCallback(async (requestedPage = page) => {
     setState((current) => ({
       ...current,
       isLoading: true,
@@ -57,7 +69,7 @@ export function OwnersScreen() {
 
     try {
       const [ownersResponse, patientsResponse] = await Promise.all([
-        getOwners(),
+        getOwners({ page: requestedPage, pageSize }),
         getPatients(),
       ]);
       setState((current) => ({
@@ -65,6 +77,7 @@ export function OwnersScreen() {
         isLoading: false,
         owners: ownersResponse.data,
         patients: patientsResponse.data,
+        meta: ownersResponse.meta,
       }));
     } catch (error) {
       setState((current) => ({
@@ -73,11 +86,11 @@ export function OwnersScreen() {
         errorMessage: getApiErrorMessage(error),
       }));
     }
-  }
+  }, [page, pageSize]);
 
   useEffect(() => {
     void loadOwners();
-  }, []);
+  }, [loadOwners]);
 
   const petCountByOwner = useMemo(() => {
     return state.patients.reduce<Record<string, number>>((counts, patient) => {
@@ -133,7 +146,8 @@ export function OwnersScreen() {
         isSubmitting: false,
         successMessage: "Propietario creado correctamente.",
       }));
-      await loadOwners();
+      setPage(1);
+      await loadOwners(1);
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -151,7 +165,7 @@ export function OwnersScreen() {
           <p>
             {state.isLoading
               ? "Cargando propietarios..."
-              : `${state.owners.length} propietario${state.owners.length === 1 ? "" : "s"} registrado${state.owners.length === 1 ? "" : "s"} en la clínica`}
+              : `${state.meta.total} propietario${state.meta.total === 1 ? "" : "s"} registrado${state.meta.total === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
       </section>
@@ -204,6 +218,51 @@ export function OwnersScreen() {
               </Link>
             );
           })}
+        </section>
+      ) : null}
+
+      {!state.isLoading && !state.errorMessage && state.meta.total > 0 ? (
+        <section className="panel list-pagination" aria-label="Paginación de propietarios">
+          <label className="list-page-size-control">
+            <span>Mostrar</span>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+            >
+              <option value={12}>12</option>
+              <option value={24}>24</option>
+              <option value={48}>48</option>
+            </select>
+          </label>
+          <span className="list-pagination__range">
+            {(state.meta.page - 1) * state.meta.page_size + 1}–
+            {Math.min(state.meta.page * state.meta.page_size, state.meta.total)} de {state.meta.total}
+          </span>
+          <div className="list-pagination__actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={state.meta.page <= 1}
+              aria-label="Página anterior de propietarios"
+            >
+              <ChevronLeft size={18} />
+              Anterior
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPage((current) => current + 1)}
+              disabled={state.meta.page * state.meta.page_size >= state.meta.total}
+              aria-label="Página siguiente de propietarios"
+            >
+              Siguiente
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </section>
       ) : null}
 

@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   Cat,
+  ChevronLeft,
   ChevronRight,
   Dog,
   Plus,
@@ -35,6 +36,11 @@ type PatientsState = {
   successMessage: string | null;
   flowMessage: string | null;
   flowMessageType: "success" | "error";
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+  };
 };
 
 type PatientFormState = {
@@ -69,6 +75,11 @@ const initialPatientsState: PatientsState = {
   successMessage: null,
   flowMessage: null,
   flowMessageType: "success",
+  meta: {
+    page: 1,
+    page_size: 12,
+    total: 0,
+  },
 };
 
 const initialPatientFormState: PatientFormState = {
@@ -107,8 +118,10 @@ export function PatientsScreen() {
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const [selectedPhotoPreviewUrl, setSelectedPhotoPreviewUrl] = useState<string | null>(null);
   const [photoErrorMessage, setPhotoErrorMessage] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
 
-  async function loadPatientsScreen() {
+  const loadPatientsScreen = useCallback(async (requestedPage = page) => {
     setState((current) => ({
       ...current,
       isLoading: true,
@@ -117,7 +130,7 @@ export function PatientsScreen() {
 
     try {
       const [patientsResponse, ownersResponse] = await Promise.all([
-        getPatients(),
+        getPatients({ page: requestedPage, pageSize }),
         getOwners(),
       ]);
 
@@ -126,6 +139,7 @@ export function PatientsScreen() {
         isLoading: false,
         patients: patientsResponse.data,
         owners: ownersResponse.data,
+        meta: patientsResponse.meta,
       }));
     } catch (error) {
       setState((current) => ({
@@ -134,11 +148,11 @@ export function PatientsScreen() {
         errorMessage: getApiErrorMessage(error),
       }));
     }
-  }
+  }, [page, pageSize]);
 
   useEffect(() => {
     void loadPatientsScreen();
-  }, []);
+  }, [loadPatientsScreen]);
 
   useEffect(() => {
     if (!selectedPhoto) {
@@ -264,7 +278,8 @@ export function PatientsScreen() {
         isSubmitting: false,
         successMessage: photoUploadWarning ?? "Paciente creado correctamente.",
       }));
-      await loadPatientsScreen();
+      setPage(1);
+      await loadPatientsScreen(1);
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -335,7 +350,7 @@ export function PatientsScreen() {
           <p>
             {state.isLoading
               ? "Cargando pacientes..."
-              : `${state.patients.length} paciente${state.patients.length === 1 ? "" : "s"} registrado${state.patients.length === 1 ? "" : "s"} en la clínica`}
+              : `${state.meta.total} paciente${state.meta.total === 1 ? "" : "s"} registrado${state.meta.total === 1 ? "" : "s"} en la clínica`}
           </p>
         </div>
       </section>
@@ -392,6 +407,51 @@ export function PatientsScreen() {
               </span>
             </Link>
           ))}
+        </section>
+      ) : null}
+
+      {!state.isLoading && !state.errorMessage && state.meta.total > 0 ? (
+        <section className="panel list-pagination" aria-label="Paginación de pacientes">
+          <label className="list-page-size-control">
+            <span>Mostrar</span>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+            >
+              <option value={12}>12</option>
+              <option value={24}>24</option>
+              <option value={48}>48</option>
+            </select>
+          </label>
+          <span className="list-pagination__range">
+            {(state.meta.page - 1) * state.meta.page_size + 1}–
+            {Math.min(state.meta.page * state.meta.page_size, state.meta.total)} de {state.meta.total}
+          </span>
+          <div className="list-pagination__actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={state.meta.page <= 1}
+              aria-label="Página anterior de pacientes"
+            >
+              <ChevronLeft size={18} />
+              Anterior
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPage((current) => current + 1)}
+              disabled={state.meta.page * state.meta.page_size >= state.meta.total}
+              aria-label="Página siguiente de pacientes"
+            >
+              Siguiente
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </section>
       ) : null}
 

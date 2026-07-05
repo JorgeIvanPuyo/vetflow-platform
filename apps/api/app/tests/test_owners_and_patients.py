@@ -44,6 +44,113 @@ def test_list_owners_filtered_by_tenant(client, tenant, other_tenant):
     assert body["data"][0]["full_name"] == "Owner One"
 
 
+def test_list_owners_supports_tenant_safe_search_and_pagination(
+    client, tenant, other_tenant
+):
+    headers = {"X-Tenant-Id": str(tenant.id)}
+    for index in range(3):
+        client.post(
+            "/api/v1/owners",
+            headers=headers,
+            json={"full_name": f"Familia Vetflow {index}", "phone": f"100{index}"},
+        )
+    client.post(
+        "/api/v1/owners",
+        headers={"X-Tenant-Id": str(other_tenant.id)},
+        json={"full_name": "Familia Vetflow Externa", "phone": "999"},
+    )
+
+    response = client.get(
+        "/api/v1/owners",
+        params={"search": "Vetflow", "page": 2, "page_size": 2},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"] == {"page": 2, "page_size": 2, "total": 3}
+    assert len(body["data"]) == 1
+    assert all(owner["tenant_id"] == str(tenant.id) for owner in body["data"])
+
+
+def test_list_patients_supports_tenant_safe_search_and_pagination(
+    client, tenant, other_tenant
+):
+    headers = {"X-Tenant-Id": str(tenant.id)}
+    owner = client.post(
+        "/api/v1/owners",
+        headers=headers,
+        json={"full_name": "Paciente Owner", "phone": "555"},
+    ).json()["data"]
+    for index in range(3):
+        client.post(
+            "/api/v1/patients",
+            headers=headers,
+            json={
+                "owner_id": owner["id"],
+                "name": f"Mascota Vetflow {index}",
+                "species": "Canine",
+            },
+        )
+
+    other_headers = {"X-Tenant-Id": str(other_tenant.id)}
+    other_owner = client.post(
+        "/api/v1/owners",
+        headers=other_headers,
+        json={"full_name": "Other Owner", "phone": "777"},
+    ).json()["data"]
+    client.post(
+        "/api/v1/patients",
+        headers=other_headers,
+        json={
+            "owner_id": other_owner["id"],
+            "name": "Mascota Vetflow Externa",
+            "species": "Feline",
+        },
+    )
+
+    response = client.get(
+        "/api/v1/patients",
+        params={"search": "Vetflow", "page": 2, "page_size": 2},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"] == {"page": 2, "page_size": 2, "total": 3}
+    assert len(body["data"]) == 1
+    assert all(patient["tenant_id"] == str(tenant.id) for patient in body["data"])
+
+
+def test_owner_and_patient_lists_remain_unpaginated_without_page_size(client, tenant):
+    headers = {"X-Tenant-Id": str(tenant.id)}
+    for index in range(3):
+        owner = client.post(
+            "/api/v1/owners",
+            headers=headers,
+            json={"full_name": f"Owner {index}", "phone": f"200{index}"},
+        ).json()["data"]
+        client.post(
+            "/api/v1/patients",
+            headers=headers,
+            json={
+                "owner_id": owner["id"],
+                "name": f"Patient {index}",
+                "species": "Canine",
+            },
+        )
+
+    owners_response = client.get("/api/v1/owners", headers=headers)
+    patients_response = client.get("/api/v1/patients", headers=headers)
+
+    assert owners_response.status_code == 200
+    assert owners_response.json()["meta"] == {"page": 1, "page_size": 3, "total": 3}
+    assert len(owners_response.json()["data"]) == 3
+    assert patients_response.status_code == 200
+    assert patients_response.json()["meta"] == {"page": 1, "page_size": 3, "total": 3}
+    assert len(patients_response.json()["data"]) == 3
+
+
 def test_create_patient_under_owner(client, tenant):
     owner_response = client.post(
         "/api/v1/owners",

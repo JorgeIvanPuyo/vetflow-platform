@@ -30,6 +30,8 @@ class PatientRepository:
         owner_id: uuid.UUID | None = None,
         species: str | None = None,
         search: str | None = None,
+        page: int = 1,
+        page_size: int | None = None,
     ) -> tuple[list[Patient], int]:
         statement: Select[tuple[Patient]] = select(Patient).where(
             Patient.tenant_id == tenant_id
@@ -43,6 +45,8 @@ class PatientRepository:
             statement = statement.where(Patient.name.ilike(f"%{search}%"))
 
         statement = statement.order_by(Patient.created_at.desc())
+        if page_size is not None:
+            statement = statement.offset((page - 1) * page_size).limit(page_size)
         patients = list(self.db.scalars(statement).all())
 
         count_statement = select(func.count()).select_from(Patient).where(

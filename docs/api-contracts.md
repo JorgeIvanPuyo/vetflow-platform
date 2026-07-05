@@ -60,11 +60,20 @@ GET /api/v1/owners
 GET /api/v1/owners/{owner_id}
 PATCH /api/v1/owners/{owner_id}
 
+The owners list accepts optional `search`, `phone`, `page`, and `page_size`
+parameters. Pagination is applied when `page_size` is provided; omitting it keeps
+the existing unpaginated behavior for backward-compatible selector flows.
+
 ## Patients
 POST /api/v1/patients
 GET /api/v1/patients
 GET /api/v1/patients/{patient_id}
 PATCH /api/v1/patients/{patient_id}
+
+The patients list accepts optional `owner_id`, `species`, `search`, `page`, and
+`page_size` parameters. Pagination is applied when `page_size` is provided;
+omitting it keeps the existing unpaginated behavior for backward-compatible
+selector and owner-detail flows.
 
 ### Clinical history PDF
 

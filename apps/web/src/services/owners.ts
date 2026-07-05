@@ -7,8 +7,33 @@ import type {
   UpdateOwnerPayload,
 } from "@/types/api";
 
-export function getOwners() {
-  return api.get<ApiListResponse<Owner>>("/api/v1/owners");
+type GetOwnersOptions = {
+  search?: string;
+  phone?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function getOwners(options: GetOwnersOptions = {}) {
+  const params = new URLSearchParams();
+
+  if (options.search) {
+    params.set("search", options.search);
+  }
+  if (options.phone) {
+    params.set("phone", options.phone);
+  }
+  if (options.page !== undefined) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize !== undefined) {
+    params.set("page_size", String(options.pageSize));
+  }
+
+  const query = params.toString();
+  return api.get<ApiListResponse<Owner>>(
+    query ? `/api/v1/owners?${query}` : "/api/v1/owners",
+  );
 }
 
 export function getOwner(ownerId: string) {

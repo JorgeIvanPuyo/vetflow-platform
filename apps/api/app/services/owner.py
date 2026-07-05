@@ -32,8 +32,16 @@ class OwnerService:
         *,
         search: str | None = None,
         phone: str | None = None,
+        page: int = 1,
+        page_size: int | None = None,
     ) -> tuple[list[Owner], int]:
-        return self.owner_repository.list(tenant_id, search=search, phone=phone)
+        return self.owner_repository.list(
+            tenant_id,
+            search=search,
+            phone=phone,
+            page=page,
+            page_size=page_size,
+        )
 
     def get_owner(self, tenant_id: uuid.UUID, owner_id: uuid.UUID) -> Owner:
         owner = self.owner_repository.get_by_id(tenant_id, owner_id)

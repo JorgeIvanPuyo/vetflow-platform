@@ -10,6 +10,9 @@ import type {
 
 type GetPatientsOptions = {
   ownerId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
 };
 
 export function getPatients(options: GetPatientsOptions = {}) {
@@ -17,6 +20,15 @@ export function getPatients(options: GetPatientsOptions = {}) {
 
   if (options.ownerId) {
     params.set("owner_id", options.ownerId);
+  }
+  if (options.search) {
+    params.set("search", options.search);
+  }
+  if (options.page !== undefined) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize !== undefined) {
+    params.set("page_size", String(options.pageSize));
   }
 
   const query = params.toString();

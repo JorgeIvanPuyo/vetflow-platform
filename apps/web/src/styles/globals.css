@@ -7596,3 +7596,265 @@ code {
     border-radius: 12px;
   }
 }
+
+/* Responsive entity lists and inventory density */
+.list-pagination {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.list-page-size-control {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.list-page-size-control select {
+  min-width: 68px;
+  min-height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 30px 0 10px;
+}
+
+.list-pagination__range {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.list-pagination__actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.list-pagination__actions .secondary-button {
+  width: 100%;
+}
+
+.inventory-toolbar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory-view-toggle {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-soft);
+}
+
+.inventory-view-toggle__button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inventory-view-toggle__button--active {
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.08);
+}
+
+.inventory-view-toggle__button:focus-visible,
+.inventory-table tbody tr:focus-visible {
+  outline: 3px solid rgba(43, 138, 113, 0.24);
+  outline-offset: 2px;
+}
+
+.list-page-size-control--toolbar {
+  min-height: 44px;
+  padding-left: 4px;
+}
+
+.inventory-table-card {
+  overflow: hidden;
+  border: 1px solid rgba(228, 222, 211, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-card);
+}
+
+.inventory-table-scroll {
+  overflow-x: auto;
+}
+
+.inventory-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  color: var(--color-text);
+  font-size: 0.86rem;
+}
+
+.inventory-table th,
+.inventory-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(228, 222, 211, 0.76);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.inventory-table th {
+  background: rgba(223, 244, 238, 0.55);
+  color: var(--color-primary-dark);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.inventory-table tbody tr {
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.inventory-table tbody tr:hover,
+.inventory-table tbody tr:focus {
+  background: rgba(223, 244, 238, 0.28);
+}
+
+.inventory-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.inventory-table__product {
+  min-width: 220px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-table__product > svg {
+  color: var(--color-text-soft);
+}
+
+.inventory-table__icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+.inventory-table__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.inventory-table__secondary {
+  display: grid;
+  gap: 3px;
+}
+
+.inventory-table__secondary small {
+  color: var(--color-text-muted);
+}
+
+.inventory-table__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+@media (min-width: 760px) {
+  .patients-layout > .patient-card-list,
+  .owners-layout > .owner-card-list,
+  .inventory-page > .inventory-card-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .patients-layout .patient-card,
+  .owners-layout .owner-card-link,
+  .inventory-page .inventory-card {
+    height: 100%;
+  }
+
+  .list-pagination {
+    grid-template-columns: auto 1fr auto;
+    padding: 12px 16px;
+  }
+
+  .list-pagination__range {
+    text-align: center;
+  }
+
+  .list-pagination__actions {
+    grid-column: auto;
+    display: flex;
+  }
+
+  .list-pagination__actions .secondary-button {
+    width: auto;
+  }
+}
+
+@media (min-width: 900px) {
+  .inventory-toolbar {
+    grid-template-columns: minmax(260px, 1fr) auto;
+    align-items: center;
+  }
+
+  .inventory-toolbar__controls {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 1440px) {
+  .patients-layout > .patient-card-list,
+  .owners-layout > .owner-card-list,
+  .inventory-page > .inventory-card-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .inventory-toolbar__controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .inventory-view-toggle {
+    grid-column: 1 / -1;
+  }
+
+  .inventory-view-toggle__button {
+    flex: 1 1 0;
+  }
+
+  .list-page-size-control--toolbar {
+    padding-left: 0;
+  }
+}

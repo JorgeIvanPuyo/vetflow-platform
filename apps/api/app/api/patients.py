@@ -45,6 +45,8 @@ def list_patients(
     owner_id: uuid.UUID | None = Query(default=None),
     species: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
     storage_service: ClinicalFileStorageService = Depends(get_storage_service),
@@ -55,13 +57,19 @@ def list_patients(
         owner_id=owner_id,
         species=species,
         search=search,
+        page=page,
+        page_size=page_size,
     )
     return {
         "data": service.build_patient_list_response(
             patients,
             storage_service=storage_service,
         ),
-        "meta": ListMeta(page=1, page_size=len(patients), total=total).model_dump(),
+        "meta": ListMeta(
+            page=page if page_size is not None else 1,
+            page_size=page_size if page_size is not None else len(patients),
+            total=total,
+        ).model_dump(),
     }
 
 

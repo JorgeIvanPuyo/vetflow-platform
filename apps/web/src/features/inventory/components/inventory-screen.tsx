@@ -4,11 +4,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  LayoutGrid,
+  List,
   Plus,
   Search,
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -42,6 +45,8 @@ type InventoryScreenState = {
   };
 };
 
+type InventoryViewMode = "cards" | "table";
+
 const initialState: InventoryScreenState = {
   isLoading: true,
   isRefreshing: false,
@@ -50,13 +55,14 @@ const initialState: InventoryScreenState = {
   errorMessage: null,
   meta: {
     page: 1,
-    page_size: 10,
+    page_size: 12,
     total: 0,
     total_pages: 0,
   },
 };
 
 export function InventoryScreen() {
+  const router = useRouter();
   const [state, setState] = useState<InventoryScreenState>(initialState);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
@@ -67,11 +73,13 @@ export function InventoryScreen() {
     initialInventoryFilterState,
   );
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
+  const [viewMode, setViewMode] = useState<InventoryViewMode>("cards");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const activeFilters = useMemo(
-    () => buildInventoryListFilters(query, filterState, page),
-    [filterState, page, query],
+    () => buildInventoryListFilters(query, filterState, page, pageSize),
+    [filterState, page, pageSize, query],
   );
 
   const loadInventory = useCallback(async () => {
@@ -200,10 +208,47 @@ export function InventoryScreen() {
             Buscar
           </button>
         </form>
-        <button className="filter-button" type="button" onClick={() => setIsFilterOpen(true)}>
-          <Filter size={18} />
-          <span>Filtros</span>
-        </button>
+        <div className="inventory-toolbar__controls">
+          <div className="inventory-view-toggle" aria-label="Vista de inventario">
+            <button
+              type="button"
+              aria-pressed={viewMode === "cards"}
+              className={viewMode === "cards" ? "inventory-view-toggle__button inventory-view-toggle__button--active" : "inventory-view-toggle__button"}
+              onClick={() => setViewMode("cards")}
+            >
+              <LayoutGrid size={16} />
+              Tarjetas
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === "table"}
+              className={viewMode === "table" ? "inventory-view-toggle__button inventory-view-toggle__button--active" : "inventory-view-toggle__button"}
+              onClick={() => setViewMode("table")}
+            >
+              <List size={16} />
+              Tabla
+            </button>
+          </div>
+          <label className="list-page-size-control list-page-size-control--toolbar">
+            <span>Mostrar</span>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+            >
+              <option value={6}>6</option>
+              <option value={12}>12</option>
+              <option value={24}>24</option>
+              <option value={48}>48</option>
+            </select>
+          </label>
+          <button className="filter-button" type="button" onClick={() => setIsFilterOpen(true)}>
+            <Filter size={18} />
+            <span>Filtros</span>
+          </button>
+        </div>
       </section>
 
       {state.errorMessage && state.summary === null ? (
@@ -230,7 +275,7 @@ export function InventoryScreen() {
             </section>
           ) : null}
 
-          {state.items.length > 0 ? (
+          {state.items.length > 0 && viewMode === "cards" ? (
             <section className="inventory-card-list">
               {state.items.map((item) => (
                 <Link key={item.id} className="inventory-card" href={`/inventory/${item.id}`}>
@@ -267,11 +312,82 @@ export function InventoryScreen() {
                 </Link>
               ))}
             </section>
-          ) : (
+          ) : null}
+
+          {state.items.length > 0 && viewMode === "table" ? (
+            <section className="inventory-table-card" aria-label="Tabla de inventario">
+              <div className="inventory-table-scroll">
+                <table className="inventory-table">
+                  <caption className="sr-only">Items de inventario</caption>
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Categoría / proveedor</th>
+                      <th>Stock</th>
+                      <th>Mínimo</th>
+                      <th>Venta</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {state.items.map((item) => {
+                      const statusBadges = getInventoryStatusBadges(item);
+                      return (
+                        <tr
+                          key={item.id}
+                          tabIndex={0}
+                          aria-label={`Abrir ${item.name}`}
+                          onClick={() => router.push(`/inventory/${item.id}`)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              router.push(`/inventory/${item.id}`);
+                            }
+                          }}
+                        >
+                          <td>
+                            <span className="inventory-table__product">
+                              <span className="inventory-table__icon" aria-hidden="true">
+                                {getInventoryCategoryIcon(item.category)}
+                              </span>
+                              <strong>{item.name}</strong>
+                              <ChevronRight size={16} aria-hidden="true" />
+                            </span>
+                          </td>
+                          <td>
+                            <span className="inventory-table__secondary">
+                              <strong>{getInventoryCategoryLabel(item.category)}</strong>
+                              <small>{item.supplier ?? "Sin proveedor"}</small>
+                            </span>
+                          </td>
+                          <td>{formatInventoryQuantity(item.current_stock, item.unit)}</td>
+                          <td>{formatInventoryQuantity(item.minimum_stock, item.unit)}</td>
+                          <td>{formatInventoryCurrency(item.sale_price_ars)}</td>
+                          <td>
+                            <span className="inventory-table__badges">
+                              {statusBadges.length > 0 ? statusBadges.map((badge) => (
+                                <span key={badge.label} className={badge.className}>
+                                  {badge.label}
+                                </span>
+                              )) : (
+                                <span className="badge badge--success">Disponible</span>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+
+          {state.items.length === 0 ? (
             <section className="empty-state">
               No hay items en inventario.
             </section>
-          )}
+          ) : null}
 
           <section className="panel inventory-pagination">
             <button
@@ -284,7 +400,9 @@ export function InventoryScreen() {
               Anterior
             </button>
             <span>
-              Página {state.meta.page} de {Math.max(state.meta.total_pages, 1)}
+              {state.meta.total > 0
+                ? `${(state.meta.page - 1) * state.meta.page_size + 1}–${Math.min(state.meta.page * state.meta.page_size, state.meta.total)} de ${state.meta.total}`
+                : "0 items"}
             </span>
             <button
               className="secondary-button"

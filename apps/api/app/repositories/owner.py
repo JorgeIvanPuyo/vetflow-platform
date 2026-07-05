@@ -29,6 +29,8 @@ class OwnerRepository:
         *,
         search: str | None = None,
         phone: str | None = None,
+        page: int = 1,
+        page_size: int | None = None,
     ) -> tuple[list[Owner], int]:
         statement: Select[tuple[Owner]] = select(Owner).where(Owner.tenant_id == tenant_id)
 
@@ -38,6 +40,8 @@ class OwnerRepository:
             statement = statement.where(Owner.phone.ilike(f"%{phone}%"))
 
         statement = statement.order_by(Owner.created_at.desc())
+        if page_size is not None:
+            statement = statement.offset((page - 1) * page_size).limit(page_size)
         owners = list(self.db.scalars(statement).all())
 
         count_statement = select(func.count()).select_from(Owner).where(

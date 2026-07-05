@@ -26,6 +26,8 @@ def create_owner(
 def list_owners(
     search: str | None = Query(default=None),
     phone: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -33,10 +35,16 @@ def list_owners(
         tenant.tenant_id,
         search=search,
         phone=phone,
+        page=page,
+        page_size=page_size,
     )
     return {
         "data": [OwnerRead.model_validate(owner).model_dump(mode="json") for owner in owners],
-        "meta": ListMeta(page=1, page_size=len(owners), total=total).model_dump(),
+        "meta": ListMeta(
+            page=page if page_size is not None else 1,
+            page_size=page_size if page_size is not None else len(owners),
+            total=total,
+        ).model_dump(),
     }
 
 

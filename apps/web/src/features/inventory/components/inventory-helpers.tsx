@@ -591,10 +591,11 @@ export function buildInventoryListFilters(
   query: string,
   filterState: InventoryFilterState,
   page: number,
+  pageSize = 12,
 ): InventoryListFilters {
   const filters: InventoryListFilters = {
     page,
-    page_size: 10,
+    page_size: pageSize,
     sort_by: "name",
     sort_order: "asc",
   };
