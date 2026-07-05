@@ -333,6 +333,24 @@ export function getInventoryMovementAmountLabel(movement: InventoryMovement) {
   return null;
 }
 
+export function isNonNegativeInteger(value: string) {
+  if (!value.trim()) {
+    return false;
+  }
+
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue >= 0;
+}
+
+export function isPositiveInteger(value: string) {
+  if (!value.trim()) {
+    return false;
+  }
+
+  const numericValue = Number(value);
+  return Number.isInteger(numericValue) && numericValue >= 1;
+}
+
 export function validateInventoryForm(
   formState: InventoryFormState,
   options: { isEdit?: boolean } = {},
@@ -347,14 +365,12 @@ export function validateInventoryForm(
     return "Selecciona una unidad de medida.";
   }
 
-  const stockValue = Number(formState.current_stock || "0");
-  if (!options.isEdit && (Number.isNaN(stockValue) || stockValue < 0)) {
-    return "El stock inicial no puede ser negativo.";
+  if (!options.isEdit && !isNonNegativeInteger(formState.current_stock)) {
+    return "Ingresa un número entero mayor o igual a 0.";
   }
 
-  const minimumStockValue = Number(formState.minimum_stock || "0");
-  if (Number.isNaN(minimumStockValue) || minimumStockValue < 0) {
-    return "El stock mínimo no puede ser negativo.";
+  if (!isNonNegativeInteger(formState.minimum_stock)) {
+    return "Ingresa un número entero mayor o igual a 0.";
   }
 
   const purchasePriceValue = formState.purchase_price_ars
@@ -600,9 +616,8 @@ export function buildInventoryListFilters(
 }
 
 export function validateInventoryEntryForm(formState: InventoryEntryFormState) {
-  const quantityValue = Number(formState.quantity);
-  if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-    return "Ingresa una cantidad mayor a cero.";
+  if (!isPositiveInteger(formState.quantity)) {
+    return "Ingresa una cantidad entera mayor o igual a 1.";
   }
 
   const totalCostValue = formState.total_cost_ars ? Number(formState.total_cost_ars) : null;
@@ -623,8 +638,8 @@ export function validateInventoryExitForm(
   currentStock: string,
 ) {
   const quantityValue = Number(formState.quantity);
-  if (Number.isNaN(quantityValue) || quantityValue <= 0) {
-    return "Ingresa una cantidad mayor a cero.";
+  if (!isPositiveInteger(formState.quantity)) {
+    return "Ingresa una cantidad entera mayor o igual a 1.";
   }
 
   if (quantityValue > Number(currentStock)) {
@@ -653,8 +668,7 @@ export function calculateInventoryEntryUnitCostPreview(formState: InventoryEntry
   const totalCostValue = Number(formState.total_cost_ars);
 
   if (
-    Number.isNaN(quantityValue) ||
-    quantityValue <= 0 ||
+    !isPositiveInteger(formState.quantity) ||
     Number.isNaN(totalCostValue) ||
     totalCostValue < 0
   ) {

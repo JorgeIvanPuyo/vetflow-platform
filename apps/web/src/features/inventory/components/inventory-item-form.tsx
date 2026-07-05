@@ -57,7 +57,7 @@ export function InventoryItemForm({
   }
 
   return (
-    <form className="page-stack inventory-form-page" onSubmit={onSubmit}>
+    <form className="page-stack inventory-form-page" onSubmit={onSubmit} noValidate>
       <section className="detail-hero inventory-form-hero">
         <button className="back-link inventory-inline-back" type="button" onClick={onCancel}>
           Volver a inventario
@@ -157,10 +157,11 @@ export function InventoryItemForm({
             <label className="field">
               <span>Stock inicial *</span>
               <input
-                inputMode="decimal"
+                inputMode="numeric"
                 type="number"
                 min="0"
-                step="0.01"
+                step="1"
+                required
                 value={formState.current_stock}
                 onChange={(event) => updateField("current_stock", event.target.value)}
               />
@@ -175,10 +176,11 @@ export function InventoryItemForm({
           <label className="field">
             <span>Stock mínimo *</span>
             <input
-              inputMode="decimal"
+              inputMode="numeric"
               type="number"
               min="0"
-              step="0.01"
+              step="1"
+              required
               value={formState.minimum_stock}
               onChange={(event) => updateField("minimum_stock", event.target.value)}
             />

@@ -812,14 +812,19 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               </button>
             </div>
 
-            <form className="entity-form inventory-movement-form" onSubmit={handleEntrySubmit}>
+            <form
+              className="entity-form inventory-movement-form"
+              onSubmit={handleEntrySubmit}
+              noValidate
+            >
               <label className="field">
                 <span>Cantidad *</span>
                 <input
-                  inputMode="decimal"
+                  inputMode="numeric"
                   type="number"
-                  min="0"
-                  step="0.01"
+                  min="1"
+                  step="1"
+                  required
                   value={entryFormState.quantity}
                   onChange={(event) =>
                     setEntryFormState((current) => ({
@@ -942,14 +947,19 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               </button>
             </div>
 
-            <form className="entity-form inventory-movement-form" onSubmit={handleExitSubmit}>
+            <form
+              className="entity-form inventory-movement-form"
+              onSubmit={handleExitSubmit}
+              noValidate
+            >
               <label className="field">
                 <span>Cantidad *</span>
                 <input
-                  inputMode="decimal"
+                  inputMode="numeric"
                   type="number"
-                  min="0"
-                  step="0.01"
+                  min="1"
+                  step="1"
+                  required
                   value={exitFormState.quantity}
                   onChange={(event) =>
                     setExitFormState((current) => ({
