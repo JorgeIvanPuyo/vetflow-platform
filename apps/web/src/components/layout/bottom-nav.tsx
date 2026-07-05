@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SCOPED_ROLES } from "@/components/layout/navigation-items";
 import { useCurrentUser } from "@/features/auth/current-user-context";
 
 const navItems = [
@@ -49,11 +50,12 @@ export function BottomNav() {
     return null;
   }
 
-  const visibleItems = navItems.filter(
-    (item) =>
-      !("roles" in item) ||
-      (role ? (item.roles as readonly string[]).includes(role) : false),
-  );
+  const visibleItems = navItems.filter((item) => {
+    if ("roles" in item) {
+      return role ? (item.roles as readonly string[]).includes(role) : false;
+    }
+    return role ? !SCOPED_ROLES.includes(role) : true;
+  });
 
   return (
     <nav className="bottom-nav" aria-label="Navegación principal móvil">

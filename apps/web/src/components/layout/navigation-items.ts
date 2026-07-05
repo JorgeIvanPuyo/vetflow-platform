@@ -40,9 +40,19 @@ export const navigationItems: NavigationItem[] = [
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
+// Roles that must ONLY see modules explicitly granted to them (via `roles`),
+// never the unrestricted base modules.
+export const SCOPED_ROLES: AppRole[] = ["contador"];
+
 export function filterNavigationByRole(
   items: NavigationItem[],
   role: AppRole | null,
 ): NavigationItem[] {
-  return items.filter((item) => !item.roles || (role ? item.roles.includes(role) : false));
+  return items.filter((item) => {
+    if (item.roles) {
+      return role ? item.roles.includes(role) : false;
+    }
+    // Unrestricted items: visible to everyone except scoped roles.
+    return role ? !SCOPED_ROLES.includes(role) : true;
+  });
 }

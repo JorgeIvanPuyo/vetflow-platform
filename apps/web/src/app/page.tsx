@@ -1,5 +1,10 @@
+import { HomeLandingGuard } from "@/features/auth/components/home-landing-guard";
 import { DashboardHome } from "@/features/dashboard/components/dashboard-home";
 
 export default function HomePage() {
-  return <DashboardHome />;
+  return (
+    <HomeLandingGuard>
+      <DashboardHome />
+    </HomeLandingGuard>
+  );
 }
