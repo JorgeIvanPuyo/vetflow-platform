@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import base64
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from html import escape
-from io import BytesIO
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
+from weasyprint import HTML
+from weasyprint.urls import URLFetcher
 
 from app.core.errors import AppError
 from app.models.consultation import Consultation
@@ -30,7 +33,20 @@ from app.services.storage import ClinicalFileStorageService
 logger = logging.getLogger(__name__)
 
 SUPPORTED_CLINIC_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-MAX_CLINIC_LOGO_SIZE_BYTES = 5 * 1024 * 1024
+MAX_CLINIC_LOGO_SIZE_BYTES = 1024 * 1024
+SLOW_PDF_RENDER_SECONDS = 10.0
+TEMPLATE_DIRECTORY = Path(__file__).resolve().parent.parent / "templates"
+TEMPLATE_NAME = "clinical_history_pdf.html"
+
+
+class PdfAssetURLFetcher(URLFetcher):
+    def fetch(self, url: str, headers=None):
+        if urlparse(url).scheme != "data":
+            raise ValueError("External PDF assets are not allowed")
+        return super().fetch(url, headers)
+
+
+PDF_ASSET_URL_FETCHER = PdfAssetURLFetcher()
 
 
 @dataclass(frozen=True)
@@ -73,45 +89,58 @@ class ClinicalHistoryPdfService:
             )
             owner = self._get_owner_for_patient(tenant_id, patient)
             clinic = self.db.get(Tenant, tenant_id)
-            filtered_consultations = self._filter_by_date(
-                consultations,
-                options,
-                self._consultation_event_date,
+            consultations = self._filter_by_date(
+                consultations, options, self._consultation_event_date
             )
-            filtered_exams = self._filter_by_date(
-                exams,
-                options,
-                self._exam_event_date,
+            exams = self._filter_by_date(exams, options, self._exam_event_date)
+            preventive_care = self._filter_by_date(
+                preventive_care, options, self._preventive_care_event_date
             )
-            filtered_preventive_care = self._filter_by_date(
-                preventive_care,
-                options,
-                self._preventive_care_event_date,
+            file_references = self._filter_by_date(
+                file_references, options, self._file_reference_event_date
             )
-            filtered_file_references = self._filter_by_date(
-                file_references,
-                options,
-                self._file_reference_event_date,
-            )
+
+            # Retained for compatibility with callers and existing assertions. It is
+            # deliberately not used as the visual source for the PDF.
             text_lines = self.build_text_lines(
                 clinic=clinic,
                 patient=patient,
                 owner=owner,
-                consultations=filtered_consultations,
-                exams=filtered_exams,
-                preventive_care=filtered_preventive_care,
-                file_references=filtered_file_references,
+                consultations=consultations,
+                exams=exams,
+                preventive_care=preventive_care,
+                file_references=file_references,
                 options=options,
             )
-            pdf_bytes = self._render_pdf(
-                text_lines,
-                options=options,
+            context = self._build_template_context(
                 clinic=clinic,
+                patient=patient,
+                owner=owner,
+                consultations=consultations,
+                exams=exams,
+                preventive_care=preventive_care,
+                file_references=file_references,
+                options=options,
             )
-            filename = self._build_filename(patient.name)
+
+            render_started_at = time.perf_counter()
+            pdf_bytes = self._render_pdf_from_template(context, options=options)
+            render_duration = time.perf_counter() - render_started_at
+            log_method = (
+                logger.warning
+                if render_duration > SLOW_PDF_RENDER_SECONDS
+                else logger.info
+            )
+            log_method(
+                "Clinical history PDF rendered in %.3f seconds. "
+                "patient_id=%s tenant_id=%s",
+                render_duration,
+                patient_id,
+                tenant_id,
+            )
             return ClinicalHistoryPdfExport(
                 pdf_bytes=pdf_bytes,
-                filename=filename,
+                filename=self._build_filename(patient.name),
                 text_lines=text_lines,
             )
         except AppError:
@@ -128,6 +157,328 @@ class ClinicalHistoryPdfService:
                 "Clinical history PDF export failed",
             ) from exc
 
+    def _build_template_context(
+        self,
+        *,
+        clinic: Tenant | None,
+        patient: Patient,
+        owner: Owner | None,
+        consultations: list[Consultation],
+        exams: list[Exam],
+        preventive_care: list[PatientPreventiveCare],
+        file_references: list[PatientFileReference],
+        options: ClinicalHistoryPdfExportRequest,
+    ) -> dict:
+        generated_at = self._format_datetime(datetime.now(timezone.utc))
+        clinic_name = self._value(
+            (clinic.display_name or clinic.name) if clinic is not None else None,
+            "Clínica veterinaria",
+        )
+        owner_context = None
+        if owner is not None:
+            owner_context = {
+                "full_name": self._value(owner.full_name),
+                "phone": self._value(owner.phone),
+                "email": self._value(owner.email),
+                "address": self._value(owner.address),
+            }
+
+        consultation_context = []
+        for consultation in consultations:
+            attended_by = self._user_label(
+                consultation.attending_user_name,
+                consultation.attending_user_email,
+            )
+            created_by = self._user_label(
+                consultation.created_by_user_name,
+                consultation.created_by_user_email,
+            )
+            clinical_fields = self._non_empty_fields(
+                [
+                    self._field("Anamnesis", consultation.anamnesis),
+                    self._field("Síntomas", consultation.symptoms),
+                    self._field("Duración de síntomas", consultation.symptom_duration),
+                    self._field("Antecedentes relevantes", consultation.relevant_history),
+                    self._field("Hábitos y dieta", consultation.habits_and_diet),
+                    self._field("Examen clínico", consultation.clinical_exam),
+                    self._field("Hallazgos físicos", consultation.physical_exam_findings),
+                    self._field("Plan diagnóstico", consultation.diagnostic_plan),
+                    self._field(
+                        "Notas del plan diagnóstico",
+                        consultation.diagnostic_plan_notes,
+                    ),
+                    self._field(
+                        "Resultados del plan diagnóstico",
+                        consultation.diagnostic_results,
+                    ),
+                    self._field("Plan terapéutico", consultation.therapeutic_plan),
+                    self._field(
+                        "Notas del plan terapéutico",
+                        consultation.therapeutic_plan_notes,
+                    ),
+                ]
+            )
+            consultation_context.append(
+                {
+                    "visit_date": self._format_datetime(consultation.visit_date),
+                    "reason": self._value(consultation.reason),
+                    "status": self._status_label(consultation.status),
+                    "status_class": self._status_badge_class(consultation.status),
+                    "attended_by": self._value(attended_by),
+                    "created_by": (
+                        created_by
+                        if options.detail_level == "full"
+                        and created_by
+                        and created_by != attended_by
+                        else None
+                    ),
+                    "presumptive_diagnosis": consultation.presumptive_diagnosis,
+                    "final_diagnosis": consultation.final_diagnosis,
+                    "indications": consultation.indications,
+                    "consultation_summary": consultation.consultation_summary,
+                    "clinical_fields": (
+                        clinical_fields if options.detail_level == "full" else []
+                    ),
+                    "medications": (
+                        [
+                            {
+                                "name": self._value(medication.medication_name),
+                                "dose_or_quantity": self._value(
+                                    medication.dose_or_quantity
+                                ),
+                                "instructions": self._value(medication.instructions),
+                            }
+                            for medication in consultation.medications
+                        ]
+                        if options.detail_level == "full"
+                        else []
+                    ),
+                    "study_requests": (
+                        [
+                            {
+                                "name": self._value(study_request.name),
+                                "study_type": self._study_request_type_label(
+                                    study_request.study_type
+                                ),
+                                "notes": self._value(study_request.notes),
+                            }
+                            for study_request in consultation.study_requests
+                        ]
+                        if options.detail_level == "full"
+                        else []
+                    ),
+                }
+            )
+
+        return {
+            "document": {
+                "title": "Historia clínica veterinaria",
+                "generated_at": generated_at,
+                "date_range": self._format_date_range(options) or "Historia completa",
+                "detail_level": (
+                    "Resumen"
+                    if options.detail_level == "summary"
+                    else "Historia completa"
+                ),
+                "page_size": options.page_size,
+                "generated_by": "VetFlow",
+            },
+            "clinic": {
+                "name": clinic_name,
+                "phone": self._value(clinic.phone) if clinic is not None else "No indicado",
+                "email": self._value(clinic.email) if clinic is not None else "No indicado",
+                "address": self._value(clinic.address) if clinic is not None else "No indicado",
+                "logo_data_uri": self._clinic_logo_data_uri(clinic),
+                "monogram": clinic_name[:1].upper() or "V",
+            },
+            "patient": {
+                "name": self._value(patient.name),
+                "species": self._value(patient.species),
+                "breed": self._value(patient.breed),
+                "sex": self._value(patient.sex),
+                "estimated_age": self._format_duration_or_age(patient),
+                "weight": self._format_weight(patient.weight_kg),
+                "allergies": self._value(patient.allergies, "Sin registros"),
+                "chronic_conditions": self._value(
+                    patient.chronic_conditions, "Sin registros"
+                ),
+            },
+            "owner": owner_context,
+            "sections": {
+                "include_patient_data": options.include_patient_data,
+                "include_owner_data": options.include_owner_data,
+                "include_consultations": options.include_consultations,
+                "include_exams": options.include_exams,
+                "include_preventive_care": options.include_preventive_care,
+                "include_file_references": options.include_file_references,
+            },
+            "consultations": consultation_context,
+            "exams": [
+                {
+                    "exam_type": self._value(exam.exam_type),
+                    "status": self._exam_status_label(exam.status),
+                    "status_class": self._status_badge_class(exam.status),
+                    "requested_at": self._format_datetime(exam.requested_at),
+                    "performed_at": self._format_datetime(exam.performed_at),
+                    "requested_by": self._value(
+                        self._user_label(
+                            exam.requested_by_user_name,
+                            exam.requested_by_user_email,
+                        )
+                    ),
+                    "result_summary": self._value(exam.result_summary),
+                    "observations": self._value(exam.observations),
+                }
+                for exam in exams
+            ],
+            "preventive_care": [
+                {
+                    "care_type": self._preventive_care_type_label(record.care_type),
+                    "name": self._value(record.name),
+                    "applied_at": self._format_datetime(record.applied_at),
+                    "next_due_at": self._format_datetime(record.next_due_at),
+                    "lot_number": self._value(record.lot_number),
+                    "registered_by": self._value(
+                        self._user_label(
+                            record.created_by_user_name,
+                            record.created_by_user_email,
+                        )
+                    ),
+                    "notes": self._value(record.notes),
+                }
+                for record in preventive_care
+            ],
+            "file_references": [
+                {
+                    "name": self._value(file_reference.name),
+                    "file_type": self._file_type_label(file_reference.file_type),
+                    "original_filename": self._value(
+                        file_reference.original_filename
+                    ),
+                    "uploaded_at": self._format_datetime(
+                        file_reference.uploaded_at or file_reference.created_at
+                    ),
+                    "registered_by": self._value(
+                        self._user_label(
+                            file_reference.created_by_user_name,
+                            file_reference.created_by_user_email,
+                        )
+                    ),
+                }
+                for file_reference in file_references
+            ],
+        }
+
+    def _render_pdf_from_template(
+        self,
+        context: dict,
+        *,
+        options: ClinicalHistoryPdfExportRequest,
+    ) -> bytes:
+        if context["document"]["page_size"] != options.page_size:
+            raise ValueError("Template page size does not match export options")
+        environment = Environment(
+            loader=FileSystemLoader(TEMPLATE_DIRECTORY),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
+        template = environment.get_template(TEMPLATE_NAME)
+        rendered_html = template.render(**context)
+        return HTML(
+            string=rendered_html,
+            base_url=str(TEMPLATE_DIRECTORY),
+            url_fetcher=PDF_ASSET_URL_FETCHER,
+        ).write_pdf()
+
+    def _clinic_logo_data_uri(self, clinic: Tenant | None) -> str | None:
+        logo_bytes = self._load_clinic_logo_bytes(clinic)
+        if logo_bytes is None or clinic is None or not clinic.logo_object_path:
+            return None
+        mime_type = self._mime_type_for_logo(clinic.logo_object_path)
+        if mime_type is None:
+            return None
+        encoded_logo = base64.b64encode(logo_bytes).decode("ascii")
+        return f"data:{mime_type};base64,{encoded_logo}"
+
+    def _mime_type_for_logo(self, object_path: str) -> str | None:
+        return {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(Path(object_path).suffix.lower())
+
+    def _load_clinic_logo_bytes(self, clinic: Tenant | None) -> bytes | None:
+        if (
+            clinic is None
+            or self.storage_service is None
+            or not clinic.logo_object_path
+        ):
+            return None
+        if Path(clinic.logo_object_path).suffix.lower() not in SUPPORTED_CLINIC_LOGO_EXTENSIONS:
+            logger.warning(
+                "Unsupported clinic logo format; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+        bucket_name = self._clinic_logo_bucket_name(clinic)
+        if not bucket_name:
+            return None
+        try:
+            logo_bytes = self.storage_service.download_object_bytes(
+                bucket_name=bucket_name,
+                object_path=clinic.logo_object_path,
+            )
+        except Exception:
+            logger.warning(
+                "Clinic logo could not be loaded; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+        if not logo_bytes or len(logo_bytes) > MAX_CLINIC_LOGO_SIZE_BYTES:
+            logger.warning(
+                "Clinic logo is empty or too large; continuing without it. tenant_id=%s",
+                clinic.id,
+            )
+            return None
+        return logo_bytes
+
+    def _clinic_logo_bucket_name(self, clinic: Tenant) -> str | None:
+        parsed_logo_url = urlparse(clinic.logo_url or "")
+        if parsed_logo_url.scheme == "gs" and parsed_logo_url.netloc:
+            return parsed_logo_url.netloc
+        if self.storage_service is None:
+            return None
+        return self.storage_service.bucket_name
+
+    def _field(self, label: str, value: object | None) -> dict:
+        return {"label": label, "value": value}
+
+    def _non_empty_fields(self, fields: list[dict]) -> list[dict]:
+        return [
+            {"label": field["label"], "value": str(field["value"])}
+            for field in fields
+            if field["value"] is not None and str(field["value"]).strip()
+        ]
+
+    def _status_badge_class(self, status: str) -> str:
+        normalized = (status or "").lower()
+        if normalized in {"completed", "completada", "performed", "result_loaded"}:
+            return "success"
+        if normalized in {"draft", "borrador", "requested"}:
+            return "warning"
+        return "neutral"
+
+    def _format_duration_or_age(self, patient: Patient) -> str:
+        if patient.estimated_age:
+            return patient.estimated_age
+        if patient.birth_date is None:
+            return "No indicado"
+        today = datetime.now(timezone.utc).date()
+        years = today.year - patient.birth_date.year - (
+            (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
+        )
+        return f"{years} año{'s' if years != 1 else ''}"
+
     def build_text_lines(
         self,
         *,
@@ -140,30 +491,24 @@ class ClinicalHistoryPdfService:
         file_references: list[PatientFileReference],
         options: ClinicalHistoryPdfExportRequest,
     ) -> list[str]:
-        lines: list[str] = [
-            "Historia clínica veterinaria",
-        ]
+        lines = ["Historia clínica veterinaria"]
         if clinic is not None:
             lines.append(f"Clínica: {clinic.display_name or clinic.name}")
             self._append_optional(lines, "Teléfono de la clínica", clinic.phone)
             self._append_optional(lines, "Correo de la clínica", clinic.email)
             self._append_optional(lines, "Dirección de la clínica", clinic.address)
-
         lines.extend(
             [
                 f"Paciente: {patient.name}",
                 f"Generado: {self._format_datetime(datetime.now(timezone.utc))}",
             ]
         )
-
-        date_range = self._format_date_range(options)
-        if date_range:
-            lines.append(f"Rango: {date_range}")
+        if self._format_date_range(options):
+            lines.append(f"Rango: {self._format_date_range(options)}")
         lines.append(
             "Nivel de detalle: "
             + ("Resumen" if options.detail_level == "summary" else "Historia completa")
         )
-
         if options.include_patient_data:
             lines.extend(
                 [
@@ -173,16 +518,13 @@ class ClinicalHistoryPdfService:
                     f"Especie: {patient.species}",
                     f"Raza: {self._value(patient.breed)}",
                     f"Sexo: {self._value(patient.sex)}",
-                    f"Edad estimada: {self._value(patient.estimated_age)}",
+                    f"Edad estimada: {self._format_duration_or_age(patient)}",
                     f"Peso: {self._format_weight(patient.weight_kg)}",
                     f"Alergias: {self._value(patient.allergies, 'Sin registros')}",
-                    (
-                        "Condiciones crónicas: "
-                        f"{self._value(patient.chronic_conditions, 'Sin registros')}"
-                    ),
+                    "Condiciones crónicas: "
+                    + self._value(patient.chronic_conditions, "Sin registros"),
                 ]
             )
-
         if options.include_owner_data and owner is not None:
             lines.extend(
                 [
@@ -194,35 +536,30 @@ class ClinicalHistoryPdfService:
                     f"Dirección: {self._value(owner.address)}",
                 ]
             )
-
         if options.include_consultations:
             lines.extend(["", "Consultas"])
             if not consultations:
                 lines.append("Sin consultas en el rango seleccionado.")
             for consultation in consultations:
                 self._append_consultation(lines, consultation, options.detail_level)
-
         if options.include_exams:
             lines.extend(["", "Exámenes"])
             if not exams:
                 lines.append("Sin exámenes en el rango seleccionado.")
             for exam in exams:
                 self._append_exam(lines, exam)
-
         if options.include_preventive_care:
             lines.extend(["", "Vacunas y desparasitación"])
             if not preventive_care:
                 lines.append("Sin registros preventivos en el rango seleccionado.")
             for record in preventive_care:
                 self._append_preventive_care(lines, record)
-
         if options.include_file_references:
             lines.extend(["", "Archivos adjuntos"])
             if not file_references:
                 lines.append("Sin archivos en el rango seleccionado.")
             for file_reference in file_references:
                 self._append_file_reference(lines, file_reference)
-
         return lines
 
     def _append_consultation(
@@ -240,43 +577,40 @@ class ClinicalHistoryPdfService:
             ]
         )
         attended_by = self._user_label(
-            consultation.attending_user_name,
-            consultation.attending_user_email,
+            consultation.attending_user_name, consultation.attending_user_email
         )
         created_by = self._user_label(
-            consultation.created_by_user_name,
-            consultation.created_by_user_email,
+            consultation.created_by_user_name, consultation.created_by_user_email
         )
         if attended_by:
             lines.append(f"Atendido por: {attended_by}")
-        if created_by and created_by != attended_by:
+        if detail_level == "full" and created_by and created_by != attended_by:
             lines.append(f"Registrado por: {created_by}")
-
-        if detail_level == "summary":
-            self._append_optional(lines, "Diagnóstico presuntivo", consultation.presumptive_diagnosis)
-            self._append_optional(lines, "Diagnóstico final", consultation.final_diagnosis)
-            self._append_optional(lines, "Indicaciones", consultation.indications)
-            self._append_optional(lines, "Resumen", consultation.consultation_summary)
-            return
-
-        self._append_optional(lines, "Anamnesis", consultation.anamnesis)
-        self._append_optional(lines, "Síntomas", consultation.symptoms)
-        self._append_optional(lines, "Duración de síntomas", consultation.symptom_duration)
-        self._append_optional(lines, "Antecedentes relevantes", consultation.relevant_history)
-        self._append_optional(lines, "Hábitos y dieta", consultation.habits_and_diet)
-        self._append_optional(lines, "Examen clínico", consultation.clinical_exam)
-        self._append_optional(lines, "Hallazgos físicos", consultation.physical_exam_findings)
-        self._append_optional(lines, "Plan diagnóstico", consultation.diagnostic_plan)
-        self._append_optional(lines, "Notas del plan diagnóstico", consultation.diagnostic_plan_notes)
         self._append_optional(
-            lines,
-            "Resultados del plan diagnóstico",
-            consultation.diagnostic_results,
+            lines, "Diagnóstico presuntivo", consultation.presumptive_diagnosis
         )
-        self._append_optional(lines, "Plan terapéutico", consultation.therapeutic_plan)
-        self._append_optional(lines, "Notas del plan terapéutico", consultation.therapeutic_plan_notes)
         self._append_optional(lines, "Diagnóstico final", consultation.final_diagnosis)
         self._append_optional(lines, "Indicaciones", consultation.indications)
+        self._append_optional(lines, "Resumen", consultation.consultation_summary)
+        if detail_level == "summary":
+            return
+        for field in self._non_empty_fields(
+            [
+                self._field("Anamnesis", consultation.anamnesis),
+                self._field("Síntomas", consultation.symptoms),
+                self._field("Duración de síntomas", consultation.symptom_duration),
+                self._field("Antecedentes relevantes", consultation.relevant_history),
+                self._field("Hábitos y dieta", consultation.habits_and_diet),
+                self._field("Examen clínico", consultation.clinical_exam),
+                self._field("Hallazgos físicos", consultation.physical_exam_findings),
+                self._field("Plan diagnóstico", consultation.diagnostic_plan),
+                self._field("Notas del plan diagnóstico", consultation.diagnostic_plan_notes),
+                self._field("Resultados del plan diagnóstico", consultation.diagnostic_results),
+                self._field("Plan terapéutico", consultation.therapeutic_plan),
+                self._field("Notas del plan terapéutico", consultation.therapeutic_plan_notes),
+            ]
+        ):
+            lines.append(f"{field['label']}: {field['value']}")
         if consultation.medications:
             lines.append("Medicamentos:")
             for medication in consultation.medications:
@@ -292,13 +626,13 @@ class ClinicalHistoryPdfService:
                 lines.append(f"- {details}")
         if consultation.study_requests:
             lines.append("Solicitudes de estudio:")
-            for study_request in consultation.study_requests:
+            for request in consultation.study_requests:
                 details = " · ".join(
                     value
                     for value in [
-                        study_request.name,
-                        self._study_request_type_label(study_request.study_type),
-                        study_request.notes,
+                        request.name,
+                        self._study_request_type_label(request.study_type),
+                        request.notes,
                     ]
                     if value
                 )
@@ -315,8 +649,7 @@ class ClinicalHistoryPdfService:
             ]
         )
         requested_by = self._user_label(
-            exam.requested_by_user_name,
-            exam.requested_by_user_email,
+            exam.requested_by_user_name, exam.requested_by_user_email
         )
         if requested_by:
             lines.append(f"Solicitado por: {requested_by}")
@@ -324,9 +657,7 @@ class ClinicalHistoryPdfService:
         self._append_optional(lines, "Observaciones", exam.observations)
 
     def _append_preventive_care(
-        self,
-        lines: list[str],
-        record: PatientPreventiveCare,
+        self, lines: list[str], record: PatientPreventiveCare
     ) -> None:
         lines.extend(
             [
@@ -338,17 +669,14 @@ class ClinicalHistoryPdfService:
             ]
         )
         registered_by = self._user_label(
-            record.created_by_user_name,
-            record.created_by_user_email,
+            record.created_by_user_name, record.created_by_user_email
         )
         if registered_by:
             lines.append(f"Registrado por: {registered_by}")
         self._append_optional(lines, "Notas", record.notes)
 
     def _append_file_reference(
-        self,
-        lines: list[str],
-        file_reference: PatientFileReference,
+        self, lines: list[str], file_reference: PatientFileReference
     ) -> None:
         lines.extend(
             [
@@ -356,7 +684,10 @@ class ClinicalHistoryPdfService:
                 f"Archivo - {file_reference.name}",
                 f"Tipo: {self._file_type_label(file_reference.file_type)}",
                 f"Archivo original: {self._value(file_reference.original_filename)}",
-                f"Subido: {self._format_datetime(file_reference.uploaded_at)}",
+                "Subido: "
+                + self._format_datetime(
+                    file_reference.uploaded_at or file_reference.created_at
+                ),
             ]
         )
         registered_by = self._user_label(
@@ -366,321 +697,10 @@ class ClinicalHistoryPdfService:
         if registered_by:
             lines.append(f"Registrado por: {registered_by}")
 
-    def _render_pdf(
-        self,
-        text_lines: list[str],
-        *,
-        options: ClinicalHistoryPdfExportRequest,
-        clinic: Tenant | None,
-    ) -> bytes:
-        from reportlab.lib import colors
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.pdfbase.pdfmetrics import stringWidth
-        from reportlab.platypus import (
-            HRFlowable,
-            Paragraph,
-            SimpleDocTemplate,
-            Spacer,
-            Table,
-            TableStyle,
-        )
-
-        buffer = BytesIO()
-        page_size = self._page_size_for(options.page_size)
-        document = SimpleDocTemplate(
-            buffer,
-            pagesize=page_size,
-            rightMargin=42,
-            leftMargin=42,
-            topMargin=54,
-            bottomMargin=48,
-            title="Historia clínica veterinaria",
-        )
-        styles = getSampleStyleSheet()
-        teal = colors.HexColor("#245B4F")
-        teal_light = colors.HexColor("#EAF4F1")
-        text_color = colors.HexColor("#27332F")
-        muted = colors.HexColor("#66736E")
-
-        title_style = ParagraphStyle(
-            "ClinicalHistoryTitle",
-            parent=styles["Title"],
-            fontName="Helvetica-Bold",
-            fontSize=18,
-            leading=22,
-            textColor=teal,
-            spaceAfter=5,
-        )
-        clinic_style = ParagraphStyle(
-            "ClinicalHistoryClinic",
-            parent=styles["BodyText"],
-            fontName="Helvetica-Bold",
-            fontSize=10,
-            leading=13,
-            textColor=text_color,
-        )
-        metadata_style = ParagraphStyle(
-            "ClinicalHistoryMetadata",
-            parent=styles["BodyText"],
-            fontName="Helvetica",
-            fontSize=8.2,
-            leading=11,
-            textColor=muted,
-        )
-        section_style = ParagraphStyle(
-            "ClinicalHistorySection",
-            parent=styles["Heading2"],
-            fontName="Helvetica-Bold",
-            fontSize=11,
-            leading=14,
-            textColor=teal,
-            backColor=teal_light,
-            borderPadding=(5, 7, 5, 7),
-            spaceBefore=8,
-            spaceAfter=6,
-        )
-        record_style = ParagraphStyle(
-            "ClinicalHistoryRecord",
-            parent=styles["Heading3"],
-            fontName="Helvetica-Bold",
-            fontSize=9.5,
-            leading=12,
-            textColor=teal,
-            spaceBefore=5,
-            spaceAfter=3,
-        )
-        body_style = ParagraphStyle(
-            "ClinicalHistoryBody",
-            parent=styles["BodyText"],
-            fontName="Helvetica",
-            fontSize=8.8,
-            leading=12,
-            textColor=text_color,
-            spaceAfter=2,
-        )
-        bullet_style = ParagraphStyle(
-            "ClinicalHistoryBullet",
-            parent=body_style,
-            leftIndent=12,
-            firstLineIndent=-7,
-        )
-
-        clinic_name = (clinic.display_name or clinic.name) if clinic is not None else None
-        logo = self._build_logo_flowable(clinic)
-        header_end = next(
-            (index for index, line in enumerate(text_lines) if not line),
-            len(text_lines),
-        )
-        header_story = []
-        for index, line in enumerate(text_lines[:header_end]):
-            if index == 0:
-                header_story.append(Paragraph(escape(line), title_style))
-                continue
-            if line.startswith("Clínica:"):
-                header_story.append(Paragraph(self._format_pdf_line(line), clinic_style))
-                continue
-            if line.startswith(
-                (
-                    "Teléfono de la clínica:",
-                    "Correo de la clínica:",
-                    "Dirección de la clínica:",
-                    "Generado:",
-                    "Rango:",
-                    "Nivel de detalle:",
-                )
-            ):
-                header_story.append(
-                    Paragraph(self._format_pdf_line(line), metadata_style)
-                )
-                continue
-            header_story.append(Paragraph(self._format_pdf_line(line), body_style))
-
-        story = []
-        if logo is not None:
-            logo_column_width = 78
-            story.append(
-                Table(
-                    [[logo, header_story]],
-                    colWidths=[logo_column_width, document.width - logo_column_width],
-                    style=TableStyle(
-                        [
-                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                            ("RIGHTPADDING", (0, 0), (0, 0), 10),
-                            ("RIGHTPADDING", (1, 0), (1, 0), 0),
-                            ("TOPPADDING", (0, 0), (-1, -1), 0),
-                            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                        ]
-                    ),
-                )
-            )
-        else:
-            story.extend(header_story)
-        story.append(Spacer(1, 5))
-        story.append(HRFlowable(width="100%", thickness=1, color=teal))
-        story.append(Spacer(1, 7))
-
-        for line in text_lines[header_end + 1 :]:
-            if not line:
-                story.append(Spacer(1, 4))
-                continue
-            if self._is_section_heading(line):
-                story.append(Paragraph(escape(line), section_style))
-                continue
-            if self._is_record_heading(line):
-                story.append(Paragraph(escape(line), record_style))
-                continue
-            if line.startswith("Clínica:"):
-                story.append(Paragraph(self._format_pdf_line(line), clinic_style))
-                continue
-            if line.startswith(
-                (
-                    "Teléfono de la clínica:",
-                    "Correo de la clínica:",
-                    "Dirección de la clínica:",
-                    "Generado:",
-                    "Rango:",
-                    "Nivel de detalle:",
-                )
-            ):
-                story.append(Paragraph(self._format_pdf_line(line), metadata_style))
-                continue
-            if line.startswith("- "):
-                story.append(
-                    Paragraph(
-                        f"• {escape(line[2:])}",
-                        bullet_style,
-                    )
-                )
-                continue
-            story.append(Paragraph(self._format_pdf_line(line), body_style))
-
-        def draw_footer(canvas, doc) -> None:
-            canvas.saveState()
-            page_width, _page_height = doc.pagesize
-            footer_text = self._footer_text(clinic_name, doc.page)
-            font_name = "Helvetica"
-            font_size = 7.5
-            max_width = page_width - 84
-            while (
-                stringWidth(footer_text, font_name, font_size) > max_width
-                and font_size > 6
-            ):
-                font_size -= 0.5
-            canvas.setStrokeColor(colors.HexColor("#C8D8D3"))
-            canvas.setLineWidth(0.5)
-            canvas.line(42, 34, page_width - 42, 34)
-            canvas.setFillColor(muted)
-            canvas.setFont(font_name, font_size)
-            canvas.drawCentredString(page_width / 2, 21, footer_text)
-            canvas.restoreState()
-
-        document.build(
-            story,
-            onFirstPage=draw_footer,
-            onLaterPages=draw_footer,
-        )
-        return buffer.getvalue()
-
-    def _build_logo_flowable(self, clinic: Tenant | None):
-        logo_bytes = self._load_clinic_logo_bytes(clinic)
-        if logo_bytes is None:
-            return None
-
-        try:
-            from reportlab.platypus import Image
-
-            logo = Image(BytesIO(logo_bytes))
-            scale = min(68 / logo.imageWidth, 54 / logo.imageHeight)
-            logo.drawWidth = logo.imageWidth * scale
-            logo.drawHeight = logo.imageHeight * scale
-            return logo
-        except Exception:
-            logger.warning(
-                "Clinic logo could not be rendered; continuing without it. tenant_id=%s",
-                clinic.id if clinic is not None else None,
-            )
-            return None
-
-    def _load_clinic_logo_bytes(self, clinic: Tenant | None) -> bytes | None:
-        if (
-            clinic is None
-            or self.storage_service is None
-            or not clinic.logo_object_path
-        ):
-            return None
-
-        extension = Path(clinic.logo_object_path).suffix.lower()
-        if extension not in SUPPORTED_CLINIC_LOGO_EXTENSIONS:
-            logger.warning(
-                "Unsupported clinic logo format; continuing without it. tenant_id=%s",
-                clinic.id,
-            )
-            return None
-
-        bucket_name = self._clinic_logo_bucket_name(clinic)
-        if not bucket_name:
-            return None
-
-        try:
-            logo_bytes = self.storage_service.download_object_bytes(
-                bucket_name=bucket_name,
-                object_path=clinic.logo_object_path,
-            )
-        except Exception:
-            logger.warning(
-                "Clinic logo could not be loaded; continuing without it. tenant_id=%s",
-                clinic.id,
-            )
-            return None
-
-        if not logo_bytes or len(logo_bytes) > MAX_CLINIC_LOGO_SIZE_BYTES:
-            logger.warning(
-                "Clinic logo is empty or too large; continuing without it. tenant_id=%s",
-                clinic.id,
-            )
-            return None
-        return logo_bytes
-
-    def _clinic_logo_bucket_name(self, clinic: Tenant) -> str | None:
-        parsed_logo_url = urlparse(clinic.logo_url or "")
-        if parsed_logo_url.scheme == "gs" and parsed_logo_url.netloc:
-            return parsed_logo_url.netloc
-        if self.storage_service is None:
-            return None
-        return self.storage_service.bucket_name
-
-    def _page_size_for(self, page_size: str) -> tuple[float, float]:
-        from reportlab.lib.pagesizes import A4, legal, letter
-
-        return {
-            "letter": letter,
-            "a4": A4,
-            "legal": legal,
-        }[page_size]
-
-    def _format_pdf_line(self, line: str) -> str:
-        label, separator, value = line.partition(":")
-        if separator:
-            return f"<b>{escape(label)}:</b> {escape(value.strip())}"
-        return escape(line)
-
-    def _footer_text(self, clinic_name: str | None, page_number: int) -> str:
-        prefix = f"VetFlow / {clinic_name}" if clinic_name else "VetFlow"
-        return f"{prefix} · Historia clínica veterinaria · Página {page_number}"
-
-    def _is_record_heading(self, line: str) -> bool:
-        return " - " in line and ":" not in line
-
     def _get_owner_for_patient(
-        self,
-        tenant_id: uuid.UUID,
-        patient: Patient,
+        self, tenant_id: uuid.UUID, patient: Patient
     ) -> Owner | None:
-        owner = self.owner_repository.get_by_id(tenant_id, patient.owner_id)
-        if owner is None:
-            return None
-        return owner
+        return self.owner_repository.get_by_id(tenant_id, patient.owner_id)
 
     def _filter_by_date(self, records: Iterable, options, date_getter) -> list:
         filtered = []
@@ -713,19 +733,8 @@ class ClinicalHistoryPdfService:
 
     def _build_filename(self, patient_name: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", patient_name.lower()).strip("-")
-        slug = slug or "paciente"
         generated_date = datetime.now(timezone.utc).date().isoformat()
-        return f"historia-clinica-{slug}-{generated_date}.pdf"
-
-    def _is_section_heading(self, line: str) -> bool:
-        return line in {
-            "Datos del paciente",
-            "Datos del propietario",
-            "Consultas",
-            "Exámenes",
-            "Vacunas y desparasitación",
-            "Archivos adjuntos",
-        }
+        return f"historia-clinica-{slug or 'paciente'}-{generated_date}.pdf"
 
     def _consultation_event_date(self, consultation: Consultation) -> datetime:
         return consultation.visit_date
@@ -736,18 +745,16 @@ class ClinicalHistoryPdfService:
     def _preventive_care_event_date(self, record: PatientPreventiveCare) -> datetime:
         return record.applied_at
 
-    def _file_reference_event_date(self, file_reference: PatientFileReference) -> datetime:
+    def _file_reference_event_date(
+        self, file_reference: PatientFileReference
+    ) -> datetime:
         return file_reference.uploaded_at or file_reference.created_at
 
     def _append_optional(
-        self,
-        lines: list[str],
-        label: str,
-        value: object | None,
+        self, lines: list[str], label: str, value: object | None
     ) -> None:
-        if value is None or value == "":
-            return
-        lines.append(f"{label}: {value}")
+        if value is not None and value != "":
+            lines.append(f"{label}: {value}")
 
     def _value(self, value: object | None, fallback: str = "No indicado") -> str:
         if value is None or value == "":
@@ -755,14 +762,10 @@ class ClinicalHistoryPdfService:
         return str(value)
 
     def _format_weight(self, value: object | None) -> str:
-        if value is None:
-            return "No indicado"
-        return f"{value} kg"
+        return "No indicado" if value is None else f"{value} kg"
 
     def _format_datetime(self, value: datetime | None) -> str:
-        if value is None:
-            return "No indicado"
-        return value.strftime("%Y-%m-%d %H:%M")
+        return "No indicado" if value is None else value.strftime("%Y-%m-%d %H:%M")
 
     def _user_label(self, full_name: str | None, email: str | None) -> str | None:
         return full_name or email

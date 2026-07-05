@@ -179,6 +179,36 @@ def _export_text_lines(
     return export.text_lines
 
 
+def _export_context(
+    db_session: Session,
+    tenant,
+    patient_id: str,
+    monkeypatch,
+    storage_service=None,
+    **options,
+) -> dict:
+    captured_context = {}
+
+    def capture_render(self, context, *, options):
+        captured_context.update(context)
+        return b"%PDF-test"
+
+    monkeypatch.setattr(
+        ClinicalHistoryPdfService,
+        "_render_pdf_from_template",
+        capture_render,
+    )
+    ClinicalHistoryPdfService(
+        db_session,
+        storage_service=storage_service,
+    ).export_patient_history_pdf(
+        tenant.id,
+        uuid.UUID(patient_id),
+        ClinicalHistoryPdfExportRequest(**options),
+    )
+    return captured_context
+
+
 def test_export_pdf_success_with_default_options(client, tenant):
     patient = _create_patient_for_tenant(client, tenant)
     _create_consultation(client, tenant, patient["id"])
@@ -217,22 +247,25 @@ def test_export_pdf_supports_page_sizes(client, tenant, page_size):
     assert response.content.startswith(b"%PDF")
 
 
-def test_page_size_mapping_uses_reportlab_dimensions(db_session):
-    from reportlab.lib.pagesizes import A4, legal, letter
+@pytest.mark.parametrize("page_size", ["letter", "a4", "legal"])
+def test_template_context_preserves_page_size(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+    page_size,
+):
+    patient = _create_patient_for_tenant(client, tenant)
 
-    service = ClinicalHistoryPdfService(db_session)
-
-    assert service._page_size_for("letter") == letter
-    assert service._page_size_for("a4") == A4
-    assert service._page_size_for("legal") == legal
-
-
-def test_pdf_footer_includes_clinic_document_title_and_page_number(db_session):
-    service = ClinicalHistoryPdfService(db_session)
-
-    assert service._footer_text("Clínica Vet Central", 3) == (
-        "VetFlow / Clínica Vet Central · Historia clínica veterinaria · Página 3"
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        page_size=page_size,
     )
+
+    assert context["document"]["page_size"] == page_size
 
 
 def test_export_pdf_rejects_invalid_page_size(client, tenant):
@@ -631,3 +664,258 @@ def test_export_pdf_can_include_all_record_types(client, tenant, db_session):
     assert "Vacuna - Rabia anual" in lines
     assert "Archivo - Radiografía lateral" in lines
     assert not any("signed" in line.lower() for line in lines)
+
+
+def test_preview_pdf_can_include_all_record_types(client, tenant):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+    _create_exam(client, tenant, patient["id"])
+    _create_preventive_care(client, tenant, patient["id"])
+    _create_file_reference(client, tenant, patient["id"])
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={"detail_level": "full"},
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert "inline;" in response.headers["content-disposition"]
+
+
+def test_template_context_contains_all_sections_and_structured_records(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    tenant.display_name = "Clínica Vet Central"
+    db_session.add(tenant)
+    db_session.commit()
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+    _create_exam(client, tenant, patient["id"])
+    _create_preventive_care(client, tenant, patient["id"])
+    _create_file_reference(client, tenant, patient["id"])
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+
+    assert context["document"]["title"] == "Historia clínica veterinaria"
+    assert context["clinic"]["name"] == "Clínica Vet Central"
+    assert context["patient"]["name"] == "Luna"
+    assert context["owner"]["full_name"] == "Luna Owner"
+    assert context["consultations"][0]["reason"] == "Irritación de piel"
+    assert context["exams"][0]["exam_type"] == "Hemograma"
+    assert context["preventive_care"][0]["care_type"] == "Vacuna"
+    assert context["file_references"][0]["name"] == "Radiografía lateral"
+    assert all(context["sections"].values())
+
+
+def test_template_context_empty_sections_and_summary_are_concise(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="summary",
+    )
+
+    assert context["document"]["detail_level"] == "Resumen"
+    assert context["consultations"] == []
+    assert context["exams"] == []
+    assert context["preventive_care"] == []
+    assert context["file_references"] == []
+
+
+def test_template_context_full_detail_includes_only_non_empty_clinical_fields(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        symptoms=None,
+        indications="Control en 48 horas",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+    consultation = context["consultations"][0]
+
+    assert consultation["indications"] == "Control en 48 horas"
+    assert {field["label"] for field in consultation["clinical_fields"]} >= {
+        "Anamnesis",
+        "Examen clínico",
+        "Plan diagnóstico",
+        "Resultados del plan diagnóstico",
+        "Plan terapéutico",
+    }
+    assert "Síntomas" not in {
+        field["label"] for field in consultation["clinical_fields"]
+    }
+
+
+def test_template_context_logo_is_a_single_size_limited_data_uri(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    tenant.logo_url = "gs://clinic-logo-bucket/tenants/tenant/logo.png"
+    tenant.logo_object_path = "tenants/tenant/logo.png"
+    db_session.add(tenant)
+    db_session.commit()
+    storage = FakeLogoStorageService()
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["clinic"]["logo_data_uri"].startswith(
+        "data:image/png;base64,"
+    )
+    assert len(storage.downloads) == 1
+
+
+def test_template_context_skips_oversized_logo(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    tenant.logo_object_path = "tenants/tenant/logo.jpg"
+    db_session.add(tenant)
+    db_session.commit()
+    storage = FakeLogoStorageService(logo_bytes=b"x" * (1024 * 1024 + 1))
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["clinic"]["logo_data_uri"] is None
+    assert len(storage.downloads) == 1
+
+
+def test_export_pdf_handles_long_clinical_text(
+    client,
+    tenant,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    long_text = "Línea clínica extensa con seguimiento.\n" * 120
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        final_diagnosis=long_text,
+        indications=long_text,
+    )
+    _create_exam(client, tenant, patient["id"], observations=long_text)
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=_headers(tenant),
+        json={"detail_level": "full"},
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
+    assert len(response.content) > 0
+
+
+def test_template_rendering_autoescapes_clinical_html(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        indications='<script>alert("clinical")</script>',
+    )
+    rendered = {}
+
+    class FakeHTML:
+        def __init__(self, *, string, base_url, url_fetcher):
+            rendered["html"] = string
+            rendered["base_url"] = base_url
+            rendered["url_fetcher"] = url_fetcher
+
+        def write_pdf(self):
+            return b"%PDF-test"
+
+    monkeypatch.setattr("app.services.clinical_history_pdf.HTML", FakeHTML)
+    ClinicalHistoryPdfService(db_session).export_patient_history_pdf(
+        tenant.id,
+        uuid.UUID(patient["id"]),
+        ClinicalHistoryPdfExportRequest(),
+    )
+
+    assert "<script>alert" not in rendered["html"]
+    assert "&lt;script&gt;alert" in rendered["html"]
+    assert rendered["base_url"].endswith("app/templates")
+    with pytest.raises(ValueError, match="External PDF assets"):
+        rendered["url_fetcher"].fetch("https://example.com/asset.png")
+
+
+def test_render_failure_returns_structured_pdf_export_error(
+    client,
+    tenant,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    def fail_render(self, context, *, options):
+        raise RuntimeError("render unavailable")
+
+    monkeypatch.setattr(
+        ClinicalHistoryPdfService,
+        "_render_pdf_from_template",
+        fail_render,
+    )
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=_headers(tenant),
+        json={},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "code": "pdf_export_failed",
+        "message": "Clinical history PDF export failed",
+    }

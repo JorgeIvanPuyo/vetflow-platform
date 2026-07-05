@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>{{ document.title }}</title>
+  <style>
+    {% if document.page_size == "a4" %}
+    @page { size: A4; margin: 16mm 13mm 17mm 13mm; }
+    {% elif document.page_size == "legal" %}
+    @page { size: Legal; margin: 16mm 13mm 17mm 13mm; }
+    {% else %}
+    @page { size: Letter; margin: 16mm 13mm 17mm 13mm; }
+    {% endif %}
+
+    @page {
+      @bottom-center { content: element(document-footer); }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: #1F2D29;
+      background: #FFFFFF;
+      font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 9.5px;
+      line-height: 1.42;
+    }
+
+    .document { width: 100%; }
+
+    .page-footer {
+      position: running(document-footer);
+      width: 100%;
+      padding-top: 4px;
+      border-top: 1px solid #D9E7E2;
+      color: #65736E;
+      font-size: 7.5px;
+      text-align: center;
+    }
+
+    .page-number::before { content: counter(page); }
+    .page-count::before { content: counter(pages); }
+
+    .header-card {
+      margin-bottom: 10px;
+      padding: 13px;
+      border: 1px solid #D9E7E2;
+      border-radius: 16px;
+      background: #EAF4F1;
+    }
+
+    .header-layout,
+    .card-layout,
+    .field-table,
+    .metadata-table,
+    .identification-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .brand-cell { width: 58%; padding-right: 12px; vertical-align: top; }
+    .metadata-cell { width: 42%; vertical-align: top; }
+
+    .brand-row { width: 100%; border-collapse: collapse; }
+    .brand-mark-cell { width: 54px; padding-right: 10px; vertical-align: top; }
+    .brand-copy-cell { vertical-align: top; }
+
+    .clinic-logo,
+    .clinic-monogram {
+      display: block;
+      width: 46px;
+      height: 46px;
+      border: 1px solid #D9E7E2;
+      border-radius: 12px;
+      background: #FFFFFF;
+    }
+
+    .clinic-logo { object-fit: contain; padding: 4px; }
+
+    .clinic-monogram {
+      color: #245B4F;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 46px;
+      text-align: center;
+    }
+
+    .brand-label {
+      margin-bottom: 2px;
+      color: #2F7A69;
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 3px;
+      color: #245B4F;
+      font-size: 17px;
+      line-height: 1.16;
+    }
+
+    .clinic-name { margin-bottom: 3px; font-size: 10px; font-weight: 700; }
+    .clinic-contact { color: #65736E; font-size: 8px; overflow-wrap: anywhere; }
+
+    .metadata-panel {
+      padding: 8px 9px;
+      border: 1px solid #D9E7E2;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, .72);
+    }
+
+    .metadata-table td { padding: 2px 3px; vertical-align: top; }
+    .metadata-table td:first-child { width: 38%; }
+
+    .label {
+      display: block;
+      margin-bottom: 2px;
+      color: #65736E;
+      font-size: 7.5px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .value { color: #1F2D29; font-size: 9.5px; overflow-wrap: anywhere; }
+    .text-block { white-space: pre-line; overflow-wrap: anywhere; }
+
+    .identification-band {
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      border: 1px solid #D9E7E2;
+      border-radius: 11px;
+      background: #F5FAF8;
+    }
+
+    .identification-table td { padding: 0 8px; border-right: 1px solid #D9E7E2; }
+    .identification-table td:first-child { padding-left: 0; }
+    .identification-table td:last-child { padding-right: 0; border-right: 0; }
+
+    .section { margin-top: 14px; }
+
+    .section-title {
+      margin: 0 0 7px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #D9E7E2;
+      color: #245B4F;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+
+    .card {
+      margin-bottom: 8px;
+      padding: 10px;
+      border: 1px solid #D9E7E2;
+      border-radius: 12px;
+      background: #FFFFFF;
+      break-inside: avoid;
+    }
+
+    .paired-card-cell { width: 50%; vertical-align: top; }
+    .paired-card-cell:first-child { padding-right: 4px; }
+    .paired-card-cell:last-child { padding-left: 4px; }
+    .paired-card-cell .card { height: 100%; margin: 0; }
+
+    .card-title { margin: 0 0 7px; color: #245B4F; font-size: 10.5px; font-weight: 700; }
+    .field-table td { width: 50%; padding: 3px 7px 4px 0; vertical-align: top; }
+    .field-table td:nth-child(even) { padding-right: 0; padding-left: 7px; }
+
+    .timeline { margin-left: 5px; border-left: 2px solid #D9E7E2; padding-left: 10px; }
+
+    .consultation-card {
+      position: relative;
+      border-left: 3px solid #2F7A69;
+      break-inside: auto;
+    }
+
+    .consultation-card::before {
+      position: absolute;
+      top: 13px;
+      left: -17px;
+      width: 7px;
+      height: 7px;
+      border: 2px solid #FFFFFF;
+      border-radius: 50%;
+      background: #2F7A69;
+      content: "";
+    }
+
+    .record-header { width: 100%; margin-bottom: 7px; border-collapse: collapse; }
+    .record-header-main { vertical-align: top; }
+    .record-header-badge { width: 88px; text-align: right; vertical-align: top; }
+    .record-date { color: #65736E; font-size: 8px; font-weight: 700; }
+    .record-title { color: #1F2D29; font-size: 11px; font-weight: 700; overflow-wrap: anywhere; }
+
+    .badge {
+      display: inline-block;
+      padding: 2.5px 7px;
+      border-radius: 999px;
+      font-size: 7.5px;
+      font-weight: 700;
+    }
+
+    .badge-success { color: #245B4F; background: #DDF5EA; }
+    .badge-warning { color: #7A5B00; background: #FFF4D8; }
+    .badge-neutral { color: #245B4F; background: #EAF4F1; }
+
+    .summary-strip {
+      margin-bottom: 7px;
+      padding: 7px 8px;
+      border-radius: 9px;
+      background: #F5FAF8;
+    }
+
+    .summary-strip table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .summary-strip td { width: 50%; padding-right: 8px; vertical-align: top; }
+
+    .clinical-block {
+      margin-top: 6px;
+      padding: 7px 8px;
+      border-left: 2px solid #D9E7E2;
+      background: #FFFFFF;
+      break-inside: avoid;
+    }
+
+    .clinical-block.emphasis { border-left-color: #2F7A69; background: #F5FAF8; }
+
+    .nested-title { margin: 9px 0 5px; color: #245B4F; font-size: 8.5px; font-weight: 700; text-transform: uppercase; }
+    .nested-card { margin-bottom: 4px; padding: 6px 8px; border: 1px solid #EDF3F1; border-radius: 9px; background: #F5FAF8; break-inside: avoid; }
+    .nested-card strong { color: #245B4F; }
+    .muted { color: #65736E; }
+
+    .compact-card .field-table td { padding-top: 2px; padding-bottom: 3px; }
+
+    .file-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .file-grid td { width: 50%; padding: 0 4px 8px; vertical-align: top; }
+    .file-grid td:first-child { padding-left: 0; }
+    .file-grid td:last-child { padding-right: 0; }
+    .file-grid .card { height: 100%; margin: 0; }
+
+    .empty-state {
+      padding: 12px;
+      border: 1px dashed #D9E7E2;
+      border-radius: 12px;
+      color: #65736E;
+      background: #F5FAF8;
+      font-size: 9.5px;
+    }
+
+    .final-note {
+      margin-top: 15px;
+      padding: 9px 11px;
+      border: 1px solid #D9E7E2;
+      border-radius: 11px;
+      color: #65736E;
+      background: #F5FAF8;
+      font-size: 8px;
+      break-inside: avoid;
+    }
+  </style>
+</head>
+<body>
+  <footer class="page-footer">
+    VetFlow{% if clinic.name %} / {{ clinic.name }}{% endif %} · Historia clínica veterinaria ·
+    Página <span class="page-number"></span> de <span class="page-count"></span>
+  </footer>
+
+  <main class="document">
+    <header class="header-card">
+      <table class="header-layout">
+        <tr>
+          <td class="brand-cell">
+            <table class="brand-row">
+              <tr>
+                <td class="brand-mark-cell">
+                  {% if clinic.logo_data_uri %}
+                    <img class="clinic-logo" src="{{ clinic.logo_data_uri }}" alt="Logo clínica">
+                  {% else %}
+                    <div class="clinic-monogram">{{ clinic.monogram }}</div>
+                  {% endif %}
+                </td>
+                <td class="brand-copy-cell">
+                  <div class="brand-label">{{ document.generated_by }}</div>
+                  <h1>{{ document.title }}</h1>
+                  <div class="clinic-name">{{ clinic.name }}</div>
+                  <div class="clinic-contact">
+                    {{ clinic.phone }} · {{ clinic.email }}<br>{{ clinic.address }}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td class="metadata-cell">
+            <div class="metadata-panel">
+              <table class="metadata-table">
+                <tr><td><span class="label">Generado</span></td><td><span class="value">{{ document.generated_at }}</span></td></tr>
+                <tr><td><span class="label">Rango</span></td><td><span class="value">{{ document.date_range }}</span></td></tr>
+                <tr><td><span class="label">Nivel</span></td><td><span class="value">{{ document.detail_level }}</span></td></tr>
+              </table>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </header>
+
+    <section class="identification-band">
+      <table class="identification-table">
+        <tr>
+          <td><span class="label">Paciente</span><span class="value">{{ patient.name }}</span></td>
+          <td><span class="label">Especie</span><span class="value">{{ patient.species }}</span></td>
+          <td><span class="label">Propietario</span><span class="value">{{ owner.full_name if owner else "No indicado" }}</span></td>
+          <td><span class="label">Generado</span><span class="value">{{ document.generated_at }}</span></td>
+        </tr>
+      </table>
+    </section>
+
+    {% if sections.include_patient_data or sections.include_owner_data %}
+    <section>
+      <table class="card-layout"><tr>
+        {% if sections.include_patient_data %}
+        <td class="paired-card-cell">
+          <article class="card">
+            <h2 class="card-title">Datos del paciente</h2>
+            <table class="field-table">
+              <tr><td><span class="label">Nombre</span><span class="value">{{ patient.name }}</span></td><td><span class="label">Especie</span><span class="value">{{ patient.species }}</span></td></tr>
+              <tr><td><span class="label">Raza</span><span class="value">{{ patient.breed }}</span></td><td><span class="label">Sexo</span><span class="value">{{ patient.sex }}</span></td></tr>
+              <tr><td><span class="label">Edad estimada</span><span class="value">{{ patient.estimated_age }}</span></td><td><span class="label">Peso</span><span class="value">{{ patient.weight }}</span></td></tr>
+              <tr><td><span class="label">Alergias</span><span class="value text-block">{{ patient.allergies }}</span></td><td><span class="label">Condiciones crónicas</span><span class="value text-block">{{ patient.chronic_conditions }}</span></td></tr>
+            </table>
+          </article>
+        </td>
+        {% endif %}
+        {% if sections.include_owner_data %}
+        <td class="paired-card-cell">
+          <article class="card">
+            <h2 class="card-title">Datos del propietario</h2>
+            {% if owner %}
+            <table class="field-table">
+              <tr><td><span class="label">Nombre</span><span class="value">{{ owner.full_name }}</span></td><td><span class="label">Teléfono</span><span class="value">{{ owner.phone }}</span></td></tr>
+              <tr><td><span class="label">Correo</span><span class="value">{{ owner.email }}</span></td><td><span class="label">Dirección</span><span class="value text-block">{{ owner.address }}</span></td></tr>
+            </table>
+            {% else %}
+            <div class="empty-state">Sin datos del propietario.</div>
+            {% endif %}
+          </article>
+        </td>
+        {% endif %}
+      </tr></table>
+    </section>
+    {% endif %}
+
+    {% if sections.include_consultations %}
+    <section class="section">
+      <h2 class="section-title">Consultas</h2>
+      {% if consultations %}
+      <div class="timeline">
+        {% for consultation in consultations %}
+        <article class="card consultation-card">
+          <table class="record-header"><tr>
+            <td class="record-header-main"><div class="record-date">{{ consultation.visit_date }}</div><div class="record-title">{{ consultation.reason }}</div></td>
+            <td class="record-header-badge"><span class="badge badge-{{ consultation.status_class }}">{{ consultation.status }}</span></td>
+          </tr></table>
+          <div class="summary-strip"><table><tr>
+            <td><span class="label">Atendido por</span><span class="value">{{ consultation.attended_by }}</span></td>
+            {% if consultation.created_by %}<td><span class="label">Registrado por</span><span class="value">{{ consultation.created_by }}</span></td>{% endif %}
+          </tr></table></div>
+          {% if consultation.presumptive_diagnosis %}<div class="clinical-block"><span class="label">Diagnóstico presuntivo</span><div class="value text-block">{{ consultation.presumptive_diagnosis }}</div></div>{% endif %}
+          {% if consultation.final_diagnosis %}<div class="clinical-block emphasis"><span class="label">Diagnóstico final</span><div class="value text-block">{{ consultation.final_diagnosis }}</div></div>{% endif %}
+          {% if consultation.indications %}<div class="clinical-block emphasis"><span class="label">Indicaciones</span><div class="value text-block">{{ consultation.indications }}</div></div>{% endif %}
+          {% if consultation.consultation_summary %}<div class="clinical-block"><span class="label">Resumen</span><div class="value text-block">{{ consultation.consultation_summary }}</div></div>{% endif %}
+          {% for field in consultation.clinical_fields %}<div class="clinical-block"><span class="label">{{ field.label }}</span><div class="value text-block">{{ field.value }}</div></div>{% endfor %}
+          {% if consultation.medications %}
+          <h3 class="nested-title">Medicamentos</h3>
+          {% for medication in consultation.medications %}<div class="nested-card"><strong>{{ medication.name }}</strong> · {{ medication.dose_or_quantity }}<br><span class="muted text-block">{{ medication.instructions }}</span></div>{% endfor %}
+          {% endif %}
+          {% if consultation.study_requests %}
+          <h3 class="nested-title">Solicitudes de estudio</h3>
+          {% for study in consultation.study_requests %}<div class="nested-card"><strong>{{ study.name }}</strong> · {{ study.study_type }}<br><span class="muted text-block">{{ study.notes }}</span></div>{% endfor %}
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}<div class="empty-state">Sin consultas en el rango seleccionado.</div>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if sections.include_exams %}
+    <section class="section">
+      <h2 class="section-title">Exámenes</h2>
+      {% for exam in exams %}
+      <article class="card compact-card">
+        <table class="record-header"><tr><td class="record-header-main"><div class="record-title">{{ exam.exam_type }}</div></td><td class="record-header-badge"><span class="badge badge-{{ exam.status_class }}">{{ exam.status }}</span></td></tr></table>
+        <table class="field-table">
+          <tr><td><span class="label">Solicitado</span><span class="value">{{ exam.requested_at }}</span></td><td><span class="label">Realizado</span><span class="value">{{ exam.performed_at }}</span></td></tr>
+          <tr><td><span class="label">Solicitado por</span><span class="value">{{ exam.requested_by }}</span></td><td><span class="label">Resumen del resultado</span><span class="value text-block">{{ exam.result_summary }}</span></td></tr>
+          <tr><td colspan="2"><span class="label">Observaciones</span><span class="value text-block">{{ exam.observations }}</span></td></tr>
+        </table>
+      </article>
+      {% else %}<div class="empty-state">Sin exámenes en el rango seleccionado.</div>{% endfor %}
+    </section>
+    {% endif %}
+
+    {% if sections.include_preventive_care %}
+    <section class="section">
+      <h2 class="section-title">Vacunas y desparasitación</h2>
+      {% for record in preventive_care %}
+      <article class="card compact-card">
+        <div class="record-date">{{ record.care_type }}</div><div class="record-title">{{ record.name }}</div>
+        <table class="field-table">
+          <tr><td><span class="label">Aplicado</span><span class="value">{{ record.applied_at }}</span></td><td><span class="label">Próxima dosis</span><span class="value">{{ record.next_due_at }}</span></td></tr>
+          <tr><td><span class="label">Lote</span><span class="value">{{ record.lot_number }}</span></td><td><span class="label">Registrado por</span><span class="value">{{ record.registered_by }}</span></td></tr>
+          <tr><td colspan="2"><span class="label">Notas</span><span class="value text-block">{{ record.notes }}</span></td></tr>
+        </table>
+      </article>
+      {% else %}<div class="empty-state">Sin registros preventivos en el rango seleccionado.</div>{% endfor %}
+    </section>
+    {% endif %}
+
+    {% if sections.include_file_references %}
+    <section class="section">
+      <h2 class="section-title">Archivos adjuntos</h2>
+      {% if file_references %}
+      <table class="file-grid">
+        {% for file in file_references %}{% if loop.index0 is divisibleby 2 %}<tr>{% endif %}
+        <td><article class="card"><div class="record-date">{{ file.file_type }}</div><div class="record-title">{{ file.name }}</div><div class="clinical-block"><span class="label">Archivo original</span><span class="value">{{ file.original_filename }}</span></div><div class="muted">{{ file.uploaded_at }} · {{ file.registered_by }}</div></article></td>
+        {% if loop.index is divisibleby 2 %}</tr>{% elif loop.last %}<td></td></tr>{% endif %}{% endfor %}
+      </table>
+      {% else %}<div class="empty-state">Sin archivos en el rango seleccionado.</div>{% endif %}
+    </section>
+    {% endif %}
+
+    <aside class="final-note">Documento generado automáticamente por VetFlow. La información clínica debe ser interpretada y validada por el profesional veterinario responsable.</aside>
+  </main>
+</body>
+</html>
