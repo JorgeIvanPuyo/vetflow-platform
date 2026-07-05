@@ -103,6 +103,23 @@ class ConsultationService:
             raise AppError(404, "consultation_not_found", "Consultation not found")
         return consultation
 
+    def list_consultations(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        page: int,
+        page_size: int,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list[Consultation], int]:
+        return self.consultation_repository.list_for_tenant(
+            tenant_id,
+            page=page,
+            page_size=page_size,
+            search=search,
+            status=status,
+        )
+
     def create_follow_up_consultation(
         self,
         tenant_id: uuid.UUID,

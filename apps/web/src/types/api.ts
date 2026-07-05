@@ -159,6 +159,23 @@ export type Consultation = {
   updated_at: string;
 };
 
+export type ConsultationListItem = {
+  id: string;
+  patient_id: string;
+  patient_name: string;
+  owner_id: string;
+  owner_name: string;
+  visit_date: string;
+  reason: string;
+  status: ConsultationStatus;
+  attending_user_id: string | null;
+  attending_user_name: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  final_diagnosis: string | null;
+  presumptive_diagnosis: string | null;
+};
+
 export type ExamStatus = "requested" | "performed" | "result_loaded";
 
 export type Exam = {

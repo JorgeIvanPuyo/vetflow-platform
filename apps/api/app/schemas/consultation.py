@@ -182,6 +182,23 @@ class ConsultationRead(ConsultationBase):
         return None
 
 
+class ConsultationListItem(BaseModel):
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    patient_name: str
+    owner_id: uuid.UUID
+    owner_name: str
+    visit_date: datetime
+    reason: str
+    status: Literal["draft", "completed"]
+    attending_user_id: uuid.UUID | None = None
+    attending_user_name: str | None = None
+    created_by_user_id: uuid.UUID | None = None
+    created_by_user_name: str | None = None
+    final_diagnosis: str | None = None
+    presumptive_diagnosis: str | None = None
+
+
 class TimelineUserTrace(BaseModel):
     id: uuid.UUID
     full_name: str

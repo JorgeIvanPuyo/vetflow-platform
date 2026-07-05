@@ -7598,6 +7598,158 @@ code {
 }
 
 /* Responsive entity lists and inventory density */
+.consultations-list-page {
+  gap: 14px;
+  padding-bottom: 32px;
+}
+
+.consultations-list-toolbar {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 18px;
+}
+
+.consultations-list-toolbar .search-form {
+  width: 100%;
+}
+
+.consultations-status-filter {
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.consultations-status-filter select {
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 36px 0 12px;
+}
+
+.consultation-list-grid {
+  display: grid;
+  gap: 10px;
+  transition: opacity 150ms ease;
+}
+
+.consultation-list-grid[aria-busy="true"] {
+  opacity: 0.68;
+}
+
+.consultation-list-card {
+  min-width: 0;
+  min-height: 154px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(228, 222, 211, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-card);
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.consultation-list-card:hover {
+  border-color: rgba(43, 138, 113, 0.32);
+  box-shadow: 0 12px 28px rgba(31, 50, 44, 0.09);
+  transform: translateY(-1px);
+}
+
+.consultation-list-card:focus-visible {
+  outline: 3px solid rgba(43, 138, 113, 0.24);
+  outline-offset: 2px;
+}
+
+.consultation-list-card__icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+.consultation-list-card__body {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.consultation-list-card__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.consultation-list-card__heading strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.consultation-list-card__date,
+.consultation-list-card__meta,
+.consultation-list-card__meta span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.consultation-list-card__date {
+  color: var(--color-primary-dark);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.consultation-list-card__reason,
+.consultation-list-card__diagnosis {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.consultation-list-card__reason small,
+.consultation-list-card__diagnosis small {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.consultation-list-card__meta {
+  flex-wrap: wrap;
+  gap: 5px 13px;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.consultation-list-card__diagnosis {
+  color: var(--color-text-muted);
+  -webkit-line-clamp: 1;
+}
+
 .list-pagination {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -7788,6 +7940,25 @@ code {
 }
 
 @media (min-width: 760px) {
+  .consultations-list-page {
+    gap: 16px;
+  }
+
+  .consultations-list-toolbar {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    align-items: end;
+    padding: 14px 16px;
+  }
+
+  .consultation-list-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .consultation-list-card {
+    height: 100%;
+  }
+
   .patients-layout > .patient-card-list,
   .owners-layout > .owner-card-list,
   .inventory-page > .inventory-card-list {
@@ -7833,6 +8004,10 @@ code {
 }
 
 @media (min-width: 1440px) {
+  .consultation-list-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .patients-layout > .patient-card-list,
   .owners-layout > .owner-card-list,
   .inventory-page > .inventory-card-list {

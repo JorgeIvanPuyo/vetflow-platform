@@ -4,6 +4,7 @@ import type {
   ApiListResponse,
   Consultation,
   ConsultationAiSummaryResponse,
+  ConsultationListItem,
   ConsultationMedication,
   ConsultationStudyRequest,
   CreateConsultationPayload,
@@ -12,6 +13,35 @@ import type {
   StepUpdatePayload,
   UpdateConsultationPayload,
 } from "@/types/api";
+
+type ListConsultationsOptions = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: "draft" | "completed";
+};
+
+export function listConsultations(options: ListConsultationsOptions = {}) {
+  const params = new URLSearchParams();
+
+  if (options.page !== undefined) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize !== undefined) {
+    params.set("page_size", String(options.pageSize));
+  }
+  if (options.search) {
+    params.set("search", options.search);
+  }
+  if (options.status) {
+    params.set("status", options.status);
+  }
+
+  const query = params.toString();
+  return api.get<ApiListResponse<ConsultationListItem>>(
+    query ? `/api/v1/consultations?${query}` : "/api/v1/consultations",
+  );
+}
 
 export function getPatientConsultations(patientId: string) {
   return api.get<ApiListResponse<Consultation>>(

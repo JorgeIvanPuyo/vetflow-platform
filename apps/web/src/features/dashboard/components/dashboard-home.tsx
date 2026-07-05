@@ -265,7 +265,7 @@ export function DashboardHome() {
 
           <div className="dashboard-secondary-grid">
             <DashboardSecondaryPreview
-              actionHref="/patients"
+              actionHref="/consultations"
               count={summary.recent_consultations.length}
               id="consultations"
               isExpanded={Boolean(expandedSecondary.consultations)}

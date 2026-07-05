@@ -96,10 +96,17 @@ Export and preview use the same tenant-scoped report generation service.
 
 ## Consultations
 POST /api/v1/consultations
+GET /api/v1/consultations
 GET /api/v1/patients/{patient_id}/consultations
 GET /api/v1/consultations/{consultation_id}
 PATCH /api/v1/consultations/{consultation_id}
 PATCH /api/v1/consultations/{consultation_id}/step
+
+The tenant-wide consultations list accepts `page` (default `1`), `page_size`
+(default `12`, maximum `100`), optional `search`, and optional `status` (`draft`
+or `completed`). Search matches patient name, owner name, or consultation reason.
+Results are ordered by `visit_date` descending and return lightweight patient,
+owner, veterinarian, status, reason, and diagnosis references.
 
 Consultation traceability distinguishes:
 

@@ -139,6 +139,161 @@ def test_create_and_get_consultation(client, tenant):
     assert body["study_requests"] == []
 
 
+def test_list_consultations_is_tenant_scoped_ordered_and_paginated(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+):
+    attending = _create_user(
+        db_session,
+        tenant,
+        email="list-attending@example.com",
+        full_name="List Attending Vet",
+    )
+    owner = _create_owner(client, tenant, full_name="Ana Consulta")
+    patient = _create_patient(client, tenant, owner["id"], name="Luna Lista")
+    oldest = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        visit_date="2026-01-10T10:00:00Z",
+        reason="Control inicial",
+    )
+    middle = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        visit_date="2026-02-10T10:00:00Z",
+        reason="Control intermedio",
+    )
+    newest = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        visit_date="2026-03-10T10:00:00Z",
+        reason="Control reciente",
+        attending_user_id=str(attending.id),
+        final_diagnosis="Paciente estable",
+    )
+    foreign_owner = _create_owner(client, other_tenant, full_name="Foreign Owner")
+    foreign_patient = _create_patient(
+        client,
+        other_tenant,
+        foreign_owner["id"],
+        name="Foreign Patient",
+    )
+    _create_consultation(
+        client,
+        other_tenant,
+        foreign_patient["id"],
+        reason="Consulta de otro tenant",
+        visit_date="2026-04-10T10:00:00Z",
+    )
+
+    first_page = client.get(
+        "/api/v1/consultations?page=1&page_size=2",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    second_page = client.get(
+        "/api/v1/consultations?page=2&page_size=2",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert first_page.status_code == 200
+    assert [item["id"] for item in first_page.json()["data"]] == [
+        newest["id"],
+        middle["id"],
+    ]
+    assert first_page.json()["meta"] == {"page": 1, "page_size": 2, "total": 3}
+    listed_newest = first_page.json()["data"][0]
+    assert listed_newest["patient_name"] == "Luna Lista"
+    assert listed_newest["owner_name"] == "Ana Consulta"
+    assert listed_newest["attending_user_name"] == "List Attending Vet"
+    assert listed_newest["final_diagnosis"] == "Paciente estable"
+    assert "Consulta de otro tenant" not in {
+        item["reason"] for item in first_page.json()["data"]
+    }
+
+    assert second_page.status_code == 200
+    assert [item["id"] for item in second_page.json()["data"]] == [oldest["id"]]
+    assert second_page.json()["meta"] == {"page": 2, "page_size": 2, "total": 3}
+
+
+def test_list_consultations_searches_patient_owner_and_reason(client, tenant):
+    owner = _create_owner(client, tenant, full_name="Carlos Buscable")
+    patient = _create_patient(client, tenant, owner["id"], name="Mora Buscable")
+    consultation = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        reason="Vacunación preventiva",
+    )
+
+    for search in ["Mora", "Carlos", "Vacunación"]:
+        response = client.get(
+            "/api/v1/consultations",
+            params={"search": search},
+            headers={"X-Tenant-Id": str(tenant.id)},
+        )
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()["data"]] == [
+            consultation["id"]
+        ]
+        assert response.json()["meta"]["total"] == 1
+
+
+def test_list_consultations_supports_status_filter_and_empty_results(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    completed = _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        status="completed",
+    )
+    _create_consultation(client, tenant, patient["id"], status="draft")
+
+    completed_response = client.get(
+        "/api/v1/consultations",
+        params={"status": "completed"},
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    empty_response = client.get(
+        "/api/v1/consultations",
+        params={"search": "sin coincidencias"},
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+
+    assert completed_response.status_code == 200
+    assert [item["id"] for item in completed_response.json()["data"]] == [
+        completed["id"]
+    ]
+    assert empty_response.status_code == 200
+    assert empty_response.json() == {
+        "data": [],
+        "meta": {"page": 1, "page_size": 12, "total": 0},
+    }
+
+
+def test_list_consultations_rejects_invalid_pagination_and_status(client, tenant):
+    headers = {"X-Tenant-Id": str(tenant.id)}
+
+    assert client.get(
+        "/api/v1/consultations?page=0",
+        headers=headers,
+    ).status_code == 422
+    assert client.get(
+        "/api/v1/consultations?page_size=101",
+        headers=headers,
+    ).status_code == 422
+    assert client.get(
+        "/api/v1/consultations?status=cancelled",
+        headers=headers,
+    ).status_code == 422
+
+
 def test_create_consultation_defaults_attending_user_to_authenticated_user(
     client,
     db_session,

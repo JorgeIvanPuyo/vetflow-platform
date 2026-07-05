@@ -1,6 +1,7 @@
 import uuid
+from typing import Literal
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext, get_tenant_context
@@ -13,6 +14,7 @@ from app.schemas.consultation import (
     ConsultationCreate,
     ConsultationMedicationCreate,
     ConsultationMedicationRead,
+    ConsultationListItem,
     ConsultationRead,
     ConsultationStepUpdate,
     ConsultationStudyRequestCreate,
@@ -46,6 +48,72 @@ def create_consultation(
         "data": ConsultationRead.model_validate(consultation).model_dump(mode="json"),
         "meta": {},
     }
+
+
+@router.get("/consultations")
+def list_consultations(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=12, ge=1, le=100),
+    search: str | None = Query(default=None, max_length=100),
+    status_filter: Literal["draft", "completed"] | None = Query(
+        default=None,
+        alias="status",
+    ),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    consultations, total = ConsultationService(db).list_consultations(
+        tenant.tenant_id,
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status_filter,
+    )
+    return {
+        "data": [
+            ConsultationListItem(
+                id=consultation.id,
+                patient_id=consultation.patient_id,
+                patient_name=consultation.patient.name,
+                owner_id=consultation.patient.owner_id,
+                owner_name=consultation.patient.owner.full_name,
+                visit_date=consultation.visit_date,
+                reason=consultation.reason,
+                status=consultation.status,
+                attending_user_id=(
+                    consultation.attending_user_id
+                    if consultation.attending_user_name
+                    else None
+                ),
+                attending_user_name=consultation.attending_user_name,
+                created_by_user_id=(
+                    consultation.created_by_user_id
+                    if consultation.created_by_user_name
+                    else None
+                ),
+                created_by_user_name=consultation.created_by_user_name,
+                final_diagnosis=_compact_list_text(consultation.final_diagnosis),
+                presumptive_diagnosis=_compact_list_text(
+                    consultation.presumptive_diagnosis
+                ),
+            ).model_dump(mode="json")
+            for consultation in consultations
+        ],
+        "meta": ListMeta(
+            page=page,
+            page_size=page_size,
+            total=total,
+        ).model_dump(),
+    }
+
+
+def _compact_list_text(value: str | None, max_length: int = 240) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split())
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 1].rstrip()}…"
 
 
 @router.get("/consultations/{consultation_id}")

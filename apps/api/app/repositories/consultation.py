@@ -1,13 +1,15 @@
 import uuid
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from app.models.consultation import (
     Consultation,
     ConsultationMedication,
     ConsultationStudyRequest,
 )
+from app.models.owner import Owner
+from app.models.patient import Patient
 
 
 class ConsultationRepository:
@@ -66,6 +68,62 @@ class ConsultationRepository:
         count_statement = select(func.count()).select_from(Consultation).where(
             Consultation.tenant_id == tenant_id,
             Consultation.patient_id == patient_id,
+        )
+        total = self.db.scalar(count_statement) or 0
+        return consultations, total
+
+    def list_for_tenant(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        page: int,
+        page_size: int,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list[Consultation], int]:
+        filters = [Consultation.tenant_id == tenant_id]
+        if status:
+            filters.append(Consultation.status == status)
+        if search and search.strip():
+            search_pattern = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Patient.name.ilike(search_pattern),
+                    Owner.full_name.ilike(search_pattern),
+                    Consultation.reason.ilike(search_pattern),
+                )
+            )
+
+        tenant_patient_join = and_(
+            Patient.id == Consultation.patient_id,
+            Patient.tenant_id == tenant_id,
+        )
+        tenant_owner_join = and_(
+            Owner.id == Patient.owner_id,
+            Owner.tenant_id == tenant_id,
+        )
+        statement = (
+            select(Consultation)
+            .join(Patient, tenant_patient_join)
+            .join(Owner, tenant_owner_join)
+            .where(*filters)
+            .options(
+                contains_eager(Consultation.patient).contains_eager(Patient.owner),
+                selectinload(Consultation.created_by_user),
+                selectinload(Consultation.attending_user),
+            )
+            .order_by(Consultation.visit_date.desc(), Consultation.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        consultations = list(self.db.scalars(statement).unique().all())
+
+        count_statement = (
+            select(func.count())
+            .select_from(Consultation)
+            .join(Patient, tenant_patient_join)
+            .join(Owner, tenant_owner_join)
+            .where(*filters)
         )
         total = self.db.scalar(count_statement) or 0
         return consultations, total
