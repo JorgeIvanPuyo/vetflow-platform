@@ -3,6 +3,7 @@
 import {
   User,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
@@ -25,6 +26,7 @@ type AuthContextValue = {
   isReady: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   getIdToken: () => Promise<string | null>;
 };
 
@@ -84,6 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async logout() {
         await signOut(getFirebaseAuth());
+      },
+      async resetPassword(email: string) {
+        await sendPasswordResetEmail(getFirebaseAuth(), email);
       },
       async getIdToken() {
         return getFirebaseAuth().currentUser?.getIdToken() ?? null;

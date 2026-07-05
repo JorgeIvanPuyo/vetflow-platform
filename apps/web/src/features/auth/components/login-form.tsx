@@ -1,6 +1,14 @@
 "use client";
 
-import { CheckCircle2, Eye, EyeOff, ShieldCheck, Stethoscope } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  MailCheck,
+  ShieldCheck,
+  Stethoscope,
+} from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { useAuth } from "@/features/auth/auth-context";
@@ -10,8 +18,11 @@ type LoginState = {
   errorMessage: string | null;
 };
 
+type AuthView = "login" | "reset";
+
 export function LoginForm() {
-  const { login } = useAuth();
+  const { login, resetPassword } = useAuth();
+  const [view, setView] = useState<AuthView>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -19,6 +30,13 @@ export function LoginForm() {
     isSubmitting: false,
     errorMessage: null,
   });
+
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetState, setResetState] = useState<{
+    isSubmitting: boolean;
+    errorMessage: string | null;
+    isSent: boolean;
+  }>({ isSubmitting: false, errorMessage: null, isSent: false });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,22 +52,63 @@ export function LoginForm() {
     }
   }
 
+  function goToReset() {
+    setResetEmail(email.trim());
+    setResetState({ isSubmitting: false, errorMessage: null, isSent: false });
+    setView("reset");
+  }
+
+  function goToLogin() {
+    setView("login");
+  }
+
+  async function handleResetSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setResetState({ isSubmitting: true, errorMessage: null, isSent: false });
+
+    try {
+      await resetPassword(resetEmail.trim());
+      setResetState({ isSubmitting: false, errorMessage: null, isSent: true });
+    } catch {
+      setResetState({
+        isSubmitting: false,
+        errorMessage: "No pudimos enviar el enlace. Verifica el correo.",
+        isSent: false,
+      });
+    }
+  }
+
   return (
     <main className="auth-screen">
       <div className="auth-layout">
         <LoginBrandHeader />
         <LoginBrandPanel />
-        <LoginFormCard
-          email={email}
-          errorMessage={state.errorMessage}
-          isSubmitting={state.isSubmitting}
-          onEmailChange={setEmail}
-          onPasswordChange={setPassword}
-          onSubmit={handleSubmit}
-          onTogglePassword={() => setShowPassword((current) => !current)}
-          password={password}
-          showPassword={showPassword}
-        />
+        <div className={`auth-card-flip auth-card-flip--${view}`}>
+          {view === "login" ? (
+            <LoginFormCard
+              email={email}
+              errorMessage={state.errorMessage}
+              isSubmitting={state.isSubmitting}
+              onEmailChange={setEmail}
+              onForgotPassword={goToReset}
+              onPasswordChange={setPassword}
+              onSubmit={handleSubmit}
+              onTogglePassword={() => setShowPassword((current) => !current)}
+              password={password}
+              showPassword={showPassword}
+            />
+          ) : (
+            <ResetPasswordCard
+              email={resetEmail}
+              errorMessage={resetState.errorMessage}
+              isSent={resetState.isSent}
+              isSubmitting={resetState.isSubmitting}
+              onBack={goToLogin}
+              onEmailChange={setResetEmail}
+              onSubmit={handleResetSubmit}
+            />
+          )}
+        </div>
       </div>
     </main>
   );
@@ -104,6 +163,7 @@ function LoginFormCard({
   errorMessage,
   isSubmitting,
   onEmailChange,
+  onForgotPassword,
   onPasswordChange,
   onSubmit,
   onTogglePassword,
@@ -114,6 +174,7 @@ function LoginFormCard({
   errorMessage: string | null;
   isSubmitting: boolean;
   onEmailChange: (value: string) => void;
+  onForgotPassword: () => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onTogglePassword: () => void;
@@ -167,7 +228,15 @@ function LoginFormCard({
           </span>
         </label>
 
-        <LoginSupportActions />
+        <div className="auth-support-actions">
+          <button
+            className="auth-link-button"
+            onClick={onForgotPassword}
+            type="button"
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
+        </div>
 
         {errorMessage ? <div className="error-state">{errorMessage}</div> : null}
 
@@ -179,11 +248,87 @@ function LoginFormCard({
   );
 }
 
-function LoginSupportActions() {
+function ResetPasswordCard({
+  email,
+  errorMessage,
+  isSent,
+  isSubmitting,
+  onBack,
+  onEmailChange,
+  onSubmit,
+}: {
+  email: string;
+  errorMessage: string | null;
+  isSent: boolean;
+  isSubmitting: boolean;
+  onBack: () => void;
+  onEmailChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
   return (
-    <div className="auth-support-actions">
-      <span>¿Olvidaste tu contraseña?</span>
-      <span>Solicita ayuda al administrador de tu clínica.</span>
-    </div>
+    <section className="auth-card" aria-labelledby="reset-title">
+      <button
+        aria-label="Volver a iniciar sesión"
+        className="auth-back-button"
+        onClick={onBack}
+        type="button"
+      >
+        <ArrowLeft aria-hidden="true" size={18} />
+        <span>Volver</span>
+      </button>
+
+      <div>
+        <p className="eyebrow">Recuperar acceso</p>
+        <h1 id="reset-title">¿Olvidaste tu contraseña?</h1>
+        <p className="auth-card__copy">
+          Ingresa tu correo y te enviaremos un enlace para restablecerla.
+        </p>
+      </div>
+
+      {isSent ? (
+        <div className="auth-reset-success">
+          <span className="auth-reset-success__icon" aria-hidden="true">
+            <MailCheck size={26} />
+          </span>
+          <p>
+            Si el correo está registrado, recibirás un enlace de recuperación en
+            unos minutos.
+          </p>
+          <button
+            className="primary-button primary-button--full"
+            onClick={onBack}
+            type="button"
+          >
+            Volver a iniciar sesión
+          </button>
+        </div>
+      ) : (
+        <form className="auth-form" onSubmit={onSubmit}>
+          <label className="form-field">
+            <span>Correo electrónico</span>
+            <input
+              autoComplete="email"
+              autoFocus
+              onChange={(event) => onEmailChange(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+          </label>
+
+          {errorMessage ? (
+            <div className="error-state">{errorMessage}</div>
+          ) : null}
+
+          <button
+            className="primary-button primary-button--full"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {isSubmitting ? "Enviando..." : "Enviar enlace de recuperación"}
+          </button>
+        </form>
+      )}
+    </section>
   );
 }

@@ -939,3 +939,50 @@ export type SearchResponse = {
     query: string;
   };
 };
+
+export type AppRole = "superadmin" | "medico_veterinario" | "contador";
+
+export type CurrentUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: AppRole;
+  is_active: boolean;
+  tenant_id: string;
+  tenant_name: string;
+};
+
+export type AdminUser = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: AppRole;
+  is_active: boolean;
+  tenant_id: string;
+  tenant_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TenantOption = {
+  id: string;
+  name: string;
+};
+
+export type InviteUserPayload = {
+  email: string;
+  full_name: string;
+  role: AppRole;
+  tenant_id: string;
+};
+
+export type InviteUserResult = {
+  user: AdminUser;
+  password_reset_link: string | null;
+};
+
+export type ListUsersFilters = {
+  tenant_id?: string;
+  is_active?: boolean;
+  search?: string;
+};

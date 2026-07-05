@@ -23,6 +23,7 @@ def get_clinic_profile(
     db: Session = Depends(get_db),
     storage_service: ClinicalFileStorageService = Depends(get_storage_service),
 ) -> dict:
+    print(f"tenant: {tenant}")
     service = ClinicService(db)
     profile = service.get_profile(tenant.tenant_id)
     return {
