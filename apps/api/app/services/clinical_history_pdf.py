@@ -812,19 +812,17 @@ class ClinicalHistoryPdfService:
                 self._format_rate(consultation.respiratory_rate, "rpm"),
             ),
         ]
-        if detail_level == "full":
-            vital_fields.extend(
-                [
-                    self._field("Mucosas", consultation.mucous_membranes),
-                    self._field("Hidratación", consultation.hydration),
-                ]
-            )
+        vital_fields.extend(
+            [
+                self._field("Mucosas", consultation.mucous_membranes),
+                self._field("Hidratación", consultation.hydration),
+            ]
+        )
 
         vitals = self._non_empty_fields(vital_fields)
         physical_exam_findings = (
             consultation.physical_exam_findings.strip()
-            if detail_level == "full"
-            and consultation.physical_exam_findings
+            if consultation.physical_exam_findings
             and consultation.physical_exam_findings.strip()
             else None
         )

@@ -675,6 +675,83 @@ def test_template_context_summary_consultation_exam_data_is_compact(
         {"label": "Peso actual", "value": "6,7 kg"},
         {"label": "Frecuencia cardíaca", "value": "150 lpm"},
         {"label": "Frecuencia respiratoria", "value": "30 rpm"},
+        {"label": "Mucosas", "value": "Rosadas"},
+        {"label": "Hidratación", "value": "Normal"},
+    ]
+    assert exam_data["physical_exam_findings"] == (
+        "Hallazgo extenso para modo completo."
+    )
+
+
+def test_template_context_consultation_exam_data_supports_findings_only(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=None,
+        current_weight_kg=None,
+        heart_rate=None,
+        respiratory_rate=None,
+        mucous_membranes="",
+        hydration="",
+        physical_exam_findings="Mordidas superficiales en MPD.\nOreja derecha sensible.",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="summary",
+    )
+    exam_data = context["consultations"][0]["exam_data"]
+
+    assert exam_data["has_data"] is True
+    assert exam_data["vitals"] == []
+    assert exam_data["physical_exam_findings"] == (
+        "Mordidas superficiales en MPD.\nOreja derecha sensible."
+    )
+
+
+def test_template_context_consultation_exam_data_supports_mucosas_hydration_only(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=None,
+        current_weight_kg=None,
+        heart_rate=None,
+        respiratory_rate=None,
+        mucous_membranes="Pálidas",
+        hydration="Moderada",
+        physical_exam_findings="",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="summary",
+    )
+    exam_data = context["consultations"][0]["exam_data"]
+
+    assert exam_data["has_data"] is True
+    assert exam_data["vitals"] == [
+        {"label": "Mucosas", "value": "Pálidas"},
+        {"label": "Hidratación", "value": "Moderada"},
     ]
     assert exam_data["physical_exam_findings"] is None
 
@@ -765,6 +842,73 @@ def test_export_pdf_consultation_exam_data_is_independent_from_diagnostic_exams(
     assert "Frecuencia cardíaca: 150 lpm" in lines
     assert "Exámenes" not in lines
     assert "Examen - Hemograma" not in lines
+
+
+def test_export_pdf_includes_all_consultation_exam_data_when_enabled(
+    client,
+    tenant,
+    db_session,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        current_weight_kg=6.7,
+        heart_rate=150,
+        respiratory_rate=30,
+        mucous_membranes="Rosadas",
+        hydration="Normal",
+        physical_exam_findings="Heridas superficiales en ingle.",
+    )
+
+    lines = _export_text_lines(db_session, tenant, patient["id"])
+
+    assert "Signos vitales y examen físico" in lines
+    assert "Temperatura: 38,7 °C" in lines
+    assert "Peso actual: 6,7 kg" in lines
+    assert "Frecuencia cardíaca: 150 lpm" in lines
+    assert "Frecuencia respiratoria: 30 rpm" in lines
+    assert "Mucosas: Rosadas" in lines
+    assert "Hidratación: Normal" in lines
+    assert "Hallazgos del examen físico: Heridas superficiales en ingle." in lines
+
+
+def test_export_pdf_excludes_all_consultation_exam_data_when_disabled(
+    client,
+    tenant,
+    db_session,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        current_weight_kg=6.7,
+        heart_rate=150,
+        respiratory_rate=30,
+        mucous_membranes="Rosadas",
+        hydration="Normal",
+        physical_exam_findings="Heridas superficiales en ingle.",
+    )
+
+    lines = _export_text_lines(
+        db_session,
+        tenant,
+        patient["id"],
+        include_consultation_exam_data=False,
+    )
+
+    assert "Signos vitales y examen físico" not in lines
+    assert "Temperatura: 38,7 °C" not in lines
+    assert "Peso actual: 6,7 kg" not in lines
+    assert "Frecuencia cardíaca: 150 lpm" not in lines
+    assert "Frecuencia respiratoria: 30 rpm" not in lines
+    assert "Mucosas: Rosadas" not in lines
+    assert "Hidratación: Normal" not in lines
+    assert "Hallazgos del examen físico: Heridas superficiales en ingle." not in lines
 
 
 def test_export_pdf_excludes_consultation_exam_data_without_consultations(
