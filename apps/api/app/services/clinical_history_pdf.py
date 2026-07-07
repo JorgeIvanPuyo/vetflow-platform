@@ -201,7 +201,6 @@ class ClinicalHistoryPdfService:
                     self._field("Antecedentes relevantes", consultation.relevant_history),
                     self._field("Hábitos y dieta", consultation.habits_and_diet),
                     self._field("Examen clínico", consultation.clinical_exam),
-                    self._field("Hallazgos físicos", consultation.physical_exam_findings),
                     self._field("Plan diagnóstico", consultation.diagnostic_plan),
                     self._field(
                         "Notas del plan diagnóstico",
@@ -238,6 +237,15 @@ class ClinicalHistoryPdfService:
                     "consultation_summary": consultation.consultation_summary,
                     "clinical_fields": (
                         clinical_fields if options.detail_level == "full" else []
+                    ),
+                    "exam_data": (
+                        self._build_consultation_exam_data(
+                            consultation,
+                            detail_level=options.detail_level,
+                        )
+                        if options.include_consultations
+                        and options.include_consultation_exam_data
+                        else None
                     ),
                     "medications": (
                         [
@@ -308,6 +316,9 @@ class ClinicalHistoryPdfService:
                 "include_patient_data": options.include_patient_data,
                 "include_owner_data": options.include_owner_data,
                 "include_consultations": options.include_consultations,
+                "include_consultation_exam_data": (
+                    options.include_consultation_exam_data
+                ),
                 "include_exams": options.include_exams,
                 "include_preventive_care": options.include_preventive_care,
                 "include_file_references": options.include_file_references,
@@ -541,7 +552,7 @@ class ClinicalHistoryPdfService:
             if not consultations:
                 lines.append("Sin consultas en el rango seleccionado.")
             for consultation in consultations:
-                self._append_consultation(lines, consultation, options.detail_level)
+                self._append_consultation(lines, consultation, options)
         if options.include_exams:
             lines.extend(["", "Exámenes"])
             if not exams:
@@ -566,7 +577,7 @@ class ClinicalHistoryPdfService:
         self,
         lines: list[str],
         consultation: Consultation,
-        detail_level: str,
+        options: ClinicalHistoryPdfExportRequest,
     ) -> None:
         lines.extend(
             [
@@ -584,7 +595,7 @@ class ClinicalHistoryPdfService:
         )
         if attended_by:
             lines.append(f"Atendido por: {attended_by}")
-        if detail_level == "full" and created_by and created_by != attended_by:
+        if options.detail_level == "full" and created_by and created_by != attended_by:
             lines.append(f"Registrado por: {created_by}")
         self._append_optional(
             lines, "Diagnóstico presuntivo", consultation.presumptive_diagnosis
@@ -592,7 +603,21 @@ class ClinicalHistoryPdfService:
         self._append_optional(lines, "Diagnóstico final", consultation.final_diagnosis)
         self._append_optional(lines, "Indicaciones", consultation.indications)
         self._append_optional(lines, "Resumen", consultation.consultation_summary)
-        if detail_level == "summary":
+        if options.include_consultation_exam_data:
+            exam_data = self._build_consultation_exam_data(
+                consultation,
+                detail_level=options.detail_level,
+            )
+            if exam_data["has_data"]:
+                lines.append("Signos vitales y examen físico")
+                for vital in exam_data["vitals"]:
+                    lines.append(f"{vital['label']}: {vital['value']}")
+                if exam_data["physical_exam_findings"]:
+                    lines.append(
+                        "Hallazgos del examen físico: "
+                        + exam_data["physical_exam_findings"]
+                    )
+        if options.detail_level == "summary":
             return
         for field in self._non_empty_fields(
             [
@@ -602,7 +627,6 @@ class ClinicalHistoryPdfService:
                 self._field("Antecedentes relevantes", consultation.relevant_history),
                 self._field("Hábitos y dieta", consultation.habits_and_diet),
                 self._field("Examen clínico", consultation.clinical_exam),
-                self._field("Hallazgos físicos", consultation.physical_exam_findings),
                 self._field("Plan diagnóstico", consultation.diagnostic_plan),
                 self._field("Notas del plan diagnóstico", consultation.diagnostic_plan_notes),
                 self._field("Resultados del plan diagnóstico", consultation.diagnostic_results),
@@ -763,6 +787,71 @@ class ClinicalHistoryPdfService:
 
     def _format_weight(self, value: object | None) -> str:
         return "No indicado" if value is None else f"{value} kg"
+
+    def _build_consultation_exam_data(
+        self,
+        consultation: Consultation,
+        *,
+        detail_level: str,
+    ) -> dict:
+        vital_fields = [
+            self._field(
+                "Temperatura",
+                self._format_temperature(consultation.temperature_c),
+            ),
+            self._field(
+                "Peso actual",
+                self._format_current_weight(consultation.current_weight_kg),
+            ),
+            self._field(
+                "Frecuencia cardíaca",
+                self._format_rate(consultation.heart_rate, "lpm"),
+            ),
+            self._field(
+                "Frecuencia respiratoria",
+                self._format_rate(consultation.respiratory_rate, "rpm"),
+            ),
+        ]
+        if detail_level == "full":
+            vital_fields.extend(
+                [
+                    self._field("Mucosas", consultation.mucous_membranes),
+                    self._field("Hidratación", consultation.hydration),
+                ]
+            )
+
+        vitals = self._non_empty_fields(vital_fields)
+        physical_exam_findings = (
+            consultation.physical_exam_findings.strip()
+            if detail_level == "full"
+            and consultation.physical_exam_findings
+            and consultation.physical_exam_findings.strip()
+            else None
+        )
+        return {
+            "has_data": bool(vitals or physical_exam_findings),
+            "vitals": vitals,
+            "physical_exam_findings": physical_exam_findings,
+        }
+
+    def _format_temperature(self, value: float | None) -> str | None:
+        if value is None:
+            return None
+        return f"{self._format_decimal_number(value)} °C"
+
+    def _format_current_weight(self, value: float | None) -> str | None:
+        if value is None:
+            return None
+        return f"{self._format_decimal_number(value)} kg"
+
+    def _format_rate(self, value: int | None, unit: str) -> str | None:
+        if value is None:
+            return None
+        return f"{value} {unit}"
+
+    def _format_decimal_number(self, value: float) -> str:
+        formatted = f"{value:.2f}".rstrip("0").rstrip(".")
+        return formatted.replace(".", ",")
 
     def _format_datetime(self, value: datetime | None) -> str:
         return "No indicado" if value is None else value.strftime("%Y-%m-%d %H:%M")

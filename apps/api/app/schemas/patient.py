@@ -68,6 +68,7 @@ class ClinicalHistoryPdfExportRequest(BaseModel):
     include_patient_data: bool = True
     include_owner_data: bool = True
     include_consultations: bool = True
+    include_consultation_exam_data: bool = True
     include_exams: bool = True
     include_preventive_care: bool = True
     include_file_references: bool = True

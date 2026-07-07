@@ -228,6 +228,43 @@
 
     .clinical-block.emphasis { border-left-color: #2F7A69; background: #F5FAF8; }
 
+    .exam-data-block {
+      margin-top: 7px;
+      padding: 8px;
+      border: 1px solid #D9E7E2;
+      border-radius: 10px;
+      background: #F5FAF8;
+      break-inside: avoid;
+    }
+
+    .vitals-grid {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .vitals-grid td {
+      width: 33.333%;
+      padding: 0 4px 5px 0;
+      vertical-align: top;
+    }
+
+    .vital-card {
+      padding: 5px 6px;
+      border: 1px solid #D9E7E2;
+      border-radius: 8px;
+      background: #FFFFFF;
+    }
+
+    .physical-findings {
+      margin-top: 4px;
+      padding: 7px 8px;
+      border-left: 2px solid #2F7A69;
+      border-radius: 7px;
+      background: #FFFFFF;
+      break-inside: avoid;
+    }
+
     .nested-title { margin: 9px 0 5px; color: #245B4F; font-size: 8.5px; font-weight: 700; text-transform: uppercase; }
     .nested-card { margin-bottom: 4px; padding: 6px 8px; border: 1px solid #EDF3F1; border-radius: 9px; background: #F5FAF8; break-inside: avoid; }
     .nested-card strong { color: #245B4F; }
@@ -371,6 +408,31 @@
           {% if consultation.final_diagnosis %}<div class="clinical-block emphasis"><span class="label">Diagnóstico final</span><div class="value text-block">{{ consultation.final_diagnosis }}</div></div>{% endif %}
           {% if consultation.indications %}<div class="clinical-block emphasis"><span class="label">Indicaciones</span><div class="value text-block">{{ consultation.indications }}</div></div>{% endif %}
           {% if consultation.consultation_summary %}<div class="clinical-block"><span class="label">Resumen</span><div class="value text-block">{{ consultation.consultation_summary }}</div></div>{% endif %}
+          {% if consultation.exam_data and consultation.exam_data.has_data %}
+          <div class="exam-data-block">
+            <h3 class="nested-title">Signos vitales y examen físico</h3>
+            {% if consultation.exam_data.vitals %}
+            <table class="vitals-grid">
+              {% for vital in consultation.exam_data.vitals %}
+              {% if loop.index0 is divisibleby 3 %}<tr>{% endif %}
+                <td>
+                  <div class="vital-card">
+                    <span class="label">{{ vital.label }}</span>
+                    <span class="value">{{ vital.value }}</span>
+                  </div>
+                </td>
+              {% if loop.index is divisibleby 3 %}</tr>{% elif loop.last %}{% for _ in range(3 - (loop.index % 3)) %}<td></td>{% endfor %}</tr>{% endif %}
+              {% endfor %}
+            </table>
+            {% endif %}
+            {% if consultation.exam_data.physical_exam_findings %}
+            <div class="physical-findings">
+              <span class="label">Hallazgos del examen físico</span>
+              <div class="value text-block">{{ consultation.exam_data.physical_exam_findings }}</div>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
           {% for field in consultation.clinical_fields %}<div class="clinical-block"><span class="label">{{ field.label }}</span><div class="value text-block">{{ field.value }}</div></div>{% endfor %}
           {% if consultation.medications %}
           <h3 class="nested-title">Medicamentos</h3>

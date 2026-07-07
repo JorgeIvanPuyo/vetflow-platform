@@ -324,6 +324,7 @@ def test_preview_pdf_passes_shared_export_options(
             "date_from": "2026-01-01",
             "date_to": "2026-12-31",
             "include_patient_data": False,
+            "include_consultation_exam_data": False,
             "detail_level": "full",
             "page_size": "a4",
         },
@@ -333,6 +334,7 @@ def test_preview_pdf_passes_shared_export_options(
     assert captured_options["date_from"].isoformat() == "2026-01-01"
     assert captured_options["date_to"].isoformat() == "2026-12-31"
     assert captured_options["include_patient_data"] is False
+    assert captured_options["include_consultation_exam_data"] is False
     assert captured_options["detail_level"] == "full"
     assert captured_options["page_size"] == "a4"
 
@@ -568,6 +570,230 @@ def test_export_pdf_supports_full_detail(client, tenant, db_session):
     assert "- Citología · Laboratorio · Tomar muestra si no mejora" in lines
 
 
+def test_template_context_defaults_to_include_consultation_exam_data(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        current_weight_kg=6.7,
+        heart_rate=150,
+        respiratory_rate=30,
+        mucous_membranes="Rosadas",
+        hydration="Normal",
+        physical_exam_findings="Examen clínico normal.",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+
+    exam_data = context["consultations"][0]["exam_data"]
+    assert context["sections"]["include_consultation_exam_data"] is True
+    assert exam_data["has_data"] is True
+    assert exam_data["vitals"] == [
+        {"label": "Temperatura", "value": "38,7 °C"},
+        {"label": "Peso actual", "value": "6,7 kg"},
+        {"label": "Frecuencia cardíaca", "value": "150 lpm"},
+        {"label": "Frecuencia respiratoria", "value": "30 rpm"},
+        {"label": "Mucosas", "value": "Rosadas"},
+        {"label": "Hidratación", "value": "Normal"},
+    ]
+    assert exam_data["physical_exam_findings"] == "Examen clínico normal."
+
+
+def test_template_context_excludes_consultation_exam_data_when_disabled(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        physical_exam_findings="No debe mostrarse.",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+        include_consultation_exam_data=False,
+    )
+
+    assert context["sections"]["include_consultation_exam_data"] is False
+    assert context["consultations"][0]["exam_data"] is None
+
+
+def test_template_context_summary_consultation_exam_data_is_compact(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        current_weight_kg=6.7,
+        heart_rate=150,
+        respiratory_rate=30,
+        mucous_membranes="Rosadas",
+        hydration="Normal",
+        physical_exam_findings="Hallazgo extenso para modo completo.",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="summary",
+    )
+
+    exam_data = context["consultations"][0]["exam_data"]
+    assert exam_data["has_data"] is True
+    assert exam_data["vitals"] == [
+        {"label": "Temperatura", "value": "38,7 °C"},
+        {"label": "Peso actual", "value": "6,7 kg"},
+        {"label": "Frecuencia cardíaca", "value": "150 lpm"},
+        {"label": "Frecuencia respiratoria", "value": "30 rpm"},
+    ]
+    assert exam_data["physical_exam_findings"] is None
+
+
+def test_template_context_full_consultation_exam_data_excludes_empty_fields(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=39.25,
+        current_weight_kg=None,
+        heart_rate=None,
+        respiratory_rate=28,
+        mucous_membranes="",
+        hydration="Leve deshidratación",
+        physical_exam_findings="Dolor abdominal leve.",
+    )
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+    exam_data = context["consultations"][0]["exam_data"]
+
+    assert exam_data["vitals"] == [
+        {"label": "Temperatura", "value": "39,25 °C"},
+        {"label": "Frecuencia respiratoria", "value": "28 rpm"},
+        {"label": "Hidratación", "value": "Leve deshidratación"},
+    ]
+    assert exam_data["physical_exam_findings"] == "Dolor abdominal leve."
+
+
+def test_template_context_omits_empty_consultation_exam_block(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+
+    assert context["consultations"][0]["exam_data"]["has_data"] is False
+    assert context["consultations"][0]["exam_data"]["vitals"] == []
+    assert context["consultations"][0]["exam_data"]["physical_exam_findings"] is None
+
+
+def test_export_pdf_consultation_exam_data_is_independent_from_diagnostic_exams(
+    client,
+    tenant,
+    db_session,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        heart_rate=150,
+    )
+    _create_exam(client, tenant, patient["id"])
+
+    lines = _export_text_lines(
+        db_session,
+        tenant,
+        patient["id"],
+        include_exams=False,
+    )
+
+    assert "Signos vitales y examen físico" in lines
+    assert "Temperatura: 38,7 °C" in lines
+    assert "Frecuencia cardíaca: 150 lpm" in lines
+    assert "Exámenes" not in lines
+    assert "Examen - Hemograma" not in lines
+
+
+def test_export_pdf_excludes_consultation_exam_data_without_consultations(
+    client,
+    tenant,
+    db_session,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        physical_exam_findings="No debe aparecer.",
+    )
+
+    lines = _export_text_lines(
+        db_session,
+        tenant,
+        patient["id"],
+        include_consultations=False,
+    )
+
+    assert "Consultas" not in lines
+    assert "Signos vitales y examen físico" not in lines
+    assert "Temperatura: 38,7 °C" not in lines
+    assert "Hallazgos del examen físico: No debe aparecer." not in lines
+
+
 def test_export_pdf_does_not_include_cross_tenant_records(
     client,
     tenant,
@@ -682,6 +908,31 @@ def test_preview_pdf_can_include_all_record_types(client, tenant):
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF")
     assert "inline;" in response.headers["content-disposition"]
+
+
+def test_preview_pdf_renders_consultation_exam_data_block(client, tenant):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        temperature_c=38.7,
+        current_weight_kg=6.7,
+        heart_rate=150,
+        respiratory_rate=30,
+        mucous_membranes="Rosadas",
+        hydration="Normal",
+        physical_exam_findings="Examen clínico normal.",
+    )
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
+        headers=_headers(tenant),
+        json={"detail_level": "full"},
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
 
 
 def test_template_context_contains_all_sections_and_structured_records(

@@ -161,6 +161,7 @@ type PdfExportFormState = {
   include_patient_data: boolean;
   include_owner_data: boolean;
   include_consultations: boolean;
+  include_consultation_exam_data: boolean;
   include_exams: boolean;
   include_preventive_care: boolean;
   include_file_references: boolean;
@@ -211,6 +212,7 @@ const initialPdfExportFormState: PdfExportFormState = {
   include_patient_data: true,
   include_owner_data: true,
   include_consultations: true,
+  include_consultation_exam_data: true,
   include_exams: true,
   include_preventive_care: true,
   include_file_references: true,
@@ -298,6 +300,7 @@ const pdfExportSectionOptions: Array<{
     | "include_patient_data"
     | "include_owner_data"
     | "include_consultations"
+    | "include_consultation_exam_data"
     | "include_exams"
     | "include_preventive_care"
     | "include_file_references"
@@ -307,6 +310,10 @@ const pdfExportSectionOptions: Array<{
   { key: "include_patient_data", label: "Datos del paciente" },
   { key: "include_owner_data", label: "Datos del propietario" },
   { key: "include_consultations", label: "Consultas" },
+  {
+    key: "include_consultation_exam_data",
+    label: "Signos vitales y examen físico",
+  },
   { key: "include_exams", label: "Exámenes" },
   { key: "include_preventive_care", label: "Vacunas/desparasitación" },
   { key: "include_file_references", label: "Archivos adjuntos" },
@@ -2928,6 +2935,7 @@ function buildPdfExportPayload(
     include_patient_data: formState.include_patient_data,
     include_owner_data: formState.include_owner_data,
     include_consultations: formState.include_consultations,
+    include_consultation_exam_data: formState.include_consultation_exam_data,
     include_exams: formState.include_exams,
     include_preventive_care: formState.include_preventive_care,
     include_file_references: formState.include_file_references,

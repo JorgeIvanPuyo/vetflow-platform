@@ -81,7 +81,8 @@ Both endpoints accept the same filters and section flags, including:
 
 - optional `date_from` and `date_to`
 - `include_patient_data`, `include_owner_data`, `include_consultations`,
-  `include_exams`, `include_preventive_care`, and `include_file_references`
+  `include_consultation_exam_data`, `include_exams`,
+  `include_preventive_care`, and `include_file_references`
 - `detail_level`: `summary` or `full`
 - `page_size`: `letter`, `a4`, or `legal` (default: `letter`)
 

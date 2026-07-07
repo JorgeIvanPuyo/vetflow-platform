@@ -285,6 +285,7 @@ export type ClinicalHistoryPdfExportPayload = {
   include_patient_data: boolean;
   include_owner_data: boolean;
   include_consultations: boolean;
+  include_consultation_exam_data?: boolean;
   include_exams: boolean;
   include_preventive_care: boolean;
   include_file_references: boolean;
