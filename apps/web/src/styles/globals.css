@@ -1788,6 +1788,22 @@ code {
   padding: 14px;
 }
 
+.patient-card--editable {
+  position: relative;
+}
+
+.patient-card__link-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.patient-card--editable .patient-card__edit {
+  position: relative;
+  z-index: 1;
+}
+
 .patient-card__body,
 .search-result-copy,
 .contact-card__body {
@@ -2039,6 +2055,27 @@ code {
   margin-bottom: 8px;
 }
 
+.record-card--with-actions {
+  grid-template-columns: auto 1fr auto;
+}
+
+.record-card__icon-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.record-card__icon-actions .icon-button {
+  width: 38px;
+  height: 38px;
+}
+
+.icon-button--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
 .record-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2107,6 +2144,15 @@ code {
 .inline-link {
   color: var(--color-primary-dark);
   font-weight: 600;
+}
+
+.patient-detail-hero > .back-link,
+.owner-detail-hero > .back-link {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
 }
 
 .button-row {
