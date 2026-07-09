@@ -1,14 +1,14 @@
 "use client";
 
-import { Edit, Mail, MapPin, PawPrint, Phone, Trash2, User, X } from "lucide-react";
+import { ArrowLeft, Edit, Mail, MapPin, PawPrint, Phone, Trash2, User, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { deleteOwner, getOwner, updateOwner } from "@/services/owners";
-import { getPatients } from "@/services/patients";
-import type { Owner, Patient, UpdateOwnerPayload } from "@/types/api";
+import { getPatient, getPatients, updatePatient } from "@/services/patients";
+import type { Owner, Patient, UpdateOwnerPayload, UpdatePatientPayload } from "@/types/api";
 
 type OwnerDetailProps = {
   ownerId: string;
@@ -31,6 +31,28 @@ type OwnerFormState = {
   phone: string;
   email: string;
   address: string;
+};
+
+type PatientFormState = {
+  name: string;
+  species: string;
+  breed: string;
+  sex: string;
+  estimated_age: string;
+  weight_kg: string;
+  allergies: string;
+  chronic_conditions: string;
+};
+
+const initialPatientFormState: PatientFormState = {
+  name: "",
+  species: "",
+  breed: "",
+  sex: "",
+  estimated_age: "",
+  weight_kg: "",
+  allergies: "",
+  chronic_conditions: "",
 };
 
 const initialState: OwnerDetailState = {
@@ -59,6 +81,12 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isPetEditOpen, setIsPetEditOpen] = useState(false);
+  const [editingPet, setEditingPet] = useState<Patient | null>(null);
+  const [petFormState, setPetFormState] = useState<PatientFormState>(initialPatientFormState);
+  const [isPetLoading, setIsPetLoading] = useState(false);
+  const [isSavingPet, setIsSavingPet] = useState(false);
+  const [petFormMessage, setPetFormMessage] = useState<string | null>(null);
 
   const loadOwnerDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -129,6 +157,110 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
     setIsDeleteOpen(false);
     setDeleteConfirmation("");
     setState((current) => ({ ...current, deleteMessage: null }));
+  }
+
+  function toPatientFormState(patient: Patient): PatientFormState {
+    return {
+      name: patient.name,
+      species: patient.species,
+      breed: patient.breed ?? "",
+      sex: patient.sex ?? "",
+      estimated_age: patient.estimated_age ?? "",
+      weight_kg: patient.weight_kg ?? "",
+      allergies: patient.allergies ?? "",
+      chronic_conditions: patient.chronic_conditions ?? "",
+    };
+  }
+
+  async function openPetEditModal(pet: Patient) {
+    setEditingPet(pet);
+    // Precarga con los datos ya disponibles en la lista; el fetch por id los refresca.
+    setPetFormState(toPatientFormState(pet));
+    setPetFormMessage(null);
+    setIsPetLoading(true);
+    setIsPetEditOpen(true);
+    setState((current) => ({ ...current, successMessage: null }));
+
+    try {
+      const response = await getPatient(pet.id);
+      const patient = response.data;
+
+      setPetFormState(toPatientFormState(patient));
+      setEditingPet(patient);
+      setIsPetLoading(false);
+    } catch (error) {
+      setIsPetLoading(false);
+      setPetFormMessage(getApiErrorMessage(error));
+    }
+  }
+
+  function closePetEditModal() {
+    if (isSavingPet) {
+      return;
+    }
+
+    setIsPetEditOpen(false);
+    setEditingPet(null);
+    setPetFormState(initialPatientFormState);
+    setPetFormMessage(null);
+    setIsPetLoading(false);
+  }
+
+  async function handlePetSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingPet) {
+      return;
+    }
+
+    const name = petFormState.name.trim();
+    const species = petFormState.species.trim();
+
+    if (!name || !species) {
+      setPetFormMessage("El nombre y la especie son obligatorios.");
+      return;
+    }
+
+    const weightRaw = petFormState.weight_kg.trim();
+    let weight_kg: number | null = null;
+    if (weightRaw) {
+      const parsed = Number(weightRaw);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        setPetFormMessage("El peso debe ser un número válido.");
+        return;
+      }
+      weight_kg = parsed;
+    }
+
+    const payload: UpdatePatientPayload = {
+      name,
+      species,
+      breed: petFormState.breed.trim() || null,
+      sex: petFormState.sex.trim() || null,
+      estimated_age: petFormState.estimated_age.trim() || null,
+      weight_kg,
+      allergies: petFormState.allergies.trim() || null,
+      chronic_conditions: petFormState.chronic_conditions.trim() || null,
+    };
+
+    setIsSavingPet(true);
+    setPetFormMessage(null);
+
+    try {
+      await updatePatient(editingPet.id, payload);
+      setIsSavingPet(false);
+      setIsPetEditOpen(false);
+      setEditingPet(null);
+      setPetFormState(initialPatientFormState);
+      setState((current) => ({
+        ...current,
+        successMessage: "Paciente actualizado correctamente.",
+      }));
+      await loadOwnerDetail();
+    } catch (error) {
+      setIsSavingPet(false);
+      setPetFormMessage(getApiErrorMessage(error));
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -207,6 +339,9 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
   return (
     <div className="page-stack owner-detail-page">
       <section className="detail-hero owner-detail-hero">
+        <Link className="back-link" href="/owners">
+          <ArrowLeft aria-hidden="true" size={17} /> Volver a propietarios
+        </Link>
         <div className="detail-hero__main owner-detail-hero__main">
           <span className="contact-avatar" aria-hidden="true">
             {state.owner.full_name.charAt(0).toUpperCase()}
@@ -267,7 +402,12 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
           ) : (
             <div className="patient-card-list">
               {state.pets.map((pet) => (
-                <Link className="patient-card" href={`/patients/${pet.id}`} key={pet.id}>
+                <div className="patient-card patient-card--editable" key={pet.id}>
+                  <Link
+                    aria-label={`Ver ${pet.name}`}
+                    className="patient-card__link-overlay"
+                    href={`/patients/${pet.id}`}
+                  />
                   <span className="pet-avatar" aria-hidden="true"><PawPrint size={22} /></span>
                   <span className="patient-card__body">
                     <strong>{pet.name}</strong>
@@ -278,7 +418,15 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                       {pet.weight_kg ? ` · ${pet.weight_kg} kg` : ""}
                     </span>
                   </span>
-                </Link>
+                  <button
+                    aria-label={`Editar ${pet.name}`}
+                    className="icon-button patient-card__edit"
+                    onClick={() => openPetEditModal(pet)}
+                    type="button"
+                  >
+                    <Edit aria-hidden="true" size={16} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -364,6 +512,150 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isPetEditOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            aria-labelledby="edit-pet-title"
+            aria-modal="true"
+            className="bottom-sheet"
+            role="dialog"
+          >
+            <div className="bottom-sheet__header">
+              <div>
+                <p className="eyebrow">Edición</p>
+                <h2 id="edit-pet-title">
+                  {editingPet ? `Editar ${editingPet.name}` : "Editar paciente"}
+                </h2>
+              </div>
+              <button
+                aria-label="Cancelar"
+                className="icon-button"
+                disabled={isSavingPet}
+                onClick={closePetEditModal}
+                type="button"
+              >
+                <X aria-hidden="true" size={20} />
+              </button>
+            </div>
+
+            {petFormMessage ? <div className="error-state">{petFormMessage}</div> : null}
+
+            {isPetLoading ? (
+              <div className="loading-card" aria-label="Cargando paciente" />
+            ) : (
+              <form className="entity-form" onSubmit={handlePetSubmit}>
+                <label className="field">
+                  <span>Nombre</span>
+                  <input
+                    required
+                    value={petFormState.name}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, name: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Especie</span>
+                  <input
+                    required
+                    value={petFormState.species}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, species: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Raza opcional</span>
+                  <input
+                    value={petFormState.breed}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, breed: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Sexo opcional</span>
+                  <select
+                    value={petFormState.sex}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, sex: event.target.value }))
+                    }
+                  >
+                    <option value="">Sin especificar</option>
+                    <option value="Macho">Macho</option>
+                    <option value="Hembra">Hembra</option>
+                  </select>
+                </label>
+
+                <label className="field">
+                  <span>Edad estimada opcional</span>
+                  <input
+                    value={petFormState.estimated_age}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({
+                        ...current,
+                        estimated_age: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Peso (kg) opcional</span>
+                  <input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    type="number"
+                    value={petFormState.weight_kg}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, weight_kg: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Alergias opcional</span>
+                  <textarea
+                    rows={2}
+                    value={petFormState.allergies}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({ ...current, allergies: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Condiciones crónicas opcional</span>
+                  <textarea
+                    rows={2}
+                    value={petFormState.chronic_conditions}
+                    onChange={(event) =>
+                      setPetFormState((current) => ({
+                        ...current,
+                        chronic_conditions: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+
+                <div className="modal-actions">
+                  <button className="secondary-button" onClick={closePetEditModal} type="button">
+                    Cancelar
+                  </button>
+                  <button className="primary-button" disabled={isSavingPet} type="submit">
+                    {isSavingPet ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
         </div>
       ) : null}

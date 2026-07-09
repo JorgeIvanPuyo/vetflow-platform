@@ -1,8 +1,10 @@
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin_users import router as admin_users_router
 from app.api.ai import router as ai_router
 from app.api.appointments import router as appointments_router
+from app.api.auth import router as auth_router
 from app.api.clinic import router as clinic_router
 from app.api.consultations import router as consultations_router
 from app.api.dashboard import router as dashboard_router
@@ -38,6 +40,8 @@ app.add_middleware(
 api_v1_router = APIRouter(prefix=settings.api_v1_prefix)
 api_v1_router.include_router(health_router)
 api_v1_router.include_router(debug_router)
+api_v1_router.include_router(auth_router)
+api_v1_router.include_router(admin_users_router)
 api_v1_router.include_router(owners_router)
 api_v1_router.include_router(patients_router)
 api_v1_router.include_router(consultations_router)

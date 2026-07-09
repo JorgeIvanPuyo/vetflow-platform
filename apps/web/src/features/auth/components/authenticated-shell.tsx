@@ -5,6 +5,7 @@ import { ReactNode } from "react";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider, useAuth } from "@/features/auth/auth-context";
+import { CurrentUserProvider } from "@/features/auth/current-user-context";
 import { LoginForm } from "@/features/auth/components/login-form";
 
 export function AuthenticatedShell({ children }: { children: ReactNode }) {
@@ -26,7 +27,11 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
     return <LoginForm />;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <CurrentUserProvider>
+      <AppShell>{children}</AppShell>
+    </CurrentUserProvider>
+  );
 }
 
 function SessionLoadingScreen() {

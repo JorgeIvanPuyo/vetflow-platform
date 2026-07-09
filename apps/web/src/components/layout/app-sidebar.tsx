@@ -4,15 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { ClinicBrandMark } from "@/components/layout/clinic-brand-mark";
-import { navigationItems } from "@/components/layout/navigation-items";
+import {
+  filterNavigationByRole,
+  navigationItems,
+} from "@/components/layout/navigation-items";
 import { UserSessionFooter } from "@/components/layout/user-session-footer";
 import { useAuth } from "@/features/auth/auth-context";
+import { useCurrentUser } from "@/features/auth/current-user-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { logout, user } = useAuth();
+  const { role } = useCurrentUser();
   const { displayName, profile, refreshProfile } = useClinic();
+  const visibleItems = filterNavigationByRole(navigationItems, role);
 
   function isActive(href: string) {
     if (href === "/inventory") {
@@ -31,7 +37,7 @@ export function AppSidebar() {
         </Link>
 
         <nav className="app-sidebar__nav">
-          {navigationItems.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
 
             return (

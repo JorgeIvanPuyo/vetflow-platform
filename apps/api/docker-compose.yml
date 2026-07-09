@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   api:
     build:
@@ -19,7 +17,7 @@ services:
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    
+
   db:
     image: postgres:15
     environment:
@@ -29,7 +27,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_vetflow_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
+  postgres_vetflow_data:

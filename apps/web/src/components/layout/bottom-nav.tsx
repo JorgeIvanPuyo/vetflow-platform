@@ -1,14 +1,37 @@
 "use client";
 
-import { Calendar, LayoutDashboard, Package, PawPrint, Settings } from "lucide-react";
+import {
+  Calculator,
+  Calendar,
+  LayoutDashboard,
+  Package,
+  PawPrint,
+  Settings,
+  ShieldCheck,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { SCOPED_ROLES } from "@/components/layout/navigation-items";
+import { useCurrentUser } from "@/features/auth/current-user-context";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventory", label: "Inventario", icon: Package },
+  {
+    href: "/accounting",
+    label: "Contabilidad",
+    icon: Calculator,
+    roles: ["contador", "superadmin"] as const,
+  },
+  {
+    href: "/users",
+    label: "Usuarios",
+    icon: ShieldCheck,
+    roles: ["superadmin"] as const,
+  },
   { href: "/settings", label: "Ajustes", icon: Settings },
 ];
 
@@ -18,6 +41,7 @@ function closeMobileMenu() {
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { role } = useCurrentUser();
   const isConsultationWorkflow =
     pathname.startsWith("/consultations/") ||
     /^\/patients\/[^/]+\/consultations\/new$/.test(pathname);
@@ -26,9 +50,16 @@ export function BottomNav() {
     return null;
   }
 
+  const visibleItems = navItems.filter((item) => {
+    if ("roles" in item) {
+      return role ? (item.roles as readonly string[]).includes(role) : false;
+    }
+    return role ? !SCOPED_ROLES.includes(role) : true;
+  });
+
   return (
     <nav className="bottom-nav" aria-label="Navegación principal móvil">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const Icon = item.icon;
         const isActive =
           item.href === "/agenda"

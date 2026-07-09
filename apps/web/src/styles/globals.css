@@ -41,8 +41,16 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at 10% 0%, rgba(78, 165, 141, 0.18), transparent 28rem),
-    radial-gradient(circle at 90% 12%, rgba(59, 130, 246, 0.08), transparent 24rem),
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(78, 165, 141, 0.18),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 90% 12%,
+      rgba(59, 130, 246, 0.08),
+      transparent 24rem
+    ),
     var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -223,7 +231,11 @@ code {
   align-items: center;
   justify-content: center;
   border-radius: 13px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-dark)
+  );
   color: white;
   box-shadow: var(--shadow-floating);
 }
@@ -455,6 +467,11 @@ code {
 .status-pill--error {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+
+.badge--muted {
+  background: var(--color-surface-soft);
+  color: var(--color-text-muted);
 }
 
 .badge--warning,
@@ -986,7 +1003,9 @@ code {
   transition: transform 160ms ease;
 }
 
-.dashboard-secondary-preview--expanded .dashboard-secondary-preview__toggle svg {
+.dashboard-secondary-preview--expanded
+  .dashboard-secondary-preview__toggle
+  svg {
   transform: rotate(180deg);
 }
 
@@ -1769,6 +1788,22 @@ code {
   padding: 14px;
 }
 
+.patient-card--editable {
+  position: relative;
+}
+
+.patient-card__link-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.patient-card--editable .patient-card__edit {
+  position: relative;
+  z-index: 1;
+}
+
 .patient-card__body,
 .search-result-copy,
 .contact-card__body {
@@ -1855,7 +1890,11 @@ code {
   display: grid;
   gap: 14px;
   background:
-    linear-gradient(135deg, rgba(78, 165, 141, 0.18), rgba(255, 255, 255, 0.92)),
+    linear-gradient(
+      135deg,
+      rgba(78, 165, 141, 0.18),
+      rgba(255, 255, 255, 0.92)
+    ),
     var(--color-surface);
 }
 
@@ -2016,6 +2055,27 @@ code {
   margin-bottom: 8px;
 }
 
+.record-card--with-actions {
+  grid-template-columns: auto 1fr auto;
+}
+
+.record-card__icon-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.record-card__icon-actions .icon-button {
+  width: 38px;
+  height: 38px;
+}
+
+.icon-button--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
 .record-card__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2084,6 +2144,15 @@ code {
 .inline-link {
   color: var(--color-primary-dark);
   font-weight: 600;
+}
+
+.patient-detail-hero > .back-link,
+.owner-detail-hero > .back-link {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
 }
 
 .button-row {
@@ -2280,8 +2349,7 @@ code {
 .ai-inline-action--loading {
   width: 144px;
   opacity: 0.9;
-  background:
-    linear-gradient(90deg, #4f8f80, #2f6f88, #4f8f80);
+  background: linear-gradient(90deg, #4f8f80, #2f6f88, #4f8f80);
   background-size: 200% 100%;
   animation: ai-shimmer 1.45s linear infinite;
 }
@@ -2502,7 +2570,11 @@ code {
   border: 1px solid rgba(88, 143, 121, 0.18);
   border-radius: 16px;
   background:
-    linear-gradient(135deg, rgba(232, 247, 251, 0.72), rgba(247, 252, 250, 0.94)),
+    linear-gradient(
+      135deg,
+      rgba(232, 247, 251, 0.72),
+      rgba(247, 252, 250, 0.94)
+    ),
     #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
@@ -2713,7 +2785,10 @@ code {
   font-weight: 500;
   padding: 12px 10px;
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
 }
 
 .consultation-workflow .choice-card {
@@ -2802,7 +2877,11 @@ code {
 .primary-button,
 .primary-action {
   border: 0;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-dark)
+  );
   color: white;
   box-shadow: var(--shadow-card);
 }
@@ -3252,7 +3331,9 @@ code {
   color: white;
 }
 
-.consultation-stepper__item--completed:not(.consultation-stepper__item--active) {
+.consultation-stepper__item--completed:not(
+  .consultation-stepper__item--active
+) {
   border-color: rgba(78, 165, 141, 0.2);
   background: var(--color-primary-soft);
   color: var(--color-primary-dark);
@@ -3622,7 +3703,12 @@ code {
   align-items: start;
   padding: 18px 16px 24px;
   background:
-    linear-gradient(145deg, rgba(223, 244, 238, 0.82), rgba(250, 248, 243, 0.96) 38%, rgba(255, 255, 255, 0.9)),
+    linear-gradient(
+      145deg,
+      rgba(223, 244, 238, 0.82),
+      rgba(250, 248, 243, 0.96) 38%,
+      rgba(255, 255, 255, 0.9)
+    ),
     var(--color-bg);
 }
 
@@ -3708,6 +3794,107 @@ code {
   font-weight: 600;
 }
 
+.auth-card-flip {
+  display: grid;
+  justify-self: center;
+  width: min(100%, 420px);
+  overflow: hidden;
+}
+
+.auth-card-flip .auth-card {
+  width: 100%;
+}
+
+.auth-card-flip--reset .auth-card {
+  animation: authSlideFromRight 0.32s ease;
+}
+
+.auth-card-flip--login .auth-card {
+  animation: authSlideFromLeft 0.32s ease;
+}
+
+@keyframes authSlideFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes authSlideFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.auth-link-button {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.auth-link-button:hover {
+  text-decoration: underline;
+}
+
+.auth-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: start;
+  justify-self: start;
+  padding: 4px 8px 4px 4px;
+  margin: -4px 0 -2px -4px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.auth-back-button:hover {
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+}
+
+.auth-reset-success {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+.auth-reset-success__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-success-soft);
+  color: var(--color-primary-dark);
+}
+
+.auth-reset-success p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
 .auth-loading {
   min-height: 100vh;
   display: grid;
@@ -3780,7 +3967,11 @@ code {
     border: 1px solid rgba(228, 222, 211, 0.7);
     border-radius: 28px;
     background:
-      linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(223, 244, 238, 0.34)),
+      linear-gradient(
+        145deg,
+        rgba(255, 255, 255, 0.58),
+        rgba(223, 244, 238, 0.34)
+      ),
       rgba(255, 255, 255, 0.28);
   }
 
@@ -4024,7 +4215,11 @@ code {
   place-items: center;
   padding: 24px 16px;
   background:
-    radial-gradient(circle at 50% 0%, rgba(78, 165, 141, 0.2), transparent 22rem),
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(78, 165, 141, 0.2),
+      transparent 22rem
+    ),
     var(--color-bg);
 }
 
@@ -4078,7 +4273,12 @@ code {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(78, 165, 141, 0.12), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(78, 165, 141, 0.12),
+    transparent
+  );
   animation: shimmer 1.4s infinite;
 }
 
@@ -4455,7 +4655,11 @@ code {
   gap: 22px;
   padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
   background:
-    radial-gradient(circle at 20% 0%, rgba(78, 165, 141, 0.16), transparent 18rem),
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(78, 165, 141, 0.16),
+      transparent 18rem
+    ),
     var(--color-bg);
 }
 
@@ -4559,8 +4763,6 @@ code {
   gap: 6px;
 }
 
-
-
 /* Final production polish: Login + Dashboard */
 
 .auth-screen {
@@ -4660,9 +4862,22 @@ code {
     align-items: center;
     padding: 18px 16px 28px;
     background:
-      radial-gradient(circle at 50% -8%, rgba(78, 165, 141, 0.18), transparent 17rem),
-      radial-gradient(circle at 96% 18%, rgba(223, 244, 238, 0.54), transparent 14rem),
-      linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(250, 248, 243, 0.94) 54%, rgba(246, 243, 236, 0.96)),
+      radial-gradient(
+        circle at 50% -8%,
+        rgba(78, 165, 141, 0.18),
+        transparent 17rem
+      ),
+      radial-gradient(
+        circle at 96% 18%,
+        rgba(223, 244, 238, 0.54),
+        transparent 14rem
+      ),
+      linear-gradient(
+        180deg,
+        rgba(255, 252, 246, 0.98),
+        rgba(250, 248, 243, 0.94) 54%,
+        rgba(246, 243, 236, 0.96)
+      ),
       var(--color-bg);
   }
 
@@ -4694,7 +4909,9 @@ code {
     border-color: rgba(228, 222, 211, 0.78);
     border-radius: 24px;
     background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 18px 44px rgba(17, 24, 39, 0.1), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    box-shadow:
+      0 18px 44px rgba(17, 24, 39, 0.1),
+      0 1px 0 rgba(255, 255, 255, 0.7) inset;
   }
 }
 
@@ -4720,12 +4937,24 @@ code {
     border-color: rgba(228, 222, 211, 0.44);
     border-radius: 30px;
     background:
-      linear-gradient(102deg, rgba(255, 251, 243, 0.88) 0%, rgba(255, 251, 243, 0.72) 34%, rgba(223, 244, 238, 0.2) 62%, rgba(255, 255, 255, 0.04) 100%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(250, 248, 243, 0.18)),
+      linear-gradient(
+        102deg,
+        rgba(255, 251, 243, 0.88) 0%,
+        rgba(255, 251, 243, 0.72) 34%,
+        rgba(223, 244, 238, 0.2) 62%,
+        rgba(255, 255, 255, 0.04) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.08),
+        rgba(250, 248, 243, 0.18)
+      ),
       url("/vetclinic_3.png");
     background-position: center;
     background-size: cover;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48), 0 16px 36px rgba(17, 24, 39, 0.07);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.48),
+      0 16px 36px rgba(17, 24, 39, 0.07);
   }
 
   .auth-brand-panel__copy {
@@ -7653,7 +7882,10 @@ code {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: var(--shadow-card);
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .consultation-list-card:hover {

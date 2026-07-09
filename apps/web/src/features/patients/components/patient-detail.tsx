@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   CalendarDays,
   Cat,
   ChevronDown,
@@ -35,8 +36,13 @@ import {
 } from "react";
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { formatDateTime, toDateTimeLocalValue } from "@/lib/datetime";
 import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
 import { FollowUpFormModal } from "@/features/follow-ups/components/follow-up-form-modal";
+import { PreventiveCareDeleteDialog } from "@/features/patients/components/preventive-care/preventive-care-delete-dialog";
+import { PreventiveCareFormModal } from "@/features/patients/components/preventive-care/preventive-care-form-modal";
+import { PreventiveCareSection } from "@/features/patients/components/preventive-care/preventive-care-section";
+import { usePreventiveCare } from "@/features/patients/hooks/use-preventive-care";
 import {
   PatientAvatar,
   PatientPhotoInput,
@@ -77,7 +83,7 @@ import {
   updatePatient,
   uploadPatientPhoto,
 } from "@/services/patients";
-import { createPreventiveCare, getPatientPreventiveCare } from "@/services/preventive-care";
+import { getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
   ClinicTeamMember,
   ClinicalHistory,
@@ -86,13 +92,11 @@ import type {
   Consultation,
   ConsultationAiSummaryResponse,
   CreatePatientFileReferencePayload,
-  CreatePreventiveCarePayload,
   FollowUp,
   Owner,
   Patient,
   PatientFileReference,
   PreventiveCare,
-  PreventiveCareType,
   UpdatePatientPayload,
 } from "@/types/api";
 
@@ -102,7 +106,6 @@ type PatientDetailProps = {
 
 type PatientDetailState = {
   isLoading: boolean;
-  isPreventiveSubmitting: boolean;
   isFollowUpSubmitting: boolean;
   isFileSubmitting: boolean;
   isFileUploading: boolean;
@@ -129,15 +132,6 @@ type TimelineFilter =
   | "preventive_care"
   | "file_reference"
   | "follow_up";
-
-type PreventiveCareFormState = {
-  name: string;
-  care_type: PreventiveCareType;
-  applied_at: string;
-  next_due_at: string;
-  lot_number: string;
-  notes: string;
-};
 
 type FileReferenceFormState = {
   name: string;
@@ -181,15 +175,6 @@ type PatientEditFormState = {
 
 type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
 
-const initialPreventiveCareFormState: PreventiveCareFormState = {
-  name: "",
-  care_type: "vaccine",
-  applied_at: toDateTimeLocalValue(new Date()),
-  next_due_at: "",
-  lot_number: "",
-  notes: "",
-};
-
 const initialFileReferenceFormState: FileReferenceFormState = {
   name: "",
   file_type: "radiography",
@@ -220,7 +205,6 @@ const initialPdfExportFormState: PdfExportFormState = {
 
 const initialState: PatientDetailState = {
   isLoading: true,
-  isPreventiveSubmitting: false,
   isFollowUpSubmitting: false,
   isFileSubmitting: false,
   isFileUploading: false,
@@ -269,12 +253,6 @@ const timelineFilters: Array<{ value: TimelineFilter; label: string }> = [
   { value: "preventive_care", label: "Vacunas/desparasitación" },
   { value: "file_reference", label: "Archivos" },
   { value: "follow_up", label: "Seguimientos" },
-];
-
-const preventiveCareTypeOptions: Array<{ value: PreventiveCareType; label: string }> = [
-  { value: "vaccine", label: "Vacuna" },
-  { value: "deworming", label: "Desparasitación" },
-  { value: "other", label: "Otro" },
 ];
 
 const fileTypeOptions = [
@@ -330,7 +308,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [state, setState] = useState<PatientDetailState>(initialState);
   const [activeSection, setActiveSection] = useState<PatientDetailSection>("history");
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
-  const [isPreventiveModalOpen, setIsPreventiveModalOpen] = useState(false);
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [isFileModalOpen, setIsFileModalOpen] = useState(false);
   const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
@@ -350,7 +327,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const pdfPreviewRequestIdRef = useRef(0);
   const [fileReferenceToDelete, setFileReferenceToDelete] =
     useState<PatientFileReference | null>(null);
-  const [preventiveFormState, setPreventiveFormState] = useState<PreventiveCareFormState>(initialPreventiveCareFormState);
   const [followUpFormState, setFollowUpFormState] =
     useState<FollowUpFormState>(getInitialFollowUpFormState());
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
@@ -441,6 +417,15 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     }
   }, [patientId]);
 
+  const preventive = usePreventiveCare({
+    patientId,
+    onChanged: async (message) => {
+      setActiveSection("preventive");
+      setState((current) => ({ ...current, errorMessage: null, successMessage: message }));
+      await loadPatientDetail();
+    },
+  });
+
   useEffect(() => {
     void loadPatientDetail();
   }, [loadPatientDetail]);
@@ -466,50 +451,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       }
     };
   }, []);
-
-  async function handleCreatePreventiveCare(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const payload: CreatePreventiveCarePayload = {
-      name: preventiveFormState.name.trim(),
-      care_type: preventiveFormState.care_type,
-      applied_at: new Date(preventiveFormState.applied_at).toISOString(),
-      next_due_at: preventiveFormState.next_due_at
-        ? new Date(preventiveFormState.next_due_at).toISOString()
-        : null,
-      lot_number: preventiveFormState.lot_number.trim() || null,
-      notes: preventiveFormState.notes.trim() || null,
-    };
-
-    setState((current) => ({
-      ...current,
-      isPreventiveSubmitting: true,
-      errorMessage: null,
-      successMessage: null,
-    }));
-
-    try {
-      await createPreventiveCare(patientId, payload);
-      setPreventiveFormState({
-        ...initialPreventiveCareFormState,
-        applied_at: toDateTimeLocalValue(new Date()),
-      });
-      setIsPreventiveModalOpen(false);
-      setActiveSection("preventive");
-      setState((current) => ({
-        ...current,
-        isPreventiveSubmitting: false,
-        successMessage: "Registro preventivo agregado correctamente.",
-      }));
-      await loadPatientDetail();
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        isPreventiveSubmitting: false,
-        errorMessage: getApiErrorMessage(error),
-      }));
-    }
-  }
 
   function openFollowUpModal(patient: Patient) {
     setFollowUpFormState({
@@ -1231,6 +1172,9 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   return (
     <div className="page-stack patient-detail-page">
       <section className="detail-hero patient-detail-hero">
+        <Link className="back-link" href="/patients">
+          <ArrowLeft aria-hidden="true" size={17} /> Volver a pacientes
+        </Link>
         <div className="detail-hero__main patient-detail-hero__main">
           <PatientAvatar patient={patient} size="large" />
           <div>
@@ -1251,6 +1195,14 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             Nueva consulta
           </button>
           <div className="patient-detail-hero__secondary-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => openPatientEditModal(patient)}
+            >
+              <Edit aria-hidden="true" size={15} />
+              Editar
+            </button>
             <button
               className="secondary-button"
               type="button"
@@ -1293,14 +1245,40 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
       {activeSection === "history" ? renderHistorySection(timeline) : null}
       {activeSection === "info" ? renderInfoSection(patient) : null}
-      {activeSection === "preventive" ? renderPreventiveCareSection() : null}
+      {activeSection === "preventive" ? (
+        <PreventiveCareSection
+          records={state.preventiveCare}
+          onAdd={preventive.openCreate}
+          onEdit={preventive.openEdit}
+          onDelete={preventive.openDelete}
+        />
+      ) : null}
       {activeSection === "files" ? renderFilesSection() : null}
 
       {isPatientEditOpen ? renderPatientEditModal() : null}
       {isPatientDeleteOpen ? renderPatientDeleteModal(patient.name) : null}
       {isPdfExportModalOpen ? renderPdfExportModal() : null}
       {isPdfPreviewModalOpen ? renderPdfPreviewModal() : null}
-      {isPreventiveModalOpen ? renderPreventiveCareModal() : null}
+      {preventive.formMode ? (
+        <PreventiveCareFormModal
+          mode={preventive.formMode}
+          formState={preventive.formState}
+          isSubmitting={preventive.isSubmitting}
+          error={preventive.formError}
+          onClose={preventive.closeForm}
+          onSubmit={preventive.submitForm}
+          onUpdateForm={preventive.setFormState}
+        />
+      ) : null}
+      {preventive.recordToDelete ? (
+        <PreventiveCareDeleteDialog
+          record={preventive.recordToDelete}
+          isDeleting={preventive.isDeleting}
+          error={preventive.deleteError}
+          onConfirm={preventive.confirmDelete}
+          onClose={preventive.closeDelete}
+        />
+      ) : null}
       {isFollowUpModalOpen ? renderFollowUpModal(patient) : null}
       {isFileUploadModalOpen ? renderFileUploadModal() : null}
       {isFileModalOpen ? renderFileReferenceModal() : null}
@@ -1479,48 +1457,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             )}
           </div>
         </div>
-      </section>
-    );
-  }
-
-  function renderPreventiveCareSection() {
-    return (
-      <section className="panel patient-detail-section">
-        <div className="section-heading section-heading--row">
-          <div>
-            <p className="eyebrow">Prevención</p>
-            <h2>Vacunas y desparasitación</h2>
-            <p>Registros preventivos persistentes del paciente.</p>
-          </div>
-          <button className="primary-button" type="button" onClick={() => setIsPreventiveModalOpen(true)}>
-            <Plus aria-hidden="true" size={18} /> Agregar
-          </button>
-        </div>
-
-        {state.preventiveCare.length === 0 ? (
-          <div className="empty-state">No hay vacunas o desparasitaciones registradas.</div>
-        ) : (
-          <div className="record-card-list">
-            {state.preventiveCare.map((record) => (
-              <article className="record-card" key={record.id}>
-                <span className="icon-bubble"><Syringe size={20} /></span>
-                <div>
-                  <h3>{record.name}</h3>
-                  <p>{getPreventiveCareTypeLabel(record.care_type)} · Aplicado {formatDateTime(record.applied_at)}</p>
-                  {record.next_due_at ? <p>Próxima dosis: {formatDateTime(record.next_due_at)}</p> : null}
-                  {record.lot_number ? <p>Lote: {record.lot_number}</p> : null}
-                  {record.notes ? <p>{record.notes}</p> : null}
-                  {getTraceableUserName(record, "created_by") ? (
-                    <p className="traceability-meta traceability-meta--compact">
-                      <strong>Registrado por:</strong>{" "}
-                      {getTraceableUserName(record, "created_by")}
-                    </p>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
     );
   }
@@ -2311,61 +2247,6 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     );
   }
 
-  function renderPreventiveCareModal() {
-    return (
-      <div className="modal-backdrop" role="presentation">
-        <section aria-labelledby="preventive-care-title" aria-modal="true" className="bottom-sheet" role="dialog">
-          <div className="bottom-sheet__header">
-            <div>
-              <p className="eyebrow">Prevención</p>
-              <h2 id="preventive-care-title">Agregar vacuna o desparasitación</h2>
-            </div>
-            <button aria-label="Cancelar" className="icon-button" onClick={() => setIsPreventiveModalOpen(false)} type="button">
-              <X aria-hidden="true" size={20} />
-            </button>
-          </div>
-
-          <form className="entity-form" onSubmit={handleCreatePreventiveCare}>
-            <div className="form-grid">
-              <label className="field">
-                <span>Nombre</span>
-                <input required value={preventiveFormState.name} onChange={(event) => setPreventiveFormState((current) => ({ ...current, name: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>Tipo</span>
-                <select value={preventiveFormState.care_type} onChange={(event) => setPreventiveFormState((current) => ({ ...current, care_type: event.target.value as PreventiveCareType }))}>
-                  {preventiveCareTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-              <label className="field">
-                <span>Fecha</span>
-                <input required type="datetime-local" value={preventiveFormState.applied_at} onChange={(event) => setPreventiveFormState((current) => ({ ...current, applied_at: event.target.value }))} />
-              </label>
-              <label className="field">
-                <span>Próxima dosis</span>
-                <input type="datetime-local" value={preventiveFormState.next_due_at} onChange={(event) => setPreventiveFormState((current) => ({ ...current, next_due_at: event.target.value }))} />
-              </label>
-            </div>
-            <label className="field">
-              <span>Lote</span>
-              <input value={preventiveFormState.lot_number} onChange={(event) => setPreventiveFormState((current) => ({ ...current, lot_number: event.target.value }))} />
-            </label>
-            <label className="field">
-              <span>Notas</span>
-              <textarea rows={3} value={preventiveFormState.notes} onChange={(event) => setPreventiveFormState((current) => ({ ...current, notes: event.target.value }))} />
-            </label>
-            <div className="modal-actions">
-              <button className="secondary-button" onClick={() => setIsPreventiveModalOpen(false)} type="button">Cancelar</button>
-              <button className="primary-button" disabled={state.isPreventiveSubmitting} type="submit">
-                {state.isPreventiveSubmitting ? "Guardando..." : "Guardar"}
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
-    );
-  }
-
   function renderFileUploadModal() {
     return (
       <div className="modal-backdrop" role="presentation">
@@ -2726,19 +2607,6 @@ function getTimelineTraceabilityLines(item: ClinicalHistoryTimelineItem) {
   return [];
 }
 
-function toDateTimeLocalValue(date: Date | string) {
-  const value = typeof date === "string" ? new Date(date) : date;
-  const offsetDate = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
-  return offsetDate.toISOString().slice(0, 16);
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("es", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
 function getClinicalTimeline(clinicalHistory: ClinicalHistory): ClinicalHistoryTimelineItem[] {
   const consultationsById = new Map(
     clinicalHistory.consultations.map((consultation) => [consultation.id, consultation]),
@@ -2853,15 +2721,6 @@ function getTimelineBadgeClass(type: ClinicalHistoryTimelineItem["type"]) {
   if (type === "exam" || type === "file_reference") return "badge--blue";
   if (type === "follow_up") return "badge--warning";
   return "badge--success";
-}
-
-function getPreventiveCareTypeLabel(type: PreventiveCareType) {
-  const labels: Record<PreventiveCareType, string> = {
-    vaccine: "Vacuna",
-    deworming: "Desparasitación",
-    other: "Otro",
-  };
-  return labels[type];
 }
 
 function getFileTypeLabel(type: string) {
