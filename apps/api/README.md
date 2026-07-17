@@ -1,32 +1,54 @@
 # Vetflow API
 
-Initial FastAPI backend for Vetflow Platform.
+FastAPI backend for Vetflow Platform.
 
-## Current Scope
-- executable FastAPI app
-- PostgreSQL-ready SQLAlchemy session setup
-- health endpoints at `/health` and `/api/v1/health`
-- Docker and docker-compose local setup
-- tenant-aware foundation for future business modules
+## Dependency Source
 
-## Local Run (uv)
+Backend dependencies are managed only with `uv`:
 
-Dependencies are managed with [uv](https://docs.astral.sh/uv/) via `pyproject.toml`.
+- `pyproject.toml`
+- `uv.lock`
+
+Runtime dependencies live in `[project].dependencies`. Development and test dependencies live in `[dependency-groups].dev`.
+
+## Local Run
+
+Create `.env` from `.env.example`. Leave Firebase credentials empty when using the development tenant fallback, or set non-production Firebase values only when explicitly testing Firebase-backed auth locally.
 
 ```bash
 cd apps/api
-uv sync                                   # create .venv + install deps (incl. dev group)
-uv run alembic upgrade head               # apply migrations (creates tables)
+uv sync --frozen
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Run tests with `uv run pytest`.
+Run tests:
 
-> `requirements.txt` is kept only for the Docker image / Cloud Run build.
-> When adding or bumping a dependency, update **both** `pyproject.toml` and `requirements.txt`.
-
-## Docker Run
 ```bash
 cd apps/api
-docker-compose up --build
+uv run pytest
+```
+
+## Docker Run
+
+Local Compose keeps the database separate from production with `DATABASE_URL` fixed to the Compose Postgres service. AI features and clinical file storage stay disabled. Firebase variables are optional through Compose interpolation (`FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_SERVICE_ACCOUNT_JSON_PATH`), but local tests should run without production credentials.
+
+```bash
+cd apps/api
+docker compose up --build
+docker compose exec api alembic upgrade head
+docker compose down
+```
+
+Run Compose tests with an empty interpolation file if your local `.env` contains Firebase values:
+
+```bash
+touch /tmp/vetflow-empty-compose.env
+docker compose --env-file /tmp/vetflow-empty-compose.env run --rm api pytest
+```
+
+To remove the local database volume, run this explicit optional command:
+
+```bash
+docker compose down --volumes
 ```

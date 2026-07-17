@@ -1,4 +1,7 @@
+packages:
+  - "."
+
 allowBuilds:
-  '@firebase/util': true
+  "@firebase/util": true
   protobufjs: true
   unrs-resolver: false

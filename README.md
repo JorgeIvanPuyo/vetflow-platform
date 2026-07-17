@@ -1,249 +1,133 @@
-
 # Vetflow Platform
 
-Vetflow es una aplicación web para gestión clínica veterinaria. Permite
-administrar clínicas, veterinarios, propietarios, pacientes, consultas,
-exámenes, vacunas/desparasitación, archivos clínicos e historia clínica.
+Vetflow es una aplicación web multi-tenant para gestión clínica veterinaria. Permite administrar clínicas, usuarios, propietarios, pacientes, consultas, exámenes, vacunas/desparasitación, archivos clínicos, agenda, seguimientos, dashboard e inventario.
 
-## Stack principal
+## Stack
 
--   Frontend: Next.js + TypeScript
--   Backend: FastAPI + SQLAlchemy + Alembic
--   Base de datos: PostgreSQL en Supabase
--   Auth: Firebase Authentication
--   Storage clínico: Google Cloud Storage
--   Backend deploy: Google Cloud Run
--   Frontend deploy: Vercel
--   CI/CD: GitHub Actions
--   Desarrollo asistido: Codex
+- Frontend: Next.js + TypeScript, desplegado en Vercel.
+- Backend: FastAPI + SQLAlchemy + Alembic, desplegado en Google Cloud Run.
+- Base de datos: PostgreSQL en Supabase.
+- Auth: Firebase Authentication.
+- Storage clínico: Google Cloud Storage.
+- CI/CD: GitHub Actions.
+- Desarrollo asistido: Codex y Claude con reglas compartidas en `AGENTS.md`, `CLAUDE.md` y `docs/agents.md`.
 
-## Arquitectura general
+## Fuentes De Dependencias
 
-Frontend Next.js / Vercel\
-↓ Firebase Auth\
-↓ Authorization: Bearer token\
-Backend FastAPI / Cloud Run\
-↓ valida token Firebase\
-↓ resuelve usuario y tenant\
-PostgreSQL / Supabase\
-↓ metadata\
-Google Cloud Storage\
-↓ archivos clínicos
+- Backend: `apps/api/pyproject.toml` + `apps/api/uv.lock`, gestionado solo con `uv`.
+- Web: `apps/web/package.json` + `apps/web/pnpm-lock.yaml`, gestionado solo con `pnpm`.
 
-## Multi-tenant
+No se usan fuentes duplicadas de dependencias.
 
-Modelo:
+## Arquitectura General
 
--   Tenant = Clínica / Organización
--   User = Veterinario / Usuario
+```text
+Frontend Next.js / Vercel
+Firebase Auth
+Authorization: Bearer token
+Backend FastAPI / Cloud Run
+PostgreSQL / Supabase
+Google Cloud Storage
+```
 
-Varios veterinarios pueden pertenecer a la misma clínica y ver los
-mismos pacientes, propietarios e historia clínica.
+Todos los datos clínicos tenant-owned se filtran por `tenant_id`. Los endpoints cross-tenant deben estar explícitamente protegidos.
 
-Relación:
+## Estructura
 
-Firebase user email\
-→ users.email en Supabase\
-→ users.tenant_id\
-→ acceso a datos del tenant
-
-Todos los datos clínicos se filtran por tenant_id.
-
-## Módulos implementados
-
--   Autenticación con Firebase
--   Multi-tenant por clínica
--   CRUD de propietarios
--   CRUD de pacientes
--   Historia clínica por paciente
--   Exportación y vista previa PDF de historia clínica con filtros y tamaño de hoja
--   Consultas estructuradas
--   Médico responsable y trazabilidad del usuario que registra la consulta
--   Exámenes y resultados
--   Vacunas/desparasitación
--   Archivos clínicos con Google Cloud Storage
--   Búsqueda global
--   Trazabilidad de usuario
--   Agenda y seguimientos
--   Dashboard operativo
--   Perfil, branding y edición de nombres del equipo de clínica
--   Inventario con movimientos e IVA de compra/venta
-
-## Estructura del proyecto
-
-vetflow-platform/\
-├── apps/\
-│ ├── api/\
-│ └── web/\
-├── docs/\
-├── .github/\
+```text
+vetflow-platform/
+├── apps/
+│   ├── api/
+│   └── web/
+├── docs/
+├── .github/
+├── AGENTS.md
+├── CLAUDE.md
 └── README.md
+```
 
-## Backend local
+## Backend Local
 
-Entrar a:
-
+```bash
 cd apps/api
-
-Crear `.env`:
-
-APP_ENV=development\
-APP_PORT=8000
-
-DATABASE_URL=postgresql://...
-
-FIREBASE_PROJECT_ID=vetflow-platform\
-FIREBASE_SERVICE_ACCOUNT_JSON_PATH=/app/firebase-service-account.json\
-GOOGLE_APPLICATION_CREDENTIALS=/app/firebase-service-account.json
-
-CLINICAL_FILES_BUCKET_NAME=vetflow-clinical-files-prod\
-MAX_CLINICAL_FILE_SIZE_MB=25
-
-Levantar:
-
-docker compose up --build
-
-Migraciones:
-
-docker compose exec api alembic upgrade head
+cp .env.example .env
+uv sync --frozen
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
 Health:
 
+```bash
 curl http://localhost:8000/health
+```
 
-## Frontend local
+Docker Compose local:
 
-Entrar a:
+```bash
+cd apps/api
+docker compose up --build
+docker compose exec api alembic upgrade head
+docker compose run --rm api pytest
+docker compose down
+```
 
+Eliminar el volumen local de Postgres es opcional y explícito:
+
+```bash
+docker compose down --volumes
+```
+
+## Frontend Local
+
+```bash
 cd apps/web
-
-Crear `.env.local`:
-
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-
-NEXT_PUBLIC_FIREBASE_API_KEY=\
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=\
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=\
-NEXT_PUBLIC_FIREBASE_APP_ID=\
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=\
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-
-Instalar:
-
-npm install
-
-Correr:
-
-npm run dev
+cp .env.example .env.local
+pnpm install --frozen-lockfile
+pnpm run dev
+```
 
 Abrir:
 
+```text
 http://localhost:3000
+```
 
-## Tests
+Vercel debe usar `apps/web` como root del proyecto y `pnpm` como gestor. El comando de instalación esperado es `pnpm install --frozen-lockfile`.
+
+## Validación
 
 Backend:
 
-docker compose run --rm api pytest
+```bash
+cd apps/api
+uv sync --frozen
+uv run pytest
+```
 
 Frontend:
 
-npm run build
-
-## Base de datos
-
-PostgreSQL en Supabase.
-
-Migraciones:
-
-alembic upgrade head
-
-## Usuarios y clínicas
-
-Flujo:
-
-1.  Crear usuario en Firebase.
-2.  Crear clínica en tenants.
-3.  Crear usuario en users.
-4.  Asociar tenant_id.
-
-## Storage clínico
-
-Bucket:
-
-vetflow-clinical-files-prod
-
-Estructura:
-
-tenants/{tenant_id}/patients/{patient_id}/files/{file_reference_id}/{filename}
-
-Bucket privado.
-
-Descarga mediante signed URLs.
-
-## Deploy
-
-### Backend
-
-GitHub Actions:
-
--   tests
--   build Docker
--   push Artifact Registry
--   deploy Cloud Run
-
-### Frontend
-
-Vercel.
-
-Root:
-
-apps/web
+```bash
+cd apps/web
+pnpm install --frozen-lockfile
+pnpm exec tsc --noEmit
+pnpm run lint
+pnpm run build
+```
 
 ## Documentación
 
-docs/
+- `docs/agents.md`: flujo compartido para asistentes IA.
+- `docs/product-scope.md`: alcance de producto.
+- `docs/architecture-overview.md`: arquitectura.
+- `docs/backend-conventions.md`: convenciones backend.
+- `docs/frontend-conventions.md`: convenciones frontend.
+- `docs/api-contracts.md`: contratos API.
+- `docs/multitenancy-strategy.md`: estrategia multi-tenant.
+- `docs/cicd-strategy.md`: CI/CD.
 
--   agents.md
--   api-contracts.md
--   architecture-overview.md
--   backend-conventions.md
--   frontend-conventions.md
--   multitenancy-strategy.md
--   mvp-development-plan.md
--   roadmap-mvp.md
--   clinical-file-storage-architecture.md
+## Deploy
 
-## Desarrollo con Codex
+Backend: GitHub Actions ejecuta pruebas con `uv`, construye la imagen Docker, la publica en Artifact Registry y despliega a Cloud Run.
 
-Flujo:
-
-1.  Definir slice.
-2.  Crear prompt.
-3.  Backend primero.
-4.  Tests.
-5.  Frontend.
-6.  Validación manual.
-7.  Commit.
-8.  Push.
-9.  Deploy.
-
-## Estado actual
-
-Desplegado y funcional:
-
--   Frontend Vercel
--   Backend Cloud Run
--   DB Supabase
--   Auth Firebase
--   Storage GCS
--   Multi-tenant por clínica
--   CI/CD automático
-
-## Próximas prioridades
-
-1.  Completar la experiencia de inventario en el plan terapéutico
-2.  Prescripciones
-3.  Notificaciones y recordatorios
-4.  Administración avanzada de clínica
-5.  Estabilización para pilotos
+Frontend: Vercel despliega desde `apps/web` usando `pnpm`.

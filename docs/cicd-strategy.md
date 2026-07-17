@@ -33,6 +33,8 @@ Deployments should happen only after code has been validated.
 Recommended approach:
 - Vercel GitHub integration for preview and production deployments
 - GitHub Actions still runs lint, tests, and build checks
+- Vercel project root must be `apps/web`
+- Install with `pnpm install --frozen-lockfile`
 
 ### Backend
 Recommended approach:
@@ -77,9 +79,9 @@ Use:
 
 ## Backend CI Flow
 On pull request:
-1. install dependencies
+1. install dependencies with `uv sync --frozen`
 2. lint
-3. run tests
+3. run tests with `uv run ...`
 4. verify app can build/start
 
 On merge to `develop`:
@@ -88,13 +90,13 @@ On merge to `develop`:
 3. deploy to development backend environment
 
 On merge to `main`:
-1. run tests
+1. run tests with `uv run ...`
 2. build Docker image
 3. deploy to production backend environment
 
 ## Frontend CI Flow
 On pull request:
-1. install dependencies
+1. install dependencies with `pnpm install --frozen-lockfile`
 2. lint
 3. type-check
 4. test
@@ -113,4 +115,5 @@ For the earliest phase:
 - activate CI first
 - activate backend CD once local setup is stable
 - use Vercel native deployment integration for frontend
+- use `pnpm` in Vercel with root `apps/web`
 - avoid overcomplicated release workflows initially

@@ -1,0 +1,11 @@
+.agents/
+.codex/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+firebase-service-account.json
+GCP_*.json

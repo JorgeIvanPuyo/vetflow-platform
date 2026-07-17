@@ -53,5 +53,6 @@ apps/api/firebase-service-account.json
 apps/web/firebaseConfig.json
 
 *vetflow*-*.zip
+*-ai-context.zip
 
 backup_*

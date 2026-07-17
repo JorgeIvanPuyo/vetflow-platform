@@ -41,16 +41,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install API dependencies
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          working-directory: apps/api
+
+      - name: Sync API dependencies
         run: |
           cd apps/api
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          uv sync --frozen
 
       - name: Run API tests
         run: |
           cd apps/api
-          pytest
+          uv run --frozen pytest
 
       - name: Configure Docker auth
         run: |
