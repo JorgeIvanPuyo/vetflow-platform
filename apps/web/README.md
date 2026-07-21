@@ -1,21 +1,35 @@
 # Vetflow Web
 
-Responsive mobile-first web frontend for Vetflow Platform.
+Responsive web frontend for Vetflow Platform.
 
-## Initial Purpose
-Provide the main user interface for:
-- authentication
-- patient and owner management
-- clinical history
-- consultations
-- exams and results
-- fast search
+## Dependency Source
 
-## Current Status
-Scaffold phase.
+Frontend dependencies are managed only with `pnpm`:
 
-## Planned Frontend Direction
-- Next.js
-- TypeScript
-- mobile-first responsive UI
-- Vercel deployment
+- `package.json`
+- `pnpm-lock.yaml`
+- `pnpm-workspace.yaml`
+
+## Local Run
+
+Create `.env.local` from `.env.example`.
+
+```bash
+cd apps/web
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+## Validation
+
+```bash
+cd apps/web
+pnpm install --frozen-lockfile
+pnpm exec tsc --noEmit
+pnpm run lint
+pnpm run build
+```
+
+## Vercel
+
+Use `apps/web` as the project root and `pnpm` as the package manager.

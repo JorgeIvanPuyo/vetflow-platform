@@ -7,6 +7,7 @@
 - Alembic
 - Pydantic
 - Pytest
+- uv
 
 ## Backend Goals
 The backend must be:
@@ -31,10 +32,26 @@ apps/api/
 │  └─ tests/
 ├─ alembic/
 ├─ alembic.ini
-├─ requirements.txt
+├─ pyproject.toml
+├─ uv.lock
 ├─ Dockerfile
 └─ .env.example
 ```
+
+## Dependency Management
+
+`uv` is the only approved backend dependency manager. Runtime dependencies belong in `[project].dependencies`; development and test dependencies belong in `[dependency-groups].dev`.
+
+Use:
+
+```bash
+cd apps/api
+uv sync --frozen
+uv run pytest
+uv run alembic upgrade head
+```
+
+Do not add duplicate backend dependency files or install backend packages with pip-based workflows.
 
 ## Layer Responsibilities
 

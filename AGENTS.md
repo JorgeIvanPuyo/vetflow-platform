@@ -1,4 +1,4 @@
-# CLAUDE.md - Claude navigation map
+# AGENTS.md - Codex navigation map
 
 Vetflow is a multi-tenant veterinary clinic platform. The monorepo has a FastAPI backend in `apps/api`, a Next.js frontend in `apps/web`, and canonical project documentation in `docs/`.
 
