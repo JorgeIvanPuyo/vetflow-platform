@@ -10,7 +10,7 @@ Vetflow es una aplicación web multi-tenant para gestión clínica veterinaria. 
 - Auth: Firebase Authentication.
 - Storage clínico: Google Cloud Storage.
 - CI/CD: GitHub Actions.
-- Desarrollo asistido: Codex y Claude con reglas compartidas en `AGENTS.md`, `CLAUDE.md` y `docs/agents.md`.
+- Desarrollo asistido: reglas canónicas en `AGENTS.md`; `CLAUDE.md` actúa sólo como adaptador de compatibilidad.
 
 ## Fuentes De Dependencias
 
@@ -117,14 +117,7 @@ pnpm run build
 
 ## Documentación
 
-- `docs/agents.md`: flujo compartido para asistentes IA.
-- `docs/product-scope.md`: alcance de producto.
-- `docs/architecture-overview.md`: arquitectura.
-- `docs/backend-conventions.md`: convenciones backend.
-- `docs/frontend-conventions.md`: convenciones frontend.
-- `docs/api-contracts.md`: contratos API.
-- `docs/multitenancy-strategy.md`: estrategia multi-tenant.
-- `docs/cicd-strategy.md`: CI/CD.
+Consulta [docs/README.md](docs/README.md) para cargar sólo la documentación necesaria según la tarea.
 
 ## Deploy
 
