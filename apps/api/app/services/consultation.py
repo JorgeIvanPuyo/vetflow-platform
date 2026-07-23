@@ -32,6 +32,8 @@ from app.schemas.consultation import (
     ConsultationMedicationCreate,
     ConsultationStudyRequestCreate,
     ConsultationUpdate,
+    MAX_CONSULTATION_STEP,
+    MIN_CONSULTATION_STEP,
 )
 from app.services.ai_service import AIService
 
@@ -477,6 +479,16 @@ class ConsultationService:
                     "validation_error",
                     f"{field} cannot be negative",
                 )
+
+        current_step = updates.get("current_step")
+        if current_step is not None and not (
+            MIN_CONSULTATION_STEP <= current_step <= MAX_CONSULTATION_STEP
+        ):
+            raise AppError(
+                422,
+                "validation_error",
+                f"current_step must be between {MIN_CONSULTATION_STEP} and {MAX_CONSULTATION_STEP}",
+            )
 
     def _quantize_money(self, value: Decimal) -> Decimal:
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

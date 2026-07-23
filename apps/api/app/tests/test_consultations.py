@@ -1154,7 +1154,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
         tenant,
         patient["id"],
         status="completed",
-        current_step=8,
+        current_step=6,
         reason="Chronic skin control",
         anamnesis="Pruritus improved after shampoo",
         symptoms="Mild itching",
@@ -1311,7 +1311,7 @@ def test_complete_consultation_with_status_completed(client, tenant):
         headers={"X-Tenant-Id": str(tenant.id)},
         json={
             "status": "completed",
-            "current_step": 8,
+            "current_step": 6,
             "final_diagnosis": "Contact dermatitis",
             "consultation_summary": "Responded well to treatment",
             "next_control_date": "2026-05-01",
@@ -1322,9 +1322,57 @@ def test_complete_consultation_with_status_completed(client, tenant):
     assert response.status_code == 200
     body = response.json()["data"]
     assert body["status"] == "completed"
-    assert body["current_step"] == 8
+    assert body["current_step"] == 6
     assert body["next_control_date"] == "2026-05-01"
     assert body["reminder_requested"] is True
+
+
+def test_current_step_accepts_new_workflow_range(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+
+    for step in range(1, 7):
+        consultation = _create_consultation(
+            client,
+            tenant,
+            patient["id"],
+            current_step=step,
+            reason=f"Step {step}",
+        )
+
+        response = client.patch(
+            f"/api/v1/consultations/{consultation['id']}/step",
+            headers={"X-Tenant-Id": str(tenant.id)},
+            json={"current_step": step},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"]["current_step"] == step
+
+
+def test_current_step_rejects_values_outside_new_workflow_range(client, tenant):
+    owner = _create_owner(client, tenant)
+    patient = _create_patient(client, tenant, owner["id"])
+    consultation = _create_consultation(client, tenant, patient["id"])
+
+    for step in [0, 7, 8, 99]:
+        create_response = client.post(
+            "/api/v1/consultations",
+            headers={"X-Tenant-Id": str(tenant.id)},
+            json=_consultation_payload(
+                patient["id"],
+                current_step=step,
+                reason=f"Invalid create step {step}",
+            ),
+        )
+        patch_response = client.patch(
+            f"/api/v1/consultations/{consultation['id']}/step",
+            headers={"X-Tenant-Id": str(tenant.id)},
+            json={"current_step": step},
+        )
+
+        assert create_response.status_code == 422
+        assert patch_response.status_code == 422
 
 
 def test_delete_consultation_safely_unlinks_exams_and_removes_dependents(

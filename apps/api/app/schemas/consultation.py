@@ -15,6 +15,8 @@ from app.schemas.ai import AI_DISCLAIMER
 
 CONSULTATION_STATUSES = {"draft", "completed"}
 STUDY_REQUEST_TYPES = {"laboratory", "exam", "other"}
+MIN_CONSULTATION_STEP = 1
+MAX_CONSULTATION_STEP = 6
 
 
 class ConsultationBase(BaseModel):
@@ -29,7 +31,11 @@ class ConsultationBase(BaseModel):
     final_diagnosis: str | None = None
     indications: str | None = None
     status: Literal["draft", "completed"] = "draft"
-    current_step: int | None = None
+    current_step: int | None = Field(
+        default=None,
+        ge=MIN_CONSULTATION_STEP,
+        le=MAX_CONSULTATION_STEP,
+    )
     symptoms: str | None = None
     symptom_duration: str | None = None
     relevant_history: str | None = None
@@ -67,7 +73,11 @@ class ConsultationUpdate(BaseModel):
     final_diagnosis: str | None = None
     indications: str | None = None
     status: Literal["draft", "completed"] | None = None
-    current_step: int | None = None
+    current_step: int | None = Field(
+        default=None,
+        ge=MIN_CONSULTATION_STEP,
+        le=MAX_CONSULTATION_STEP,
+    )
     symptoms: str | None = None
     symptom_duration: str | None = None
     relevant_history: str | None = None

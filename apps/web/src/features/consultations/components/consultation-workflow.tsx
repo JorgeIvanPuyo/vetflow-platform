@@ -156,12 +156,12 @@ const steps = [
   { id: 1, label: "Anamnesis" },
   { id: 2, label: "Examen" },
   { id: 3, label: "Diagnóstico presuntivo" },
-  { id: 4, label: "Plan diagnóstico" },
-  { id: 5, label: "Resultados diagnósticos" },
-  { id: 6, label: "Plan terapéutico" },
-  { id: 7, label: "Diagnóstico final" },
-  { id: 8, label: "Indicaciones" },
+  { id: 4, label: "Plan diagnóstico y resultados" },
+  { id: 5, label: "Diagnóstico final" },
+  { id: 6, label: "Plan terapéutico e indicaciones" },
 ] as const;
+
+const WORKFLOW_STEP_COUNT = steps.length;
 
 const initialFormState: FormState = {
   attending_user_id: "",
@@ -225,13 +225,9 @@ function getStepIcon(stepId: (typeof steps)[number]["id"]) {
     case 4:
       return <FlaskConical size={12} />;
     case 5:
-      return <FlaskConical size={12} />;
+      return <Check size={12} />;
     case 6:
       return <Pill size={12} />;
-    case 7:
-      return <Check size={12} />;
-    case 8:
-      return <ChevronRight size={12} />;
   }
 }
 
@@ -289,7 +285,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     formState.attending_user_id && !selectedAttendingMember,
   );
   const localStorageKeyPrefix = consultationId
-    ? `vetclinic:consultation:${consultationId}`
+    ? getConsultationLocalStoragePrefix(consultationId)
     : null;
 
   const initializeWorkflow = useCallback(async () => {
@@ -517,12 +513,12 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   }, [inventoryMedicationFormState.search, medicationMode]);
 
   const completedUntil = useMemo(() => {
-    const current = consultation?.current_step ?? activeStep;
-    return Math.max(0, Math.min(current - 1, steps.length));
+    const current = normalizePersistedStep(consultation?.current_step ?? activeStep);
+    return Math.max(0, Math.min(current - 1, WORKFLOW_STEP_COUNT));
   }, [activeStep, consultation?.current_step]);
 
   function loadConsultationIntoState(nextConsultation: Consultation) {
-    const nextStep = clampStep(nextConsultation.current_step ?? 1);
+    const nextStep = normalizePersistedStep(nextConsultation.current_step);
     const baseFormState = toFormState(nextConsultation);
     setConsultation(nextConsultation);
     setActiveStep(nextStep);
@@ -614,7 +610,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       }
       showToast({
         title: "Progreso guardado",
-        detail: `Paso ${targetStep} de 8`,
+        detail: `Paso ${targetStep} de ${WORKFLOW_STEP_COUNT}`,
         variant: "success",
       });
       setIsSaving(false);
@@ -666,7 +662,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       return;
     }
 
-    const saved = await saveStep(8, "completed");
+    const saved = await saveStep(WORKFLOW_STEP_COUNT, "completed");
     if (!saved) {
       return;
     }
@@ -1095,16 +1091,14 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         {activeStep === 1 ? renderAnamnesisStep() : null}
         {activeStep === 2 ? renderExamStep() : null}
         {activeStep === 3 ? renderPresumptiveDiagnosisStep() : null}
-        {activeStep === 4 ? renderDiagnosticPlanStep() : null}
-        {activeStep === 5 ? renderDiagnosticResultsStep() : null}
-        {activeStep === 6 ? renderTherapeuticPlanStep() : null}
-        {activeStep === 7 ? renderFinalDiagnosisStep() : null}
-        {activeStep === 8 ? renderIndicationsStep() : null}
+        {activeStep === 4 ? renderDiagnosticPlanAndResultsStep() : null}
+        {activeStep === 5 ? renderFinalDiagnosisStep() : null}
+        {activeStep === 6 ? renderTherapeuticPlanAndIndicationsStep() : null}
       </section>
 
       <div
         className={`consultation-workflow__footer${
-          activeStep < 8 ? " consultation-workflow__footer--navigation" : ""
+          activeStep < WORKFLOW_STEP_COUNT ? " consultation-workflow__footer--navigation" : ""
         }`}
       >
         <button
@@ -1118,10 +1112,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           <span>Anterior</span>
         </button>
 
-        {activeStep < 8 ? (
+        {activeStep < WORKFLOW_STEP_COUNT ? (
           <>
             <p className="consultation-workflow__footer-status" aria-live="polite">
-              Paso {activeStep} de 8
+              Paso {activeStep} de {WORKFLOW_STEP_COUNT}
             </p>
             <button
               aria-label="Paso siguiente"
@@ -1349,14 +1343,14 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     );
   }
 
-  function renderDiagnosticPlanStep() {
+  function renderDiagnosticPlanAndResultsStep() {
     return (
       <>
         <StepHeading
           eyebrow="Paso 4"
           icon={<FlaskConical aria-hidden="true" size={20} />}
-          title="Plan diagnóstico"
-          description="Estudios solicitados y notas del plan."
+          title="Plan diagnóstico y resultados"
+          description="Estudios solicitados, notas del plan y resultados obtenidos."
         />
         <form className="consultation-inline-form" onSubmit={handleAddStudy}>
           <div className="form-grid">
@@ -1436,19 +1430,6 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             onChange={(event) => updateField("diagnostic_plan_notes", event.target.value)}
           />
         </label>
-      </>
-    );
-  }
-
-  function renderDiagnosticResultsStep() {
-    return (
-      <>
-        <StepHeading
-          eyebrow="Paso 5"
-          icon={<FlaskConical aria-hidden="true" size={20} />}
-          title="Resultados diagnósticos"
-          description="Resumen clínico de los resultados obtenidos."
-        />
         <label className="field">
           <FieldLabelWithAiAction
             label="Resultados del plan diagnóstico"
@@ -1738,7 +1719,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     return (
       <>
         <StepHeading
-          eyebrow="Paso 7"
+          eyebrow="Paso 5"
           icon={<Stethoscope aria-hidden="true" size={20} />}
           title="Diagnóstico final"
           description="Conclusión diagnóstica cuando ya esté disponible."
@@ -1758,7 +1739,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     );
   }
 
-  function renderIndicationsStep() {
+  function renderTherapeuticPlanAndIndicationsStep() {
     const currentConsultation = consultation;
 
     if (!currentConsultation) {
@@ -1767,8 +1748,9 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
 
     return (
       <>
+        {renderTherapeuticPlanStep()}
         <StepHeading
-          eyebrow="Paso 8"
+          eyebrow="Paso 6"
           icon={<CalendarCheck aria-hidden="true" size={20} />}
           title="Indicaciones"
           description="Instrucciones para casa, control y cierre de la consulta."
@@ -2149,20 +2131,40 @@ function buildPayload(formState: FormState): StepUpdatePayload {
 }
 
 function mergeLocalSteps(consultationId: string, baseFormState: FormState) {
-  return steps.reduce((currentState, step) => {
-    const localStep = readLocalStep(consultationId, step.id);
-    return localStep ? { ...currentState, ...localStep } : currentState;
-  }, baseFormState);
+  if (typeof window === "undefined") {
+    return baseFormState;
+  }
+
+  const prefix = getConsultationLocalStoragePrefix(consultationId);
+  const localSteps = readAllLocalSteps(prefix);
+  const migration = buildLocalDraftMigration(localSteps);
+  const mergedState = migration.stepFragments.reduce(
+    (currentState, fragment) => ({ ...currentState, ...fragment.fields }),
+    baseFormState,
+  );
+
+  if (migration.legacyKeysToClear.length > 0) {
+    const rewrittenSteps = new Set(migration.stepFragments.map((fragment) => fragment.step));
+    migration.legacyKeysToClear.forEach((step) => clearLocalStep(prefix, step));
+    rewrittenSteps.forEach((step) => saveLocalStep(prefix, step, mergedState));
+  }
+
+  return mergedState;
 }
 
-function readLocalStep(consultationId: string, step: number): Partial<FormState> | null {
+function readAllLocalSteps(prefix: string) {
+  return [1, 2, 3, 4, 5, 6, 7, 8].reduce<Record<number, Partial<FormState> | null>>(
+    (draftSteps, step) => ({ ...draftSteps, [step]: readLocalStep(prefix, step) }),
+    {},
+  );
+}
+
+function readLocalStep(prefix: string, step: number): Partial<FormState> | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const rawValue = window.localStorage.getItem(
-    `vetclinic:consultation:${consultationId}:step:${step}`,
-  );
+  const rawValue = window.localStorage.getItem(`${prefix}:step:${step}`);
 
   if (!rawValue) {
     return null;
@@ -2172,6 +2174,58 @@ function readLocalStep(consultationId: string, step: number): Partial<FormState>
     return JSON.parse(rawValue) as Partial<FormState>;
   } catch {
     return null;
+  }
+}
+
+function buildLocalDraftMigration(
+  localSteps: Record<number, Partial<FormState> | null>,
+) {
+  const stepFragments: Array<{ step: number; fields: Partial<FormState> }> = [];
+  const legacyKeysToClear = new Set<number>();
+
+  addLocalFragment(stepFragments, 1, pickAllowedFields(localSteps[1], 1));
+  addLocalFragment(stepFragments, 2, pickAllowedFields(localSteps[2], 2));
+  addLocalFragment(stepFragments, 3, pickAllowedFields(localSteps[3], 3));
+
+  addLocalFragment(stepFragments, 4, pickAllowedFields(localSteps[4], 4));
+  addLocalFragment(stepFragments, 4, pickAllowedFields(localSteps[5], 4));
+  if (hasAnyField(localSteps[5], stepFieldsByStep[4])) {
+    legacyKeysToClear.add(5);
+  }
+
+  addLocalFragment(stepFragments, 5, pickAllowedFields(localSteps[5], 5));
+  addLocalFragment(stepFragments, 5, pickAllowedFields(localSteps[7], 5));
+  addLocalFragment(stepFragments, 5, pickAllowedFields(localSteps[8], 5));
+  if (hasAnyField(localSteps[7], stepFieldsByStep[5])) {
+    legacyKeysToClear.add(7);
+  }
+  if (hasAnyField(localSteps[8], stepFieldsByStep[5])) {
+    legacyKeysToClear.add(8);
+  }
+
+  addLocalFragment(stepFragments, 6, pickAllowedFields(localSteps[6], 6));
+  addLocalFragment(stepFragments, 6, pickAllowedFields(localSteps[7], 6));
+  addLocalFragment(stepFragments, 6, pickAllowedFields(localSteps[8], 6));
+  if (hasAnyField(localSteps[7], stepFieldsByStep[6])) {
+    legacyKeysToClear.add(7);
+  }
+  if (hasAnyField(localSteps[8], stepFieldsByStep[6])) {
+    legacyKeysToClear.add(8);
+  }
+
+  return {
+    stepFragments,
+    legacyKeysToClear: Array.from(legacyKeysToClear),
+  };
+}
+
+function addLocalFragment(
+  fragments: Array<{ step: number; fields: Partial<FormState> }>,
+  step: number,
+  fields: Partial<FormState> | null,
+) {
+  if (fields && Object.keys(fields).length > 0) {
+    fragments.push({ step, fields });
   }
 }
 
@@ -2199,49 +2253,77 @@ function clearAllLocalSteps(consultationId: string) {
     return;
   }
 
+  const prefix = getConsultationLocalStoragePrefix(consultationId);
   steps.forEach((step) => {
-    window.localStorage.removeItem(
-      `vetclinic:consultation:${consultationId}:step:${step.id}`,
-    );
+    window.localStorage.removeItem(`${prefix}:step:${step.id}`);
+  });
+  [7, 8].forEach((step) => {
+    window.localStorage.removeItem(`${prefix}:step:${step}`);
   });
 }
 
-function pickStepFields(step: number, formState: FormState): Partial<FormState> {
-  const fieldsByStep: Record<number, Array<keyof FormState>> = {
-    1: [
-      "visit_date",
-      "reason",
-      "anamnesis",
-      "symptoms",
-      "symptom_duration",
-      "relevant_history",
-      "habits_and_diet",
-    ],
-    2: [
-      "temperature_c",
-      "current_weight_kg",
-      "heart_rate",
-      "respiratory_rate",
-      "mucous_membranes",
-      "hydration",
-      "physical_exam_findings",
-    ],
-    3: ["presumptive_diagnosis", "diagnostic_tags"],
-    4: ["diagnostic_plan_notes"],
-    5: ["diagnostic_results"],
-    6: ["therapeutic_plan", "therapeutic_plan_notes"],
-    7: ["final_diagnosis"],
-    8: [
-      "indications",
-      "next_control_date",
-      "reminder_requested",
-      "consultation_summary",
-    ],
-  };
+const stepFieldsByStep: Record<number, Array<keyof FormState>> = {
+  1: [
+    "visit_date",
+    "reason",
+    "anamnesis",
+    "symptoms",
+    "symptom_duration",
+    "relevant_history",
+    "habits_and_diet",
+  ],
+  2: [
+    "temperature_c",
+    "current_weight_kg",
+    "heart_rate",
+    "respiratory_rate",
+    "mucous_membranes",
+    "hydration",
+    "physical_exam_findings",
+  ],
+  3: ["presumptive_diagnosis", "diagnostic_tags"],
+  4: ["diagnostic_plan_notes", "diagnostic_results"],
+  5: ["final_diagnosis"],
+  6: [
+    "therapeutic_plan",
+    "therapeutic_plan_notes",
+    "indications",
+    "next_control_date",
+    "reminder_requested",
+    "consultation_summary",
+  ],
+};
 
-  return fieldsByStep[step].reduce<Partial<FormState>>((partialState, field) => {
+function pickStepFields(step: number, formState: FormState): Partial<FormState> {
+  return stepFieldsByStep[step].reduce<Partial<FormState>>((partialState, field) => {
     return { ...partialState, [field]: formState[field] };
   }, {});
+}
+
+function pickAllowedFields(
+  localStep: Partial<FormState> | null,
+  targetStep: number,
+): Partial<FormState> | null {
+  if (!localStep) {
+    return null;
+  }
+
+  return stepFieldsByStep[targetStep].reduce<Partial<FormState>>(
+    (partialState, field) =>
+      field in localStep ? { ...partialState, [field]: localStep[field] } : partialState,
+    {},
+  );
+}
+
+function hasAnyField(
+  localStep: Partial<FormState> | null,
+  fields: Array<keyof FormState>,
+) {
+  return Boolean(localStep && fields.some((field) => field in localStep));
+}
+
+function getConsultationLocalStoragePrefix(consultationId: string) {
+  return `vetclinic:consultation:${consultationId}`;
 }
 
 function getPatientDraftId(patientId: string) {
@@ -2319,7 +2401,27 @@ function toDateTimeLocalValue(date: Date | string) {
 }
 
 function clampStep(step: number) {
-  return Math.min(Math.max(step, 1), steps.length);
+  return Math.min(Math.max(step, 1), WORKFLOW_STEP_COUNT);
+}
+
+function normalizePersistedStep(step: number | null | undefined) {
+  if (typeof step !== "number" || !Number.isInteger(step)) {
+    return 1;
+  }
+
+  if (step === 8) {
+    return 5;
+  }
+
+  if (step === 7) {
+    return 6;
+  }
+
+  if (step < 1 || step > WORKFLOW_STEP_COUNT) {
+    return 1;
+  }
+
+  return step;
 }
 
 function getPatientDescription(patient: Patient | null) {
