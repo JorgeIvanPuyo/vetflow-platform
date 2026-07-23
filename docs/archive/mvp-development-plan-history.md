@@ -1,4 +1,6 @@
-# MVP Development Plan
+# Plan de desarrollo MVP histórico
+
+> Documento histórico. Para el estado y prioridades actuales, consulta `../roadmap.md`.
 
 ## Objective
 Build the Vetflow Platform MVP in an ordered, incremental, and testable way, using vertical slices that connect backend and frontend progressively.
@@ -10,7 +12,7 @@ The MVP must validate the core veterinary workflow for pilot users while keeping
 ## Current Status
 
 This document preserves the original implementation sequence. For current feature
-status, use `docs/roadmap-mvp.md` as the source of truth. The core frontend,
+status, use `docs/roadmap.md` as the source of truth. The core frontend,
 clinical history, consultations, search, exams, agenda, clinic settings, and MVP
 inventory described as pending below have since been implemented.
 

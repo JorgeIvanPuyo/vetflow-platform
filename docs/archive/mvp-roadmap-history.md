@@ -1,4 +1,6 @@
-# MVP Roadmap
+# Historial del roadmap MVP
+
+> Documento histórico. Para el estado y prioridades actuales, consulta `../roadmap.md`.
 
 This roadmap is the current source of truth for the Vetflow MVP. It preserves the original vertical-slice history while reflecting what is actually implemented in the repository today.
 

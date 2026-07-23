@@ -1,36 +1,31 @@
-# AGENTS.md - Codex navigation map
+# Guía de agentes de Vetflow
 
-Vetflow is a multi-tenant veterinary clinic platform. The monorepo has a FastAPI backend in `apps/api`, a Next.js frontend in `apps/web`, and canonical project documentation in `docs/`.
+Vetflow es un monorepo con FastAPI en `apps/api` y Next.js en `apps/web`.
 
-## Start Here
+## Fuentes de verdad
 
-1. Read this file.
-2. Read `docs/agents.md`.
-3. Read only the docs and modules needed for the current slice.
+- No leas `docs/` por defecto. Es documentación para personas y puede contener propuestas, planes o información histórica.
+- Usa el código, las pruebas, las migraciones y los manifests con sus lockfiles como fuentes técnicas de verdad.
+- Para backend, inspecciona el módulo afectado en `apps/api/app`, sus migraciones y sus pruebas.
+- Para frontend, inspecciona la ruta o feature afectada en `apps/web`, sus servicios, tipos y pruebas.
+- Consulta un documento humano sólo si el usuario lo menciona, la tarea modifica ese documento o una decisión de producto no puede deducirse del código. Valida sus afirmaciones técnicas contra el repositorio.
 
-Do not scan the whole repository or all documentation automatically. Keep the slice small, vertical, and focused.
+## Reglas siempre aplicables
 
-## Mandatory Rules
+- Trabaja en una rama; no modifiques `main` directamente.
+- Antes de editar, revisa `git status --short` y preserva cambios ajenos.
+- No hagas `push`, `commit`, merge ni despliegues sin una solicitud explícita.
+- Usa `uv` con `apps/api/pyproject.toml` y `apps/api/uv.lock`; usa `pnpm` con `apps/web/package.json` y `apps/web/pnpm-lock.yaml`.
+- Toda entidad y consulta tenant-owned debe filtrar por `tenant_id`. Los accesos cross-tenant requieren protección explícita.
+- Revisa las migraciones existentes antes de cambiar persistencia y acompaña todo cambio de modelo con una migración revisada.
+- Conserva la compatibilidad de los contratos API o actualiza de forma coordinada backend, frontend y pruebas.
+- No subas secretos, archivos `.env` ni credenciales de Firebase. No uses producción para validación local.
+- Añade o ajusta pruebas cuando cambie el comportamiento.
+- Ejecuta la validación más focalizada posible y amplíala cuando cambies contratos, persistencia, auth, aislamiento de tenants o CI/CD.
+- Detén procesos y contenedores que hayas iniciado.
 
-- Work on a branch, never directly on `main`.
-- Before editing, check Git state and compare against `main` when the slice may overlap recent work.
-- Respect changes from other collaborators; do not overwrite unrelated work.
-- Do not push, merge, commit, or deploy unless the user explicitly asks.
-- Backend dependencies are managed only with `uv` from `apps/api/pyproject.toml` and `apps/api/uv.lock`.
-- Web dependencies are managed only with `pnpm` from `apps/web/package.json` and `apps/web/pnpm-lock.yaml`.
-- For tenant-owned data, always filter by `tenant_id`; cross-tenant endpoints must be explicitly protected.
-- Review Alembic migrations before changing persistence.
-- Run focused tests first, then broader validation when risk or slice closure requires it.
-- Update relevant status/task documentation before closing an iteration.
-- Stop any local processes or containers started during the session.
+## Comandos habituales
 
-## Canonical Docs
-
-- Assisted workflow: `docs/agents.md`
-- Product scope: `docs/product-scope.md`
-- Architecture: `docs/architecture-overview.md`
-- Backend conventions: `docs/backend-conventions.md`
-- Frontend conventions: `docs/frontend-conventions.md`
-- API contracts: `docs/api-contracts.md`
-- Multi-tenancy: `docs/multitenancy-strategy.md`
-- CI/CD: `docs/cicd-strategy.md`
+- Backend: `cd apps/api && uv run pytest`
+- Frontend: `cd apps/web && pnpm exec tsc --noEmit && pnpm run lint && pnpm run build`
+- Ejecuta `uv sync --frozen` o `pnpm install --frozen-lockfile` sólo si faltan dependencias o cambiaron los manifests o lockfiles.

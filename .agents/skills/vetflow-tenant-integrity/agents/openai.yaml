@@ -1,0 +1,4 @@
+interface:
+  display_name: "Integridad Multi-tenant Vetflow"
+  short_description: "Audita aislamiento de datos entre clínicas"
+  default_prompt: "Usa $vetflow-tenant-integrity para revisar el aislamiento multi-tenant de este cambio."
