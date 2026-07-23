@@ -211,7 +211,14 @@ const initialInventoryMedicationFormState: InventoryMedicationFormState = {
   instructions: "",
 };
 
-const mucousMembraneOptions = ["Rosadas", "Pálidas", "Congestivas", "Cianóticas", "Ictéricas"];
+const mucousMembraneOptions = [
+  "Rosas",
+  "Rosas pálidas",
+  "Pálidas",
+  "Congestionadas",
+  "Cianóticas",
+  "Ictéricas",
+];
 const hydrationOptions = ["Normal", "Leve deshidratación", "Moderada", "Severa"];
 
 function getStepIcon(stepId: (typeof steps)[number]["id"]) {
@@ -1228,6 +1235,10 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   }
 
   function renderExamStep() {
+    const renderedMucousMembraneOptions = getMucousMembraneOptions(
+      formState.mucous_membranes,
+    );
+
     return (
       <>
         <StepHeading
@@ -1268,7 +1279,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
               onChange={(event) => updateField("mucous_membranes", event.target.value)}
             >
               <option value="">Seleccionar</option>
-              {mucousMembraneOptions.map((option) => (
+              {renderedMucousMembraneOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -2449,4 +2460,13 @@ function getStudyTypeLabel(type: ConsultationStudyRequestType) {
 
 function hasClinicalText(value: string | null | undefined) {
   return Boolean(value?.trim());
+}
+
+function getMucousMembraneOptions(currentValue: string) {
+  const currentText = currentValue.trim();
+  if (!currentText || mucousMembraneOptions.includes(currentText)) {
+    return mucousMembraneOptions;
+  }
+
+  return [...mucousMembraneOptions, currentText];
 }
