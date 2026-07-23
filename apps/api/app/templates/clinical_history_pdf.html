@@ -140,6 +140,18 @@
     .identification-table td { padding: 0 8px; border-right: 1px solid #D9E7E2; }
     .identification-table td:first-child { padding-left: 0; }
     .identification-table td:last-child { padding-right: 0; border-right: 0; }
+    .identification-photo-cell { width: 74px; padding-right: 10px; vertical-align: top; }
+    .identification-details-cell { vertical-align: middle; }
+
+    .patient-photo {
+      display: block;
+      width: 64px;
+      height: 64px;
+      border: 1px solid #D9E7E2;
+      border-radius: 12px;
+      object-fit: cover;
+      background: #FFFFFF;
+    }
 
     .section { margin-top: 14px; }
 
@@ -287,6 +299,27 @@
       font-size: 9.5px;
     }
 
+    .manual-notes {
+      margin-top: 15px;
+      padding: 10px 11px 12px;
+      border: 1px solid #D9E7E2;
+      border-radius: 11px;
+      background: #FFFFFF;
+      break-inside: avoid;
+    }
+
+    .manual-notes-title {
+      margin: 0 0 9px;
+      color: #245B4F;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+
+    .manual-note-line {
+      height: 15px;
+      border-bottom: 1px solid #D9E7E2;
+    }
+
     .final-note {
       margin-top: 15px;
       padding: 9px 11px;
@@ -300,6 +333,21 @@
   </style>
 </head>
 <body>
+  {% macro field_table(fields) -%}
+    {% if fields %}
+    <table class="field-table">
+      {% for field in fields %}
+        {% if loop.index0 is divisibleby 2 %}<tr>{% endif %}
+        <td{% if loop.last and loop.index is odd %} colspan="2"{% endif %}>
+          <span class="label">{{ field.label }}</span>
+          <span class="value text-block">{{ field.value }}</span>
+        </td>
+        {% if loop.index is divisibleby 2 or loop.last %}</tr>{% endif %}
+      {% endfor %}
+    </table>
+    {% endif %}
+  {%- endmacro %}
+
   <footer class="page-footer">
     VetFlow{% if clinic.name %} / {{ clinic.name }}{% endif %} · Historia clínica veterinaria ·
     Página <span class="page-number"></span> de <span class="page-count"></span>
@@ -323,9 +371,11 @@
                   <div class="brand-label">{{ document.generated_by }}</div>
                   <h1>{{ document.title }}</h1>
                   <div class="clinic-name">{{ clinic.name }}</div>
+                  {% if clinic.contact_lines %}
                   <div class="clinic-contact">
-                    {{ clinic.phone }} · {{ clinic.email }}<br>{{ clinic.address }}
+                    {% for line in clinic.contact_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}
                   </div>
+                  {% endif %}
                 </td>
               </tr>
             </table>
@@ -344,14 +394,27 @@
     </header>
 
     <section class="identification-band">
-      <table class="identification-table">
+      {% if patient.photo_data_uri %}
+      <table class="card-layout">
         <tr>
-          <td><span class="label">Paciente</span><span class="value">{{ patient.name }}</span></td>
-          <td><span class="label">Especie</span><span class="value">{{ patient.species }}</span></td>
-          <td><span class="label">Propietario</span><span class="value">{{ owner.full_name if owner else "No indicado" }}</span></td>
-          <td><span class="label">Generado</span><span class="value">{{ document.generated_at }}</span></td>
+          <td class="identification-photo-cell">
+            <img class="patient-photo" src="{{ patient.photo_data_uri }}" alt="Fotografía de {{ patient.name }}">
+          </td>
+          <td class="identification-details-cell">
+      {% endif %}
+            <table class="identification-table">
+              <tr>
+                <td><span class="label">Paciente</span><span class="value">{{ patient.name }}</span></td>
+                {% if patient.species %}<td><span class="label">Especie</span><span class="value">{{ patient.species }}</span></td>{% endif %}
+                {% if owner and owner.full_name %}<td><span class="label">Propietario</span><span class="value">{{ owner.full_name }}</span></td>{% endif %}
+                <td><span class="label">Generado</span><span class="value">{{ document.generated_at }}</span></td>
+              </tr>
+            </table>
+      {% if patient.photo_data_uri %}
+          </td>
         </tr>
       </table>
+      {% endif %}
     </section>
 
     {% if sections.include_patient_data or sections.include_owner_data %}
@@ -361,12 +424,7 @@
         <td class="paired-card-cell">
           <article class="card">
             <h2 class="card-title">Datos del paciente</h2>
-            <table class="field-table">
-              <tr><td><span class="label">Nombre</span><span class="value">{{ patient.name }}</span></td><td><span class="label">Especie</span><span class="value">{{ patient.species }}</span></td></tr>
-              <tr><td><span class="label">Raza</span><span class="value">{{ patient.breed }}</span></td><td><span class="label">Sexo</span><span class="value">{{ patient.sex }}</span></td></tr>
-              <tr><td><span class="label">Edad estimada</span><span class="value">{{ patient.estimated_age }}</span></td><td><span class="label">Peso</span><span class="value">{{ patient.weight }}</span></td></tr>
-              <tr><td><span class="label">Alergias</span><span class="value text-block">{{ patient.allergies }}</span></td><td><span class="label">Condiciones crónicas</span><span class="value text-block">{{ patient.chronic_conditions }}</span></td></tr>
-            </table>
+            {{ field_table(patient.fields) }}
           </article>
         </td>
         {% endif %}
@@ -374,11 +432,8 @@
         <td class="paired-card-cell">
           <article class="card">
             <h2 class="card-title">Datos del propietario</h2>
-            {% if owner %}
-            <table class="field-table">
-              <tr><td><span class="label">Nombre</span><span class="value">{{ owner.full_name }}</span></td><td><span class="label">Teléfono</span><span class="value">{{ owner.phone }}</span></td></tr>
-              <tr><td><span class="label">Correo</span><span class="value">{{ owner.email }}</span></td><td><span class="label">Dirección</span><span class="value text-block">{{ owner.address }}</span></td></tr>
-            </table>
+            {% if owner and owner.fields %}
+            {{ field_table(owner.fields) }}
             {% else %}
             <div class="empty-state">Sin datos del propietario.</div>
             {% endif %}
@@ -400,10 +455,7 @@
             <td class="record-header-main"><div class="record-date">{{ consultation.visit_date }}</div><div class="record-title">{{ consultation.reason }}</div></td>
             <td class="record-header-badge"><span class="badge badge-{{ consultation.status_class }}">{{ consultation.status }}</span></td>
           </tr></table>
-          <div class="summary-strip"><table><tr>
-            <td><span class="label">Atendido por</span><span class="value">{{ consultation.attended_by }}</span></td>
-            {% if consultation.created_by %}<td><span class="label">Registrado por</span><span class="value">{{ consultation.created_by }}</span></td>{% endif %}
-          </tr></table></div>
+          {% if consultation.summary_fields %}<div class="summary-strip">{{ field_table(consultation.summary_fields) }}</div>{% endif %}
           {% if consultation.presumptive_diagnosis %}<div class="clinical-block"><span class="label">Diagnóstico presuntivo</span><div class="value text-block">{{ consultation.presumptive_diagnosis }}</div></div>{% endif %}
           {% if consultation.final_diagnosis %}<div class="clinical-block emphasis"><span class="label">Diagnóstico final</span><div class="value text-block">{{ consultation.final_diagnosis }}</div></div>{% endif %}
           {% if consultation.indications %}<div class="clinical-block emphasis"><span class="label">Indicaciones</span><div class="value text-block">{{ consultation.indications }}</div></div>{% endif %}
@@ -436,11 +488,11 @@
           {% for field in consultation.clinical_fields %}<div class="clinical-block"><span class="label">{{ field.label }}</span><div class="value text-block">{{ field.value }}</div></div>{% endfor %}
           {% if consultation.medications %}
           <h3 class="nested-title">Medicamentos</h3>
-          {% for medication in consultation.medications %}<div class="nested-card"><strong>{{ medication.name }}</strong> · {{ medication.dose_or_quantity }}<br><span class="muted text-block">{{ medication.instructions }}</span></div>{% endfor %}
+          {% for medication in consultation.medications %}<div class="nested-card"><strong>{{ medication.name }}</strong>{% if medication.details %} · {{ medication.details|join(" · ") }}{% endif %}</div>{% endfor %}
           {% endif %}
           {% if consultation.study_requests %}
           <h3 class="nested-title">Solicitudes de estudio</h3>
-          {% for study in consultation.study_requests %}<div class="nested-card"><strong>{{ study.name }}</strong> · {{ study.study_type }}<br><span class="muted text-block">{{ study.notes }}</span></div>{% endfor %}
+          {% for study in consultation.study_requests %}<div class="nested-card"><strong>{{ study.name }}</strong>{% if study.details %} · {{ study.details|join(" · ") }}{% endif %}</div>{% endfor %}
           {% endif %}
         </article>
         {% endfor %}
@@ -455,11 +507,7 @@
       {% for exam in exams %}
       <article class="card compact-card">
         <table class="record-header"><tr><td class="record-header-main"><div class="record-title">{{ exam.exam_type }}</div></td><td class="record-header-badge"><span class="badge badge-{{ exam.status_class }}">{{ exam.status }}</span></td></tr></table>
-        <table class="field-table">
-          <tr><td><span class="label">Solicitado</span><span class="value">{{ exam.requested_at }}</span></td><td><span class="label">Realizado</span><span class="value">{{ exam.performed_at }}</span></td></tr>
-          <tr><td><span class="label">Solicitado por</span><span class="value">{{ exam.requested_by }}</span></td><td><span class="label">Resumen del resultado</span><span class="value text-block">{{ exam.result_summary }}</span></td></tr>
-          <tr><td colspan="2"><span class="label">Observaciones</span><span class="value text-block">{{ exam.observations }}</span></td></tr>
-        </table>
+        {{ field_table(exam.fields) }}
       </article>
       {% else %}<div class="empty-state">Sin exámenes en el rango seleccionado.</div>{% endfor %}
     </section>
@@ -471,11 +519,7 @@
       {% for record in preventive_care %}
       <article class="card compact-card">
         <div class="record-date">{{ record.care_type }}</div><div class="record-title">{{ record.name }}</div>
-        <table class="field-table">
-          <tr><td><span class="label">Aplicado</span><span class="value">{{ record.applied_at }}</span></td><td><span class="label">Próxima dosis</span><span class="value">{{ record.next_due_at }}</span></td></tr>
-          <tr><td><span class="label">Lote</span><span class="value">{{ record.lot_number }}</span></td><td><span class="label">Registrado por</span><span class="value">{{ record.registered_by }}</span></td></tr>
-          <tr><td colspan="2"><span class="label">Notas</span><span class="value text-block">{{ record.notes }}</span></td></tr>
-        </table>
+        {{ field_table(record.fields) }}
       </article>
       {% else %}<div class="empty-state">Sin registros preventivos en el rango seleccionado.</div>{% endfor %}
     </section>
@@ -487,12 +531,20 @@
       {% if file_references %}
       <table class="file-grid">
         {% for file in file_references %}{% if loop.index0 is divisibleby 2 %}<tr>{% endif %}
-        <td><article class="card"><div class="record-date">{{ file.file_type }}</div><div class="record-title">{{ file.name }}</div><div class="clinical-block"><span class="label">Archivo original</span><span class="value">{{ file.original_filename }}</span></div><div class="muted">{{ file.uploaded_at }} · {{ file.registered_by }}</div></article></td>
+        <td><article class="card"><div class="record-date">{{ file.file_type }}</div><div class="record-title">{{ file.name }}</div>{% if file.details %}<div class="muted">{{ file.details|join(" · ") }}</div>{% endif %}</article></td>
         {% if loop.index is divisibleby 2 %}</tr>{% elif loop.last %}<td></td></tr>{% endif %}{% endfor %}
       </table>
       {% else %}<div class="empty-state">Sin archivos en el rango seleccionado.</div>{% endif %}
     </section>
     {% endif %}
+
+    <section class="manual-notes">
+      <h2 class="manual-notes-title">Notas</h2>
+      <div class="manual-note-line"></div>
+      <div class="manual-note-line"></div>
+      <div class="manual-note-line"></div>
+      <div class="manual-note-line"></div>
+    </section>
 
     <aside class="final-note">Documento generado automáticamente por VetFlow. La información clínica debe ser interpretada y validada por el profesional veterinario responsable.</aside>
   </main>

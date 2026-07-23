@@ -1,9 +1,12 @@
 import base64
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.orm import Session
 
+from app.models.consultation import Consultation
+from app.models.patient import Patient
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.clinical_history_pdf import ClinicalHistoryPdfService
 from app.services.storage import get_storage_service
@@ -12,6 +15,7 @@ from app.services.storage import get_storage_service
 TEST_LOGO_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 )
+TEST_PHOTO_PNG = TEST_LOGO_PNG
 
 
 class FakeLogoStorageService:
@@ -207,6 +211,35 @@ def _export_context(
         ClinicalHistoryPdfExportRequest(**options),
     )
     return captured_context
+
+
+def _render_html(
+    db_session: Session,
+    tenant,
+    patient_id: str,
+    monkeypatch,
+    storage_service=None,
+    **options,
+) -> str:
+    rendered = {}
+
+    class FakeHTML:
+        def __init__(self, *, string, base_url, url_fetcher):
+            rendered["html"] = string
+
+        def write_pdf(self):
+            return b"%PDF-test"
+
+    monkeypatch.setattr("app.services.clinical_history_pdf.HTML", FakeHTML)
+    ClinicalHistoryPdfService(
+        db_session,
+        storage_service=storage_service,
+    ).export_patient_history_pdf(
+        tenant.id,
+        uuid.UUID(patient_id),
+        ClinicalHistoryPdfExportRequest(**options),
+    )
+    return rendered["html"]
 
 
 def test_export_pdf_success_with_default_options(client, tenant):
@@ -506,6 +539,76 @@ def test_export_pdf_filters_consultations_by_date_range(client, tenant, db_sessi
 
     assert "Motivo: Consulta incluida" in lines
     assert "Motivo: Consulta antigua" not in lines
+
+
+def test_template_context_sorts_consultations_chronologically(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        visit_date="2026-03-10T10:30:00Z",
+        reason="Consulta reciente",
+    )
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        visit_date="2026-01-10T10:30:00Z",
+        reason="Consulta antigua",
+    )
+
+    context = _export_context(db_session, tenant, patient["id"], monkeypatch)
+
+    assert [item["reason"] for item in context["consultations"]] == [
+        "Consulta antigua",
+        "Consulta reciente",
+    ]
+
+
+def test_template_context_sorts_consultations_with_same_date_by_id(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    visit_date = datetime(2026, 2, 10, 10, 30, tzinfo=timezone.utc)
+    first_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    second_id = uuid.UUID("00000000-0000-0000-0000-000000000002")
+    db_session.add_all(
+        [
+            Consultation(
+                id=second_id,
+                tenant_id=tenant.id,
+                patient_id=uuid.UUID(patient["id"]),
+                visit_date=visit_date,
+                reason="Mismo día segundo id",
+                status="draft",
+            ),
+            Consultation(
+                id=first_id,
+                tenant_id=tenant.id,
+                patient_id=uuid.UUID(patient["id"]),
+                visit_date=visit_date,
+                reason="Mismo día primer id",
+                status="draft",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    context = _export_context(db_session, tenant, patient["id"], monkeypatch)
+
+    assert [item["reason"] for item in context["consultations"]] == [
+        "Mismo día primer id",
+        "Mismo día segundo id",
+    ]
 
 
 def test_export_pdf_supports_summary_detail(client, tenant, db_session):
@@ -1136,6 +1239,70 @@ def test_template_context_empty_sections_and_summary_are_concise(
     assert context["file_references"] == []
 
 
+def test_template_omits_empty_fields_and_keeps_zero_values(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    owner = _create_owner(client, tenant, email=None, address=None)
+    response = client.post(
+        "/api/v1/patients",
+        headers=_headers(tenant),
+        json={
+            "owner_id": owner["id"],
+            "name": "Cero",
+            "species": "Feline",
+            "breed": "",
+            "sex": "",
+            "allergies": "   ",
+            "chronic_conditions": "",
+            "weight_kg": 0,
+        },
+    )
+    assert response.status_code == 201
+    patient = response.json()["data"]
+    _create_consultation(
+        client,
+        tenant,
+        patient["id"],
+        anamnesis="",
+        clinical_exam="",
+        presumptive_diagnosis="",
+        diagnostic_plan="",
+        diagnostic_results="",
+        therapeutic_plan="",
+        final_diagnosis="",
+        indications="",
+        consultation_summary="",
+        temperature_c=0,
+        current_weight_kg=0,
+        heart_rate=0,
+        respiratory_rate=0,
+        mucous_membranes="",
+        hydration="",
+        physical_exam_findings="",
+    )
+
+    html = _render_html(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        detail_level="full",
+    )
+
+    assert ">Raza<" not in html
+    assert ">Sexo<" not in html
+    assert ">Alergias<" not in html
+    assert ">Condiciones crónicas<" not in html
+    assert "0.00 kg" in html
+    assert "0 °C" in html
+    assert "0 kg" in html
+    assert "0 lpm" in html
+    assert "0 rpm" in html
+
+
 def test_template_context_full_detail_includes_only_non_empty_clinical_fields(
     client,
     tenant,
@@ -1173,6 +1340,37 @@ def test_template_context_full_detail_includes_only_non_empty_clinical_fields(
     }
 
 
+def test_template_notes_section_appears_once_before_legal_notice(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+
+    html = _render_html(db_session, tenant, patient["id"], monkeypatch)
+
+    assert html.count("<h2 class=\"manual-notes-title\">Notas</h2>") == 1
+    assert html.index("<h2 class=\"manual-notes-title\">Notas</h2>") < html.index(
+        "Documento generado automáticamente por VetFlow."
+    )
+
+
+def test_template_omits_patient_photo_container_without_photo(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+
+    html = _render_html(db_session, tenant, patient["id"], monkeypatch)
+
+    assert "<img class=\"patient-photo\"" not in html
+    assert "Fotografía de" not in html
+
+
 def test_template_context_logo_is_a_single_size_limited_data_uri(
     client,
     tenant,
@@ -1198,6 +1396,132 @@ def test_template_context_logo_is_a_single_size_limited_data_uri(
         "data:image/png;base64,"
     )
     assert len(storage.downloads) == 1
+
+
+def test_template_context_includes_patient_photo_when_available(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    db_patient = db_session.get(Patient, uuid.UUID(patient["id"]))
+    assert db_patient is not None
+    db_patient.photo_bucket_name = "patient-photo-bucket"
+    db_patient.photo_object_path = (
+        f"tenants/{tenant.id}/patients/{patient['id']}/profile-photo/luna.png"
+    )
+    db_patient.photo_content_type = "image/png"
+    db_session.add(db_patient)
+    db_session.commit()
+    storage = FakeLogoStorageService(logo_bytes=TEST_PHOTO_PNG)
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["patient"]["photo_data_uri"].startswith("data:image/png;base64,")
+    assert storage.downloads == [
+        {
+            "bucket_name": "patient-photo-bucket",
+            "object_path": (
+                f"tenants/{tenant.id}/patients/{patient['id']}/profile-photo/luna.png"
+            ),
+        }
+    ]
+
+
+def test_template_context_omits_patient_photo_when_absent(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    storage = FakeLogoStorageService()
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["patient"]["photo_data_uri"] is None
+    assert storage.downloads == []
+
+
+def test_template_context_omits_unavailable_patient_photo_without_blocking(
+    client,
+    tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    db_patient = db_session.get(Patient, uuid.UUID(patient["id"]))
+    assert db_patient is not None
+    db_patient.photo_bucket_name = "patient-photo-bucket"
+    db_patient.photo_object_path = (
+        f"tenants/{tenant.id}/patients/{patient['id']}/profile-photo/luna.png"
+    )
+    db_patient.photo_content_type = "image/png"
+    db_session.add(db_patient)
+    db_session.commit()
+    storage = FakeLogoStorageService(should_fail=True)
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["patient"]["photo_data_uri"] is None
+    assert storage.downloads == [
+        {
+            "bucket_name": "patient-photo-bucket",
+            "object_path": (
+                f"tenants/{tenant.id}/patients/{patient['id']}/profile-photo/luna.png"
+            ),
+        }
+    ]
+
+
+def test_template_context_rejects_patient_photo_outside_patient_scope(
+    client,
+    tenant,
+    other_tenant,
+    db_session,
+    monkeypatch,
+):
+    patient = _create_patient_for_tenant(client, tenant)
+    db_patient = db_session.get(Patient, uuid.UUID(patient["id"]))
+    assert db_patient is not None
+    db_patient.photo_bucket_name = "patient-photo-bucket"
+    db_patient.photo_object_path = (
+        f"tenants/{other_tenant.id}/patients/{patient['id']}/profile-photo/luna.png"
+    )
+    db_patient.photo_content_type = "image/png"
+    db_session.add(db_patient)
+    db_session.commit()
+    storage = FakeLogoStorageService()
+
+    context = _export_context(
+        db_session,
+        tenant,
+        patient["id"],
+        monkeypatch,
+        storage_service=storage,
+    )
+
+    assert context["patient"]["photo_data_uri"] is None
+    assert storage.downloads == []
 
 
 def test_template_context_skips_oversized_logo(

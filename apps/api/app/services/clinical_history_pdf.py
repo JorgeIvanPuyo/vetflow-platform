@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_CLINIC_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_CLINIC_LOGO_SIZE_BYTES = 1024 * 1024
+SUPPORTED_PATIENT_PHOTO_CONTENT_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+}
+SUPPORTED_PATIENT_PHOTO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+MAX_PATIENT_PHOTO_PDF_SIZE_BYTES = 5 * 1024 * 1024
 SLOW_PDF_RENDER_SECONDS = 10.0
 TEMPLATE_DIRECTORY = Path(__file__).resolve().parent.parent / "templates"
 TEMPLATE_NAME = "clinical_history_pdf.html"
@@ -92,6 +99,7 @@ class ClinicalHistoryPdfService:
             consultations = self._filter_by_date(
                 consultations, options, self._consultation_event_date
             )
+            consultations = self._sort_consultations_for_pdf(consultations)
             exams = self._filter_by_date(exams, options, self._exam_event_date)
             preventive_care = self._filter_by_date(
                 preventive_care, options, self._preventive_care_event_date
@@ -177,10 +185,18 @@ class ClinicalHistoryPdfService:
         owner_context = None
         if owner is not None:
             owner_context = {
-                "full_name": self._value(owner.full_name),
-                "phone": self._value(owner.phone),
-                "email": self._value(owner.email),
-                "address": self._value(owner.address),
+                "full_name": self._text_or_none(owner.full_name),
+                "phone": self._text_or_none(owner.phone),
+                "email": self._text_or_none(owner.email),
+                "address": self._text_or_none(owner.address),
+                "fields": self._non_empty_fields(
+                    [
+                        self._field("Nombre", owner.full_name),
+                        self._field("Teléfono", owner.phone),
+                        self._field("Correo", owner.email),
+                        self._field("Dirección", owner.address),
+                    ]
+                ),
             }
 
         consultation_context = []
@@ -220,10 +236,11 @@ class ClinicalHistoryPdfService:
             consultation_context.append(
                 {
                     "visit_date": self._format_datetime(consultation.visit_date),
-                    "reason": self._value(consultation.reason),
+                    "reason": self._text_or_none(consultation.reason)
+                    or "Consulta",
                     "status": self._status_label(consultation.status),
                     "status_class": self._status_badge_class(consultation.status),
-                    "attended_by": self._value(attended_by),
+                    "attended_by": self._text_or_none(attended_by),
                     "created_by": (
                         created_by
                         if options.detail_level == "full"
@@ -231,10 +248,29 @@ class ClinicalHistoryPdfService:
                         and created_by != attended_by
                         else None
                     ),
-                    "presumptive_diagnosis": consultation.presumptive_diagnosis,
-                    "final_diagnosis": consultation.final_diagnosis,
-                    "indications": consultation.indications,
-                    "consultation_summary": consultation.consultation_summary,
+                    "summary_fields": self._non_empty_fields(
+                        [
+                            self._field("Atendido por", attended_by),
+                            self._field(
+                                "Registrado por",
+                                created_by
+                                if options.detail_level == "full"
+                                and created_by
+                                and created_by != attended_by
+                                else None,
+                            ),
+                        ]
+                    ),
+                    "presumptive_diagnosis": self._text_or_none(
+                        consultation.presumptive_diagnosis
+                    ),
+                    "final_diagnosis": self._text_or_none(
+                        consultation.final_diagnosis
+                    ),
+                    "indications": self._text_or_none(consultation.indications),
+                    "consultation_summary": self._text_or_none(
+                        consultation.consultation_summary
+                    ),
                     "clinical_fields": (
                         clinical_fields if options.detail_level == "full" else []
                     ),
@@ -250,11 +286,20 @@ class ClinicalHistoryPdfService:
                     "medications": (
                         [
                             {
-                                "name": self._value(medication.medication_name),
-                                "dose_or_quantity": self._value(
-                                    medication.dose_or_quantity
-                                ),
-                                "instructions": self._value(medication.instructions),
+                                "name": self._text_or_none(
+                                    medication.medication_name
+                                )
+                                or "Medicamento",
+                                "details": [
+                                    value
+                                    for value in [
+                                        self._text_or_none(
+                                            medication.dose_or_quantity
+                                        ),
+                                        self._text_or_none(medication.instructions),
+                                    ]
+                                    if value
+                                ],
                             }
                             for medication in consultation.medications
                         ]
@@ -264,11 +309,18 @@ class ClinicalHistoryPdfService:
                     "study_requests": (
                         [
                             {
-                                "name": self._value(study_request.name),
-                                "study_type": self._study_request_type_label(
-                                    study_request.study_type
-                                ),
-                                "notes": self._value(study_request.notes),
+                                "name": self._text_or_none(study_request.name)
+                                or "Estudio",
+                                "details": [
+                                    value
+                                    for value in [
+                                        self._study_request_type_label(
+                                            study_request.study_type
+                                        ),
+                                        self._text_or_none(study_request.notes),
+                                    ]
+                                    if value
+                                ],
                             }
                             for study_request in consultation.study_requests
                         ]
@@ -293,22 +345,68 @@ class ClinicalHistoryPdfService:
             },
             "clinic": {
                 "name": clinic_name,
-                "phone": self._value(clinic.phone) if clinic is not None else "No indicado",
-                "email": self._value(clinic.email) if clinic is not None else "No indicado",
-                "address": self._value(clinic.address) if clinic is not None else "No indicado",
+                "phone": self._text_or_none(clinic.phone)
+                if clinic is not None
+                else None,
+                "email": self._text_or_none(clinic.email)
+                if clinic is not None
+                else None,
+                "address": self._text_or_none(clinic.address)
+                if clinic is not None
+                else None,
+                "contact_lines": [
+                    line
+                    for line in [
+                        " · ".join(
+                            value
+                            for value in [
+                                self._text_or_none(clinic.phone)
+                                if clinic is not None
+                                else None,
+                                self._text_or_none(clinic.email)
+                                if clinic is not None
+                                else None,
+                            ]
+                            if value
+                        ),
+                        self._text_or_none(clinic.address)
+                        if clinic is not None
+                        else None,
+                    ]
+                    if line
+                ],
                 "logo_data_uri": self._clinic_logo_data_uri(clinic),
                 "monogram": clinic_name[:1].upper() or "V",
             },
             "patient": {
-                "name": self._value(patient.name),
-                "species": self._value(patient.species),
-                "breed": self._value(patient.breed),
-                "sex": self._value(patient.sex),
+                "name": self._text_or_none(patient.name) or "Paciente",
+                "species": self._text_or_none(patient.species),
+                "breed": self._text_or_none(patient.breed),
+                "sex": self._text_or_none(patient.sex),
                 "estimated_age": self._format_duration_or_age(patient),
                 "weight": self._format_weight(patient.weight_kg),
-                "allergies": self._value(patient.allergies, "Sin registros"),
-                "chronic_conditions": self._value(
-                    patient.chronic_conditions, "Sin registros"
+                "allergies": self._text_or_none(patient.allergies),
+                "chronic_conditions": self._text_or_none(
+                    patient.chronic_conditions
+                ),
+                "photo_data_uri": self._patient_photo_data_uri(patient),
+                "fields": self._non_empty_fields(
+                    [
+                        self._field("Nombre", patient.name),
+                        self._field("Especie", patient.species),
+                        self._field("Raza", patient.breed),
+                        self._field("Sexo", patient.sex),
+                        self._field(
+                            "Edad estimada",
+                            self._format_duration_or_age(patient),
+                        ),
+                        self._field("Peso", self._format_weight(patient.weight_kg)),
+                        self._field("Alergias", patient.allergies),
+                        self._field(
+                            "Condiciones crónicas",
+                            patient.chronic_conditions,
+                        ),
+                    ]
                 ),
             },
             "owner": owner_context,
@@ -326,55 +424,83 @@ class ClinicalHistoryPdfService:
             "consultations": consultation_context,
             "exams": [
                 {
-                    "exam_type": self._value(exam.exam_type),
+                    "exam_type": self._text_or_none(exam.exam_type) or "Examen",
                     "status": self._exam_status_label(exam.status),
                     "status_class": self._status_badge_class(exam.status),
-                    "requested_at": self._format_datetime(exam.requested_at),
-                    "performed_at": self._format_datetime(exam.performed_at),
-                    "requested_by": self._value(
-                        self._user_label(
-                            exam.requested_by_user_name,
-                            exam.requested_by_user_email,
-                        )
+                    "fields": self._non_empty_fields(
+                        [
+                            self._field(
+                                "Solicitado",
+                                self._format_datetime(exam.requested_at),
+                            ),
+                            self._field(
+                                "Realizado",
+                                self._format_datetime(exam.performed_at),
+                            ),
+                            self._field(
+                                "Solicitado por",
+                                self._user_label(
+                                    exam.requested_by_user_name,
+                                    exam.requested_by_user_email,
+                                ),
+                            ),
+                            self._field(
+                                "Resumen del resultado",
+                                exam.result_summary,
+                            ),
+                            self._field("Observaciones", exam.observations),
+                        ]
                     ),
-                    "result_summary": self._value(exam.result_summary),
-                    "observations": self._value(exam.observations),
                 }
                 for exam in exams
             ],
             "preventive_care": [
                 {
                     "care_type": self._preventive_care_type_label(record.care_type),
-                    "name": self._value(record.name),
-                    "applied_at": self._format_datetime(record.applied_at),
-                    "next_due_at": self._format_datetime(record.next_due_at),
-                    "lot_number": self._value(record.lot_number),
-                    "registered_by": self._value(
-                        self._user_label(
-                            record.created_by_user_name,
-                            record.created_by_user_email,
-                        )
+                    "name": self._text_or_none(record.name) or "Registro preventivo",
+                    "fields": self._non_empty_fields(
+                        [
+                            self._field(
+                                "Aplicado",
+                                self._format_datetime(record.applied_at),
+                            ),
+                            self._field(
+                                "Próxima dosis",
+                                self._format_datetime(record.next_due_at),
+                            ),
+                            self._field("Lote", record.lot_number),
+                            self._field(
+                                "Registrado por",
+                                self._user_label(
+                                    record.created_by_user_name,
+                                    record.created_by_user_email,
+                                ),
+                            ),
+                            self._field("Notas", record.notes),
+                        ]
                     ),
-                    "notes": self._value(record.notes),
                 }
                 for record in preventive_care
             ],
             "file_references": [
                 {
-                    "name": self._value(file_reference.name),
+                    "name": self._text_or_none(file_reference.name) or "Archivo",
                     "file_type": self._file_type_label(file_reference.file_type),
-                    "original_filename": self._value(
-                        file_reference.original_filename
-                    ),
-                    "uploaded_at": self._format_datetime(
-                        file_reference.uploaded_at or file_reference.created_at
-                    ),
-                    "registered_by": self._value(
-                        self._user_label(
-                            file_reference.created_by_user_name,
-                            file_reference.created_by_user_email,
-                        )
-                    ),
+                    "details": [
+                        value
+                        for value in [
+                            self._text_or_none(file_reference.original_filename),
+                            self._format_datetime(
+                                file_reference.uploaded_at
+                                or file_reference.created_at
+                            ),
+                            self._user_label(
+                                file_reference.created_by_user_name,
+                                file_reference.created_by_user_email,
+                            ),
+                        ]
+                        if value
+                    ],
                 }
                 for file_reference in file_references
             ],
@@ -461,6 +587,97 @@ class ClinicalHistoryPdfService:
             return None
         return self.storage_service.bucket_name
 
+    def _patient_photo_data_uri(self, patient: Patient) -> str | None:
+        photo_bytes = self._load_patient_photo_bytes(patient)
+        mime_type = self._patient_photo_mime_type(patient)
+        if photo_bytes is None or mime_type is None:
+            return None
+        encoded_photo = base64.b64encode(photo_bytes).decode("ascii")
+        return f"data:{mime_type};base64,{encoded_photo}"
+
+    def _patient_photo_mime_type(self, patient: Patient) -> str | None:
+        if patient.photo_content_type in SUPPORTED_PATIENT_PHOTO_CONTENT_TYPES:
+            return patient.photo_content_type
+        if not patient.photo_object_path:
+            return None
+        return {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(Path(patient.photo_object_path).suffix.lower())
+
+    def _load_patient_photo_bytes(self, patient: Patient) -> bytes | None:
+        if (
+            self.storage_service is None
+            or not patient.photo_object_path
+            or not self._patient_photo_object_path_is_scoped(patient)
+        ):
+            return None
+        if (
+            Path(patient.photo_object_path).suffix.lower()
+            not in SUPPORTED_PATIENT_PHOTO_EXTENSIONS
+        ):
+            logger.warning(
+                "Unsupported patient photo format; continuing without it. "
+                "patient_id=%s tenant_id=%s",
+                patient.id,
+                patient.tenant_id,
+            )
+            return None
+        bucket_name = self._patient_photo_bucket_name(patient)
+        if not bucket_name:
+            return None
+        try:
+            photo_bytes = self.storage_service.download_object_bytes(
+                bucket_name=bucket_name,
+                object_path=patient.photo_object_path,
+            )
+        except Exception:
+            logger.warning(
+                "Patient photo could not be loaded; continuing without it. "
+                "patient_id=%s tenant_id=%s",
+                patient.id,
+                patient.tenant_id,
+            )
+            return None
+        if not photo_bytes or len(photo_bytes) > MAX_PATIENT_PHOTO_PDF_SIZE_BYTES:
+            logger.warning(
+                "Patient photo is empty or too large; continuing without it. "
+                "patient_id=%s tenant_id=%s",
+                patient.id,
+                patient.tenant_id,
+            )
+            return None
+        return photo_bytes
+
+    def _patient_photo_bucket_name(self, patient: Patient) -> str | None:
+        if patient.photo_bucket_name:
+            return patient.photo_bucket_name
+        parsed_photo_url = urlparse(patient.photo_url or "")
+        if parsed_photo_url.scheme == "gs" and parsed_photo_url.netloc:
+            return parsed_photo_url.netloc
+        if self.storage_service is None:
+            return None
+        return self.storage_service.bucket_name
+
+    def _patient_photo_object_path_is_scoped(self, patient: Patient) -> bool:
+        if not patient.photo_object_path:
+            return False
+        expected_prefix = (
+            f"tenants/{patient.tenant_id}/patients/{patient.id}/profile-photo/"
+        )
+        if patient.photo_object_path.startswith(expected_prefix):
+            return True
+        logger.warning(
+            "Patient photo object path is outside the exported patient scope; "
+            "continuing without it. patient_id=%s tenant_id=%s object_path=%s",
+            patient.id,
+            patient.tenant_id,
+            patient.photo_object_path,
+        )
+        return False
+
     def _field(self, label: str, value: object | None) -> dict:
         return {"label": label, "value": value}
 
@@ -468,8 +685,20 @@ class ClinicalHistoryPdfService:
         return [
             {"label": field["label"], "value": str(field["value"])}
             for field in fields
-            if field["value"] is not None and str(field["value"]).strip()
+            if not self._is_empty(field["value"])
         ]
+
+    def _is_empty(self, value: object | None) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, Iterable) and not isinstance(
+            value,
+            (bytes, bytearray, str),
+        ):
+            return not any(not self._is_empty(item) for item in value)
+        return False
 
     def _status_badge_class(self, status: str) -> str:
         normalized = (status or "").lower()
@@ -483,7 +712,7 @@ class ClinicalHistoryPdfService:
         if patient.estimated_age:
             return patient.estimated_age
         if patient.birth_date is None:
-            return "No indicado"
+            return ""
         today = datetime.now(timezone.utc).date()
         years = today.year - patient.birth_date.year - (
             (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
@@ -740,6 +969,18 @@ class ClinicalHistoryPdfService:
             filtered.append(record)
         return filtered
 
+    def _sort_consultations_for_pdf(
+        self,
+        consultations: list[Consultation],
+    ) -> list[Consultation]:
+        return sorted(
+            consultations,
+            key=lambda consultation: (
+                consultation.visit_date,
+                str(consultation.id),
+            ),
+        )
+
     def _validate_date_range(self, options: ClinicalHistoryPdfExportRequest) -> None:
         if options.date_from and options.date_to and options.date_from > options.date_to:
             raise AppError(
@@ -786,7 +1027,7 @@ class ClinicalHistoryPdfService:
         return str(value)
 
     def _format_weight(self, value: object | None) -> str:
-        return "No indicado" if value is None else f"{value} kg"
+        return "" if value is None else f"{value} kg"
 
     def _build_consultation_exam_data(
         self,
@@ -852,7 +1093,12 @@ class ClinicalHistoryPdfService:
         return formatted.replace(".", ",")
 
     def _format_datetime(self, value: datetime | None) -> str:
-        return "No indicado" if value is None else value.strftime("%Y-%m-%d %H:%M")
+        return "" if value is None else value.strftime("%Y-%m-%d %H:%M")
+
+    def _text_or_none(self, value: object | None) -> str | None:
+        if self._is_empty(value):
+            return None
+        return str(value).strip() if isinstance(value, str) else str(value)
 
     def _user_label(self, full_name: str | None, email: str | None) -> str | None:
         return full_name or email
