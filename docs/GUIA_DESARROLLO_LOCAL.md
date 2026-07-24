@@ -162,3 +162,25 @@ docker compose up -d db
 ```
 
 Después, repite los pasos de restauración, migraciones y arranque del backend descritos anteriormente.
+
+## Aplicar una migración en producción
+
+Antes de modificar producción, genera y verifica un backup reciente. Conéctate por `psql` y confirma la base, el usuario y la revisión aplicada:
+
+```sql
+\conninfo
+SELECT current_database(), current_user;
+SELECT version_num FROM alembic_version;
+```
+
+Desde `apps/api`, en la revisión del código que contiene la migración ya probada, construye una imagen puntual y ejecuta Alembic con el archivo `.env` que contiene la `DATABASE_URL` de producción:
+
+```bash
+docker build --target development -t vetflow-api-migration .
+docker run --rm --env-file .env vetflow-api-migration alembic upgrade head
+docker run --rm --env-file .env vetflow-api-migration alembic current
+```
+
+La última instrucción debe mostrar la nueva revisión como `head`. El contenedor se elimina al finalizar y no levanta la base local de Docker Compose.
+
+> **Importante:** confirma antes de ejecutar el comando que `.env` corresponde realmente a producción, mantenlo fuera del repositorio y nunca muestres ni compartas su contenido.
