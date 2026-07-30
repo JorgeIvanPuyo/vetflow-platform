@@ -4,7 +4,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, Uuid
+from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -13,10 +13,18 @@ from app.models.base import BaseModel
 MONEY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
 ZERO = Decimal("0")
+DEFAULT_PURCHASE_TAX_RATE = Decimal("21")
 
 
 class InventoryItem(BaseModel):
     __tablename__ = "inventory_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "internal_code",
+            name="uq_inventory_items_tenant_internal_code",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -24,9 +32,11 @@ class InventoryItem(BaseModel):
         nullable=False,
         index=True,
     )
+    internal_code: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     subcategory: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     unit: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     supplier: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     lot_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -47,8 +57,8 @@ class InventoryItem(BaseModel):
     purchase_tax_rate_percentage: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,
-        default=ZERO,
-        server_default="0",
+        default=DEFAULT_PURCHASE_TAX_RATE,
+        server_default="21",
     )
     profit_margin_percentage: Mapped[Decimal] = mapped_column(
         Numeric(8, 2),

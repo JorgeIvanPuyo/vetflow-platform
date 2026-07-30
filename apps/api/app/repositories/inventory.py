@@ -4,8 +4,10 @@ import uuid
 from datetime import date, timedelta
 
 from sqlalchemy import Select, asc, desc, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 
@@ -19,6 +21,36 @@ class InventoryRepository:
         self.db.flush()
         self.db.refresh(item)
         return item
+
+    def get_next_internal_code(
+        self,
+        tenant_id: uuid.UUID,
+        category: str,
+        prefix: str,
+    ) -> str:
+        sequence = self._get_code_sequence_for_update(tenant_id, category)
+        if sequence is None:
+            try:
+                with self.db.begin_nested():
+                    sequence = InventoryCodeSequence(
+                        tenant_id=tenant_id,
+                        category=category,
+                        last_value=0,
+                    )
+                    self.db.add(sequence)
+                    self.db.flush()
+            except IntegrityError:
+                sequence = None
+
+        if sequence is None:
+            sequence = self._get_code_sequence_for_update(tenant_id, category)
+        if sequence is None:
+            raise RuntimeError("Inventory code sequence could not be created")
+
+        sequence.last_value += 1
+        self.db.add(sequence)
+        self.db.flush()
+        return f"{prefix}-{sequence.last_value:05d}"
 
     def get_item_by_id(
         self,
@@ -237,3 +269,17 @@ class InventoryRepository:
             "updated_at": InventoryItem.updated_at,
         }
         return mapping[sort_by]
+
+    def _get_code_sequence_for_update(
+        self,
+        tenant_id: uuid.UUID,
+        category: str,
+    ) -> InventoryCodeSequence | None:
+        return self.db.scalar(
+            select(InventoryCodeSequence)
+            .where(
+                InventoryCodeSequence.tenant_id == tenant_id,
+                InventoryCodeSequence.category == category,
+            )
+            .with_for_update()
+        )

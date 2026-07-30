@@ -32,6 +32,7 @@ export const inventoryCategoryOptions: Array<{
   { value: "vaccine", label: "Vacuna", description: "Biológicos preventivos" },
   { value: "supply", label: "Insumo", description: "Material clínico y descartables" },
   { value: "food", label: "Alimento", description: "Nutrición y dietas" },
+  { value: "accessory", label: "Accesorio", description: "Collares, correas y accesorios" },
   { value: "other", label: "Otro", description: "Productos varios" },
 ];
 
@@ -92,15 +93,18 @@ export const inventoryExitReasonOptions: Array<{
 ];
 
 export type InventoryFormState = {
+  internal_code: string;
   name: string;
   category: InventoryCategory;
   subcategory: string;
+  brand: string;
   unit: InventoryUnit;
   supplier: string;
   lot_number: string;
   expiration_date: string;
   current_stock: string;
   minimum_stock: string;
+  purchase_tax_mode: "standard" | "none" | "custom";
   purchase_price_ars: string;
   purchase_tax_rate_percentage: string;
   profit_margin_percentage: string;
@@ -138,17 +142,20 @@ export const initialInventoryFilterState: InventoryFilterState = {
 };
 
 export const initialInventoryFormState: InventoryFormState = {
+  internal_code: "",
   name: "",
   category: "medication",
   subcategory: "",
+  brand: "",
   unit: "unit",
   supplier: "",
   lot_number: "",
   expiration_date: "",
   current_stock: "0",
   minimum_stock: "0",
+  purchase_tax_mode: "standard",
   purchase_price_ars: "",
-  purchase_tax_rate_percentage: "0",
+  purchase_tax_rate_percentage: "21",
   profit_margin_percentage: "35",
   sale_price_ars: "",
   sale_tax_rate_percentage: "0",
@@ -190,6 +197,9 @@ export function getInventoryCategoryIcon(category: InventoryCategory): ReactNode
   }
   if (category === "food") {
     return <Apple size={20} />;
+  }
+  if (category === "accessory") {
+    return <Box size={20} />;
   }
   if (category === "other") {
     return <ShieldAlert size={20} />;
@@ -353,7 +363,7 @@ export function isPositiveInteger(value: string) {
 
 export function validateInventoryForm(
   formState: InventoryFormState,
-  options: { isEdit?: boolean } = {},
+  _options: { isEdit?: boolean } = {},
 ) {
   if (!formState.name.trim()) {
     return "Escribe un nombre para el item.";
@@ -363,10 +373,6 @@ export function validateInventoryForm(
   }
   if (!formState.unit) {
     return "Selecciona una unidad de medida.";
-  }
-
-  if (!options.isEdit && !isNonNegativeInteger(formState.current_stock)) {
-    return "Ingresa un número entero mayor o igual a 0.";
   }
 
   if (!isNonNegativeInteger(formState.minimum_stock)) {
@@ -381,6 +387,9 @@ export function validateInventoryForm(
   }
 
   const purchaseTaxRate = Number(formState.purchase_tax_rate_percentage || "0");
+  if (formState.purchase_tax_mode === "custom" && !formState.purchase_tax_rate_percentage.trim()) {
+    return "Ingresa un IVA de compra personalizado entre 0 y 100.";
+  }
   if (Number.isNaN(purchaseTaxRate) || purchaseTaxRate < 0 || purchaseTaxRate > 100) {
     return "El IVA de compra debe estar entre 0 y 100.";
   }
@@ -397,11 +406,6 @@ export function validateInventoryForm(
     return "El precio de venta no puede ser negativo.";
   }
 
-  const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
-  if (Number.isNaN(saleTaxRate) || saleTaxRate < 0 || saleTaxRate > 100) {
-    return "El IVA de venta debe estar entre 0 y 100.";
-  }
-
   return null;
 }
 
@@ -416,7 +420,6 @@ export function calculateInventoryPricePreview(
   const purchasePrice = parseOptionalNonNegativeNumber(formState.purchase_price_ars);
   const purchaseTaxRate = parseTaxRate(formState.purchase_tax_rate_percentage);
   const margin = parseOptionalNonNegativeNumber(formState.profit_margin_percentage);
-  const saleTaxRate = parseTaxRate(formState.sale_tax_rate_percentage);
 
   const purchaseTaxAmount =
     purchasePrice !== null && purchaseTaxRate !== null
@@ -437,14 +440,8 @@ export function calculateInventoryPricePreview(
       : calculatedPrice;
   }
 
-  const saleTaxAmount =
-    saleWithoutTax !== null && saleTaxRate !== null
-      ? roundMoney(saleWithoutTax * saleTaxRate / 100)
-      : null;
-  const saleWithTax =
-    saleWithoutTax !== null && saleTaxAmount !== null
-      ? roundMoney(saleWithoutTax + saleTaxAmount)
-      : null;
+  const saleTaxAmount = saleWithoutTax !== null ? 0 : null;
+  const saleWithTax = saleWithoutTax;
 
   return {
     purchaseTaxAmount,
@@ -483,19 +480,21 @@ export function inventoryFormToCreatePayload(
     name: formState.name.trim(),
     category: formState.category,
     unit: formState.unit,
-    current_stock: Number(formState.current_stock || "0"),
     minimum_stock: Number(formState.minimum_stock || "0"),
     purchase_tax_rate_percentage: Number(
       formState.purchase_tax_rate_percentage || "0",
     ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
-    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
+    sale_tax_rate_percentage: 0,
     round_sale_price: formState.round_sale_price,
     is_active: true,
   };
 
   if (formState.subcategory.trim()) {
     payload.subcategory = formState.subcategory.trim();
+  }
+  if (formState.brand.trim()) {
+    payload.brand = formState.brand.trim();
   }
   if (formState.supplier.trim()) {
     payload.supplier = formState.supplier.trim();
@@ -532,11 +531,12 @@ export function inventoryFormToUpdatePayload(
       formState.purchase_tax_rate_percentage || "0",
     ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
-    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
+    sale_tax_rate_percentage: 0,
     round_sale_price: formState.round_sale_price,
   };
 
   payload.subcategory = formState.subcategory.trim() || null;
+  payload.brand = formState.brand.trim() || null;
   payload.supplier = formState.supplier.trim() || null;
   payload.lot_number = formState.lot_number.trim() || null;
   payload.expiration_date = formState.expiration_date || null;
@@ -554,15 +554,18 @@ export function inventoryFormToUpdatePayload(
 
 export function inventoryItemToFormState(item: InventoryItem): InventoryFormState {
   return {
+    internal_code: item.internal_code,
     name: item.name,
     category: item.category,
     subcategory: item.subcategory ?? "",
+    brand: item.brand ?? "",
     unit: item.unit,
     supplier: item.supplier ?? "",
     lot_number: item.lot_number ?? "",
     expiration_date: item.expiration_date ?? "",
     current_stock: item.current_stock,
     minimum_stock: item.minimum_stock,
+    purchase_tax_mode: getPurchaseTaxMode(item.purchase_tax_rate_percentage),
     purchase_price_ars: item.purchase_price_ars ?? "",
     purchase_tax_rate_percentage: String(item.purchase_tax_rate_percentage ?? 0),
     profit_margin_percentage: item.profit_margin_percentage,
@@ -571,6 +574,17 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
     round_sale_price: item.round_sale_price,
     notes: item.notes ?? "",
   };
+}
+
+function getPurchaseTaxMode(value?: string | number | null): InventoryFormState["purchase_tax_mode"] {
+  const numericValue = Number(value ?? 0);
+  if (Number.isFinite(numericValue) && Math.abs(numericValue - 21) < 0.005) {
+    return "standard";
+  }
+  if (Number.isFinite(numericValue) && Math.abs(numericValue) < 0.005) {
+    return "none";
+  }
+  return "custom";
 }
 
 export function isInventorySalePriceManual(item: InventoryItem) {

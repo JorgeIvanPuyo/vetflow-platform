@@ -288,7 +288,9 @@ export function InventoryScreen() {
                       <ChevronRight size={18} className="inventory-card__chevron" />
                     </div>
                     <p className="inventory-card__meta">
+                      {item.internal_code} ·{" "}
                       {getInventoryCategoryLabel(item.category)}
+                      {item.brand ? ` · ${item.brand}` : ""}
                       {item.supplier ? ` · ${item.supplier}` : ""}
                     </p>
                     <div className="inventory-card__stats">
@@ -350,14 +352,20 @@ export function InventoryScreen() {
                               <span className="inventory-table__icon" aria-hidden="true">
                                 {getInventoryCategoryIcon(item.category)}
                               </span>
-                              <strong>{item.name}</strong>
+                              <span>
+                                <strong>{item.name}</strong>
+                                <small>{item.internal_code}</small>
+                              </span>
                               <ChevronRight size={16} aria-hidden="true" />
                             </span>
                           </td>
                           <td>
                             <span className="inventory-table__secondary">
                               <strong>{getInventoryCategoryLabel(item.category)}</strong>
-                              <small>{item.supplier ?? "Sin proveedor"}</small>
+                              <small>
+                                {[item.brand, item.supplier].filter(Boolean).join(" · ") ||
+                                  "Sin marca/proveedor"}
+                              </small>
                             </span>
                           </td>
                           <td>{formatInventoryQuantity(item.current_stock, item.unit)}</td>

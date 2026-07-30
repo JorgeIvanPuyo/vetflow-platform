@@ -25,6 +25,14 @@ from app.schemas.inventory import (
 
 ALLOWED_SORT_BY = {"name", "current_stock", "expiration_date", "created_at", "updated_at"}
 ALLOWED_SORT_ORDER = {"asc", "desc"}
+INVENTORY_CATEGORY_PREFIXES = {
+    "medication": "MED",
+    "vaccine": "VAC",
+    "supply": "INS",
+    "food": "ALI",
+    "accessory": "ACC",
+    "other": "OTR",
+}
 ZERO = Decimal("0")
 TEN = Decimal("10")
 HUNDRED = Decimal("100")
@@ -62,6 +70,12 @@ class InventoryService:
             profit_margin_percentage=payload.profit_margin_percentage,
             round_sale_price=payload.round_sale_price,
             manual_sale_price_ars=payload.sale_price_ars,
+        )
+        item_data["current_stock"] = ZERO
+        item_data["internal_code"] = self.inventory_repository.get_next_internal_code(
+            tenant_id,
+            payload.category,
+            INVENTORY_CATEGORY_PREFIXES[payload.category],
         )
 
         item = InventoryItem(

@@ -37,14 +37,10 @@ export function InventoryItemForm({
   isSubmitting,
   submitLabel,
   flowMessage,
-  manualSalePriceOverride,
   onManualSalePriceOverrideChange,
   isEdit = false,
 }: InventoryItemFormProps) {
-  const pricePreview = calculateInventoryPricePreview(
-    formState,
-    manualSalePriceOverride,
-  );
+  const pricePreview = calculateInventoryPricePreview(formState, false);
 
   function updateField<K extends keyof InventoryFormState>(
     field: K,
@@ -53,6 +49,33 @@ export function InventoryItemForm({
     onChange({
       ...formState,
       [field]: value,
+    });
+  }
+
+  function updatePurchaseTaxMode(value: InventoryFormState["purchase_tax_mode"]) {
+    if (value === "standard") {
+      onChange({
+        ...formState,
+        purchase_tax_mode: value,
+        purchase_tax_rate_percentage: "21",
+      });
+      return;
+    }
+    if (value === "none") {
+      onChange({
+        ...formState,
+        purchase_tax_mode: value,
+        purchase_tax_rate_percentage: "0",
+      });
+      return;
+    }
+    onChange({
+      ...formState,
+      purchase_tax_mode: value,
+      purchase_tax_rate_percentage:
+        formState.purchase_tax_mode === "custom"
+          ? formState.purchase_tax_rate_percentage
+          : "",
     });
   }
 
@@ -103,6 +126,14 @@ export function InventoryItemForm({
         </div>
 
         <div className="form-grid">
+          <div className="clinical-section inventory-readonly-field">
+            <strong>Código interno</strong>
+            <span>
+              {formState.internal_code ||
+                "El código interno se generará automáticamente al guardar"}
+            </span>
+          </div>
+
           <label className="field">
             <span>Nombre *</span>
             <input
@@ -118,6 +149,15 @@ export function InventoryItemForm({
               value={formState.subcategory}
               onChange={(event) => updateField("subcategory", event.target.value)}
               placeholder="Ej: Antibiótico, Antiinflamatorio..."
+            />
+          </label>
+
+          <label className="field">
+            <span>Marca</span>
+            <input
+              value={formState.brand}
+              onChange={(event) => updateField("brand", event.target.value)}
+              placeholder="Laboratorio, línea o marca"
             />
           </label>
 
@@ -153,25 +193,14 @@ export function InventoryItemForm({
         </div>
 
         <div className="form-grid">
-          {!isEdit ? (
-            <label className="field">
-              <span>Stock inicial *</span>
-              <input
-                inputMode="numeric"
-                type="number"
-                min="0"
-                step="1"
-                required
-                value={formState.current_stock}
-                onChange={(event) => updateField("current_stock", event.target.value)}
-              />
-            </label>
-          ) : (
-            <div className="clinical-section inventory-readonly-field">
-              <strong>Stock actual</strong>
-              <span>El stock se actualizará con movimientos en el siguiente módulo.</span>
-            </div>
-          )}
+          <div className="clinical-section inventory-readonly-field">
+            <strong>Stock actual</strong>
+            <span>
+              {isEdit
+                ? `${formState.current_stock || "0"} unidades. El stock se modifica mediante entradas y salidas.`
+                : "Todo producto nuevo se crea con stock 0. Luego se actualiza mediante entradas y salidas."}
+            </span>
+          </div>
 
           <label className="field">
             <span>Stock mínimo *</span>
@@ -231,19 +260,37 @@ export function InventoryItemForm({
 
               <label className="field">
                 <span>IVA compra (%)</span>
-                <input
-                  inputMode="decimal"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={formState.purchase_tax_rate_percentage}
+                <select
+                  value={formState.purchase_tax_mode}
                   onChange={(event) =>
-                    updateField("purchase_tax_rate_percentage", event.target.value)
+                    updatePurchaseTaxMode(
+                      event.target.value as InventoryFormState["purchase_tax_mode"],
+                    )
                   }
-                  placeholder="0"
-                />
+                >
+                  <option value="standard">IVA 21%</option>
+                  <option value="none">Sin IVA</option>
+                  <option value="custom">Otro porcentaje</option>
+                </select>
               </label>
+
+              {formState.purchase_tax_mode === "custom" ? (
+                <label className="field">
+                  <span>IVA compra personalizado (%)</span>
+                  <input
+                    inputMode="decimal"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={formState.purchase_tax_rate_percentage}
+                    onChange={(event) =>
+                      updateField("purchase_tax_rate_percentage", event.target.value)
+                    }
+                    placeholder="0"
+                  />
+                </label>
+              ) : null}
 
               <div className="clinical-section inventory-price-preview">
                 <strong>
@@ -281,8 +328,20 @@ export function InventoryItemForm({
                 />
               </label>
 
+              <div className="clinical-section inventory-price-preview">
+                <strong>
+                  <Calculator size={16} />
+                  Precio sugerido
+                </strong>
+                <span>
+                  {pricePreview.saleWithoutTax !== null
+                    ? formatInventoryCurrency(pricePreview.saleWithoutTax)
+                    : "Agrega los precios para ver el total de venta."}
+                </span>
+              </div>
+
               <label className="field">
-                <span>Precio venta sin IVA</span>
+                <span>Precio final de venta</span>
                 <input
                   inputMode="decimal"
                   type="number"
@@ -299,38 +358,8 @@ export function InventoryItemForm({
                       : "Calculado automáticamente"
                   }
                 />
+                <small>El precio de venta es el valor final que pagará el cliente.</small>
               </label>
-
-              <label className="field">
-                <span>IVA venta (%)</span>
-                <input
-                  inputMode="decimal"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={formState.sale_tax_rate_percentage}
-                  onChange={(event) =>
-                    updateField("sale_tax_rate_percentage", event.target.value)
-                  }
-                  placeholder="0"
-                />
-              </label>
-
-              <div className="clinical-section inventory-price-preview">
-                <strong>
-                  <Calculator size={16} />
-                  Precio venta final con IVA
-                </strong>
-                <span>
-                  {pricePreview.saleWithTax !== null
-                    ? formatInventoryCurrency(pricePreview.saleWithTax)
-                    : "Agrega los precios para ver el total de venta."}
-                </span>
-                {pricePreview.saleTaxAmount !== null ? (
-                  <small>IVA venta: {formatInventoryCurrency(pricePreview.saleTaxAmount)}</small>
-                ) : null}
-              </div>
             </div>
           </section>
         </div>
@@ -343,14 +372,6 @@ export function InventoryItemForm({
               onChange={(event) => updateField("round_sale_price", event.target.checked)}
             />
             <span>Redondear precio al múltiplo de 10 ARS más cercano</span>
-          </label>
-          <label className="checkbox-row checkbox-row--card">
-            <input
-              type="checkbox"
-              checked={manualSalePriceOverride}
-              onChange={(event) => onManualSalePriceOverrideChange(event.target.checked)}
-            />
-            <span>Usar precio de venta manual</span>
           </label>
         </div>
       </section>

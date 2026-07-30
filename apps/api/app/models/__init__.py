@@ -2,6 +2,7 @@ from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
+from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 from app.models.owner import Owner
@@ -22,6 +23,7 @@ __all__ = [
     "PatientFileReference",
     "Appointment",
     "FollowUp",
+    "InventoryCodeSequence",
     "InventoryItem",
     "InventoryMovement",
 ]

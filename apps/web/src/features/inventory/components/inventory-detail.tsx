@@ -444,7 +444,6 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const badges = getInventoryStatusBadges(item);
   const purchasePriceWithTax =
     item.purchase_price_with_tax_ars ?? item.purchase_price_ars;
-  const salePriceWithTax = item.sale_price_with_tax_ars ?? item.sale_price_ars;
 
   return (
     <div className="page-stack inventory-detail-page">
@@ -459,7 +458,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <div>
             <h1>{item.name}</h1>
             <p>
-              {getInventoryCategoryLabel(item.category)}
+              {item.internal_code} · {getInventoryCategoryLabel(item.category)}
               {item.subcategory ? ` · ${item.subcategory}` : ""}
             </p>
           </div>
@@ -502,8 +501,8 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
             </div>
             <div>
-              <dt>Precio venta final con IVA</dt>
-              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
+              <dt>Precio final de venta</dt>
+              <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
             </div>
           </dl>
 
@@ -559,22 +558,12 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               <dd>{item.profit_margin_percentage}%</dd>
             </div>
             <div>
-              <dt>Precio venta sin IVA</dt>
+              <dt>Precio final de venta</dt>
               <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
             </div>
             <div>
-              <dt>IVA venta</dt>
-              <dd>
-                {formatInventoryPercentage(item.sale_tax_rate_percentage)}
-                {item.sale_tax_amount_ars !== undefined &&
-                item.sale_tax_amount_ars !== null
-                  ? ` · ${formatInventoryCurrency(item.sale_tax_amount_ars)}`
-                  : ""}
-              </dd>
-            </div>
-            <div>
-              <dt>Precio venta final con IVA</dt>
-              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
+              <dt>Precio con impuesto de venta legado</dt>
+              <dd>{formatInventoryCurrency(item.sale_price_with_tax_ars ?? item.sale_price_ars)}</dd>
             </div>
             <div>
               <dt>Redondear precio</dt>
@@ -595,8 +584,16 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
         </div>
         <dl className="detail-grid">
           <div>
+            <dt>Código interno</dt>
+            <dd>{item.internal_code}</dd>
+          </div>
+          <div>
             <dt>Categoría</dt>
             <dd>{getInventoryCategoryLabel(item.category)}</dd>
+          </div>
+          <div>
+            <dt>Marca</dt>
+            <dd>{item.brand || "No indicada"}</dd>
           </div>
           <div>
             <dt>Subcategoría</dt>

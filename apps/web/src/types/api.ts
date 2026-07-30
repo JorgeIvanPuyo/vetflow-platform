@@ -478,6 +478,7 @@ export type InventoryCategory =
   | "vaccine"
   | "supply"
   | "food"
+  | "accessory"
   | "other";
 
 export type InventoryUnit =
@@ -518,9 +519,11 @@ export type InventorySortOrder = "asc" | "desc";
 export type InventoryItem = {
   id: string;
   tenant_id: string;
+  internal_code: string;
   name: string;
   category: InventoryCategory;
   subcategory: string | null;
+  brand: string | null;
   unit: InventoryUnit;
   supplier: string | null;
   lot_number: string | null;
@@ -559,11 +562,11 @@ export type CreateInventoryItemPayload = {
   name: string;
   category: InventoryCategory;
   subcategory?: string | null;
+  brand?: string | null;
   unit: InventoryUnit;
   supplier?: string | null;
   lot_number?: string | null;
   expiration_date?: string | null;
-  current_stock?: number;
   minimum_stock?: number;
   purchase_price_ars?: number | null;
   purchase_tax_rate_percentage?: number;
@@ -575,9 +578,7 @@ export type CreateInventoryItemPayload = {
   is_active?: boolean;
 };
 
-export type UpdateInventoryItemPayload = Partial<
-  Omit<CreateInventoryItemPayload, "current_stock">
->;
+export type UpdateInventoryItemPayload = Partial<CreateInventoryItemPayload>;
 
 export type InventoryListFilters = {
   q?: string;

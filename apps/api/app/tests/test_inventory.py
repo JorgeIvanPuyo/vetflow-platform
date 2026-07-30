@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from time import sleep
 
 import pytest
@@ -80,7 +81,6 @@ def _item_payload(**overrides) -> dict:
         "name": "Amoxicilina 50mg",
         "category": "medication",
         "unit": "tablet",
-        "current_stock": "10",
         "minimum_stock": "3",
         "purchase_price_ars": "1000",
         "profit_margin_percentage": "35",
@@ -92,13 +92,30 @@ def _item_payload(**overrides) -> dict:
 
 
 def _create_item(client, tenant, **overrides) -> dict:
+    initial_stock = overrides.pop("current_stock", None)
     response = client.post(
         "/api/v1/inventory/items",
         headers=_headers(tenant),
         json=_item_payload(**overrides),
     )
     assert response.status_code == 201
-    return response.json()["data"]
+    item = response.json()["data"]
+    if initial_stock is None or Decimal(str(initial_stock)) == Decimal("0"):
+        return item
+
+    movement_response = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/entry",
+        headers=_headers(tenant),
+        json={"quantity": str(initial_stock)},
+    )
+    assert movement_response.status_code == 201
+
+    item_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+    )
+    assert item_response.status_code == 200
+    return item_response.json()["data"]
 
 
 def test_create_inventory_item(client, tenant):
@@ -111,15 +128,18 @@ def test_create_inventory_item(client, tenant):
     assert response.status_code == 201
     item = response.json()["data"]
     assert item["tenant_id"] == str(tenant.id)
+    assert item["internal_code"] == "MED-00001"
     assert item["name"] == "Amoxicilina 50mg"
-    assert item["purchase_tax_rate_percentage"] == "0.00"
+    assert item["brand"] is None
+    assert item["current_stock"] == "0.00"
+    assert item["purchase_tax_rate_percentage"] == "21.00"
     assert item["sale_tax_rate_percentage"] == "0.00"
-    assert item["purchase_tax_amount_ars"] == "0.00"
-    assert item["purchase_price_with_tax_ars"] == "1000.00"
-    assert item["sale_price_ars"] == "1350.00"
+    assert item["purchase_tax_amount_ars"] == "210.00"
+    assert item["purchase_price_with_tax_ars"] == "1210.00"
+    assert item["sale_price_ars"] == "1633.50"
     assert item["sale_tax_amount_ars"] == "0.00"
-    assert item["sale_price_with_tax_ars"] == "1350.00"
-    assert item["is_low_stock"] is False
+    assert item["sale_price_with_tax_ars"] == "1633.50"
+    assert item["is_low_stock"] is True
     assert item["created_at"] is not None
     assert item["updated_at"] is not None
 
@@ -147,6 +167,72 @@ def test_list_inventory_items_paginated(client, tenant):
         "sale_price_with_tax_ars",
     } <= payload["data"][0].keys()
     assert payload["meta"] == {"page": 1, "page_size": 2, "total": 3, "total_pages": 2}
+
+
+def test_inventory_internal_codes_are_sequential_by_tenant_and_category(
+    client,
+    tenant,
+    other_tenant,
+):
+    first_medication = _create_item(client, tenant, name="Medicamento A")
+    second_medication = _create_item(client, tenant, name="Medicamento B")
+    supply = _create_item(client, tenant, name="Insumo A", category="supply", unit="syringe")
+    other_tenant_medication = _create_item(client, other_tenant, name="Medicamento C")
+
+    assert first_medication["internal_code"] == "MED-00001"
+    assert second_medication["internal_code"] == "MED-00002"
+    assert supply["internal_code"] == "INS-00001"
+    assert other_tenant_medication["internal_code"] == "MED-00001"
+
+
+def test_update_category_does_not_change_internal_code(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"category": "food"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["category"] == "food"
+    assert data["internal_code"] == item["internal_code"]
+
+
+def test_reject_internal_code_patch(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"internal_code": "MED-99999"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_brand_is_normalized_saved_and_returned(client, tenant):
+    item = _create_item(client, tenant, brand="  Laboratorio Norte  ")
+
+    assert item["brand"] == "Laboratorio Norte"
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"brand": "   "},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["brand"] is None
+
+
+def test_accessory_is_valid_category(client, tenant):
+    item = _create_item(client, tenant, category="accessory", name="Collar", unit="unit")
+
+    assert item["category"] == "accessory"
+    assert item["internal_code"] == "ACC-00001"
 
 
 def test_search_inventory_items_by_q(client, tenant):
@@ -215,12 +301,14 @@ def test_inventory_summary_counts(client, tenant):
         client,
         tenant,
         name="Vence pronto",
+        current_stock="8",
         expiration_date=(date.today() + timedelta(days=12)).isoformat(),
     )
     _create_item(
         client,
         tenant,
         name="Vencido",
+        current_stock="8",
         expiration_date=(date.today() - timedelta(days=7)).isoformat(),
     )
 
@@ -268,9 +356,39 @@ def test_update_item_and_recalculate_sale_price(client, tenant):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["purchase_price_ars"] == "2000.00"
-    assert data["sale_price_ars"] == "3000.00"
+    assert data["sale_price_ars"] == "3630.00"
     assert data["updated_at"] >= original_updated_at
     assert data["updated_at"] != original_updated_at
+
+
+def test_reject_current_stock_in_create_payload(client, tenant):
+    payload = _item_payload()
+    payload["current_stock"] = "10"
+
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_reject_current_stock_in_update_payload(client, tenant):
+    item = _create_item(client, tenant, current_stock="5")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"current_stock": "99"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+    item_response = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant))
+    assert item_response.json()["data"]["current_stock"] == "5.00"
 
 
 def test_round_sale_price_to_nearest_10(client, tenant):
@@ -281,7 +399,7 @@ def test_round_sale_price_to_nearest_10(client, tenant):
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["sale_price_ars"] == "1370.00"
+    assert response.json()["data"]["sale_price_ars"] == "1650.00"
 
 
 def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
@@ -350,6 +468,23 @@ def test_update_purchase_tax_recalculates_automatic_sale_price(client, tenant):
     assert data["sale_price_ars"] == "1633.50"
 
 
+def test_explicit_zero_purchase_tax_is_preserved(client, tenant):
+    item = _create_item(client, tenant, purchase_tax_rate_percentage="0")
+
+    assert item["purchase_tax_rate_percentage"] == "0.00"
+    assert item["purchase_price_with_tax_ars"] == "1000.00"
+    assert item["sale_price_ars"] == "1350.00"
+
+
+def test_custom_purchase_tax_is_preserved(client, tenant):
+    item = _create_item(client, tenant, purchase_tax_rate_percentage="10.50")
+
+    assert item["purchase_tax_rate_percentage"] == "10.50"
+    assert item["purchase_tax_amount_ars"] == "105.00"
+    assert item["purchase_price_with_tax_ars"] == "1105.00"
+    assert item["sale_price_ars"] == "1491.75"
+
+
 def test_update_sale_tax_changes_totals_without_changing_sale_price(client, tenant):
     item = _create_item(client, tenant)
 
@@ -361,9 +496,9 @@ def test_update_sale_tax_changes_totals_without_changing_sale_price(client, tena
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["sale_price_ars"] == "1350.00"
-    assert data["sale_tax_amount_ars"] == "283.50"
-    assert data["sale_price_with_tax_ars"] == "1633.50"
+    assert data["sale_price_ars"] == "1633.50"
+    assert data["sale_tax_amount_ars"] == "343.04"
+    assert data["sale_price_with_tax_ars"] == "1976.54"
 
 
 def test_update_manual_sale_price_preserves_value_and_calculates_tax(client, tenant):
@@ -573,18 +708,14 @@ def test_prevent_cross_tenant_related_patient_in_exit_movement(
 
 
 def test_response_includes_computed_flags(client, tenant):
-    response = client.post(
-        "/api/v1/inventory/items",
-        headers=_headers(tenant),
-        json=_item_payload(
-            current_stock="1",
-            minimum_stock="3",
-            expiration_date=(date.today() + timedelta(days=14)).isoformat(),
-        ),
+    item = _create_item(
+        client,
+        tenant,
+        current_stock="1",
+        minimum_stock="3",
+        expiration_date=(date.today() + timedelta(days=14)).isoformat(),
     )
 
-    assert response.status_code == 201
-    item = response.json()["data"]
     assert item["is_low_stock"] is True
     assert item["is_expiring_soon"] is True
     assert item["is_expired"] is False

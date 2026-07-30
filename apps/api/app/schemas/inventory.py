@@ -3,10 +3,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
-InventoryCategory = Literal["medication", "vaccine", "supply", "food", "other"]
+InventoryCategory = Literal["medication", "vaccine", "supply", "food", "accessory", "other"]
 InventoryUnit = Literal[
     "unit",
     "tablet",
@@ -46,19 +46,21 @@ InventoryExitReason = Literal[
 ]
 
 
-class InventoryItemBase(BaseModel):
-    name: str
+class InventoryItemWriteBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=255)
     category: InventoryCategory
-    subcategory: str | None = None
+    subcategory: str | None = Field(default=None, max_length=100)
+    brand: str | None = Field(default=None, max_length=150)
     unit: InventoryUnit
-    supplier: str | None = None
-    lot_number: str | None = None
+    supplier: str | None = Field(default=None, max_length=255)
+    lot_number: str | None = Field(default=None, max_length=120)
     expiration_date: date | None = None
-    current_stock: Decimal = Field(default=Decimal("0"), ge=0)
     minimum_stock: Decimal = Field(default=Decimal("0"), ge=0)
     purchase_price_ars: Decimal | None = Field(default=None, ge=0)
     purchase_tax_rate_percentage: Decimal = Field(
-        default=Decimal("0"),
+        default=Decimal("21"),
         ge=0,
         le=100,
     )
@@ -73,20 +75,40 @@ class InventoryItemBase(BaseModel):
     notes: str | None = None
     is_active: bool = True
 
+    @field_validator("name")
+    @classmethod
+    def strip_required_string(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
 
-class InventoryItemCreate(InventoryItemBase):
+    @field_validator("subcategory", "brand", "supplier", "lot_number", "notes", mode="before")
+    @classmethod
+    def strip_optional_string(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None
+
+
+class InventoryItemCreate(InventoryItemWriteBase):
     pass
 
 
 class InventoryItemUpdate(BaseModel):
-    name: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     category: InventoryCategory | None = None
-    subcategory: str | None = None
+    subcategory: str | None = Field(default=None, max_length=100)
+    brand: str | None = Field(default=None, max_length=150)
     unit: InventoryUnit | None = None
-    supplier: str | None = None
-    lot_number: str | None = None
+    supplier: str | None = Field(default=None, max_length=255)
+    lot_number: str | None = Field(default=None, max_length=120)
     expiration_date: date | None = None
-    current_stock: Decimal | None = Field(default=None, ge=0)
     minimum_stock: Decimal | None = Field(default=None, ge=0)
     purchase_price_ars: Decimal | None = Field(default=None, ge=0)
     purchase_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
@@ -97,12 +119,34 @@ class InventoryItemUpdate(BaseModel):
     notes: str | None = None
     is_active: bool | None = None
 
+    @field_validator("name")
+    @classmethod
+    def strip_optional_required_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
 
-class InventoryItemRead(InventoryItemBase):
+    @field_validator("subcategory", "brand", "supplier", "lot_number", "notes", mode="before")
+    @classmethod
+    def strip_optional_string(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None
+
+
+class InventoryItemRead(InventoryItemWriteBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     tenant_id: uuid.UUID
+    internal_code: str
+    current_stock: Decimal
     created_by_user_id: uuid.UUID | None = None
     purchase_tax_amount_ars: Decimal | None = None
     purchase_price_with_tax_ars: Decimal | None = None
