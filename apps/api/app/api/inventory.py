@@ -10,6 +10,7 @@ from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.inventory import (
     InventoryCategory,
+    InventoryExportCreate,
     InventoryFilterOptionsRead,
     InventoryImportConfirmCreate,
     InventoryImportListItemRead,
@@ -30,6 +31,7 @@ from app.schemas.inventory import (
     InventoryStatusFilter,
     InventorySummaryRead,
 )
+from app.services.inventory_export import InventoryExportService, XLSX_MEDIA_TYPE
 from app.services.inventory import InventoryService
 from app.services.inventory_import import InventoryImportService
 
@@ -96,6 +98,22 @@ def _prefer_current_parameter(current_value: str | None, legacy_value: str | Non
     if legacy_value is not None and legacy_value.strip():
         return legacy_value.strip()
     return None
+
+
+@router.post("/export")
+def export_inventory(
+    payload: InventoryExportCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    export_file = InventoryExportService(db).export_inventory(tenant, payload)
+    return StreamingResponse(
+        BytesIO(export_file.content),
+        media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{export_file.filename}"',
+        },
+    )
 
 
 @router.get("/import/template")

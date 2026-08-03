@@ -3,6 +3,7 @@ import type {
   ApiItemResponse,
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
+  InventoryExportPayload,
   InventoryImport,
   InventoryImportConfirmPayload,
   InventoryImportListItem,
@@ -224,4 +225,8 @@ export function getInventoryImports(page = 1, pageSize = 10) {
   return api.get<InventoryImportListResponse>(
     `/api/v1/inventory/imports?page=${page}&page_size=${pageSize}`,
   );
+}
+
+export function exportInventory(payload: InventoryExportPayload) {
+  return api.postBlob("/api/v1/inventory/export", payload);
 }

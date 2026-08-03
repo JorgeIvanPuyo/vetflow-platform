@@ -8413,6 +8413,22 @@ code {
   gap: 1rem;
 }
 
+.inventory-export-sheet {
+  display: grid;
+  gap: 1rem;
+}
+
+.inventory-export-options {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.inventory-export-summary {
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
 .inventory-card-list[aria-busy="true"] {
   opacity: 0.68;
 }

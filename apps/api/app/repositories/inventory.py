@@ -120,17 +120,8 @@ class InventoryRepository:
         sort_by: str,
         sort_direction: str,
     ) -> tuple[list[InventoryItem], int]:
-        statement: Select[tuple[InventoryItem]] = (
-            select(InventoryItem)
-            .where(InventoryItem.tenant_id == tenant_id)
-            .options(selectinload(InventoryItem.created_by_user))
-        )
-        count_statement = select(func.count()).select_from(InventoryItem).where(
-            InventoryItem.tenant_id == tenant_id,
-        )
-
-        statement = self._apply_item_filters(
-            statement,
+        statement = self._build_item_list_statement(
+            tenant_id,
             search=search,
             category=category,
             brand=brand,
@@ -138,9 +129,11 @@ class InventoryRepository:
             status=status,
             stock_status=stock_status,
             is_active=is_active,
-        )
-        count_statement = self._apply_item_filters(
-            count_statement,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        ).options(selectinload(InventoryItem.created_by_user))
+        count_statement = self._build_item_count_statement(
+            tenant_id,
             search=search,
             category=category,
             brand=brand,
@@ -150,17 +143,63 @@ class InventoryRepository:
             is_active=is_active,
         )
 
-        sort_column = self._get_sort_column(sort_by)
-        order_by = desc(sort_column) if sort_direction == "desc" else asc(sort_column)
         offset = (page - 1) * page_size
-
-        items = list(
-            self.db.scalars(
-                statement.order_by(order_by, InventoryItem.id.asc()).offset(offset).limit(page_size)
-            ).all()
-        )
+        items = list(self.db.scalars(statement.offset(offset).limit(page_size)).all())
         total = int(self.db.scalar(count_statement) or 0)
         return items, total
+
+    def list_items_for_export(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        search: str | None,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        status: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
+        sort_by: str,
+        sort_direction: str,
+        limit: int,
+    ) -> tuple[list[InventoryItem], int]:
+        statement = self._build_item_list_statement(
+            tenant_id,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=status,
+            stock_status=stock_status,
+            is_active=is_active,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        ).limit(limit)
+        count_statement = self._build_item_count_statement(
+            tenant_id,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=status,
+            stock_status=stock_status,
+            is_active=is_active,
+        )
+        return list(self.db.scalars(statement).all()), int(self.db.scalar(count_statement) or 0)
+
+    def list_items_by_ids_for_export(
+        self,
+        tenant_id: uuid.UUID,
+        item_ids: list[uuid.UUID],
+    ) -> list[InventoryItem]:
+        if not item_ids:
+            return []
+        statement = select(InventoryItem).where(
+            InventoryItem.tenant_id == tenant_id,
+            InventoryItem.id.in_(item_ids),
+        )
+        items_by_id = {item.id: item for item in self.db.scalars(statement).all()}
+        return [items_by_id[item_id] for item_id in item_ids if item_id in items_by_id]
 
     def get_filter_options(self, tenant_id: uuid.UUID) -> dict[str, list[str]]:
         brand_values = (
@@ -469,6 +508,61 @@ class InventoryRepository:
         total = int(self.db.scalar(count_statement) or 0)
         return movements, total
 
+    def _build_item_list_statement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        search: str | None,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        status: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
+        sort_by: str,
+        sort_direction: str,
+    ):
+        statement: Select[tuple[InventoryItem]] = select(InventoryItem).where(
+            InventoryItem.tenant_id == tenant_id,
+        )
+        statement = self._apply_item_filters(
+            statement,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=status,
+            stock_status=stock_status,
+            is_active=is_active,
+        )
+        return self._apply_item_sort(statement, sort_by=sort_by, sort_direction=sort_direction)
+
+    def _build_item_count_statement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        search: str | None,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        status: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
+    ):
+        statement = select(func.count()).select_from(InventoryItem).where(
+            InventoryItem.tenant_id == tenant_id,
+        )
+        return self._apply_item_filters(
+            statement,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=status,
+            stock_status=stock_status,
+            is_active=is_active,
+        )
+
     def _apply_item_filters(
         self,
         statement,
@@ -540,6 +634,17 @@ class InventoryRepository:
         else:
             statement = statement.where(InventoryItem.is_active.is_(True))
         return statement
+
+    def _apply_item_sort(
+        self,
+        statement,
+        *,
+        sort_by: str,
+        sort_direction: str,
+    ):
+        sort_column = self._get_sort_column(sort_by)
+        order_by = desc(sort_column) if sort_direction == "desc" else asc(sort_column)
+        return statement.order_by(order_by, InventoryItem.id.asc())
 
     def _apply_movement_filters(
         self,

@@ -155,20 +155,7 @@ class InventoryImportService:
             instructions.append([line])
 
         catalogs = workbook.create_sheet("Catálogos")
-        catalogs.append(["category", "unit", "boolean", "purchase_tax_rate_percentage"])
-        catalog_rows = max(len(INVENTORY_CATEGORY_PREFIXES), len(UNITS), len(BOOL_ALIASES), 3)
-        tax_values = ["21", "0", "personalizado"]
-        for index in range(catalog_rows):
-            catalogs.append(
-                [
-                    list(INVENTORY_CATEGORY_PREFIXES)[index]
-                    if index < len(INVENTORY_CATEGORY_PREFIXES)
-                    else "",
-                    sorted(UNITS)[index] if index < len(UNITS) else "",
-                    list(BOOL_ALIASES)[index] if index < len(BOOL_ALIASES) else "",
-                    tax_values[index] if index < len(tax_values) else "",
-                ]
-            )
+        add_inventory_catalog_rows(catalogs)
 
         output = BytesIO()
         workbook.save(output)
@@ -964,3 +951,23 @@ class InventoryImportService:
         if isinstance(value, dict):
             return {key: self._json_ready(item) for key, item in value.items()}
         return value
+
+
+def add_inventory_catalog_rows(sheet) -> None:
+    sheet.append(["category", "unit", "boolean", "purchase_tax_rate_percentage"])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="DDEAF7")
+    catalog_rows = max(len(INVENTORY_CATEGORY_PREFIXES), len(UNITS), len(BOOL_ALIASES), 3)
+    tax_values = ["21", "0", "personalizado"]
+    for index in range(catalog_rows):
+        sheet.append(
+            [
+                list(INVENTORY_CATEGORY_PREFIXES)[index]
+                if index < len(INVENTORY_CATEGORY_PREFIXES)
+                else "",
+                sorted(UNITS)[index] if index < len(UNITS) else "",
+                list(BOOL_ALIASES)[index] if index < len(BOOL_ALIASES) else "",
+                tax_values[index] if index < len(tax_values) else "",
+            ]
+        )

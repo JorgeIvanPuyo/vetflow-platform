@@ -711,6 +711,25 @@ export type ReverseInventoryMovementPayload = {
   notes?: string | null;
 };
 
+export type InventoryExportMode = "all" | "filtered" | "selected";
+
+export type InventoryExportFilters = {
+  search?: string | null;
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  stock_status?: InventoryStockStatus | null;
+  is_active?: boolean | null;
+  sort_by?: InventorySortBy | null;
+  sort_direction?: InventorySortOrder | null;
+};
+
+export type InventoryExportPayload = {
+  mode: InventoryExportMode;
+  filters?: InventoryExportFilters | null;
+  selected_ids?: string[];
+};
+
 export type InventoryImportMode = "initial_load" | "catalog_update";
 export type InventoryImportStatus = "preview" | "confirmed" | "failed" | "expired";
 export type InventoryImportRowStatus = "valid" | "warning" | "error" | "skipped";

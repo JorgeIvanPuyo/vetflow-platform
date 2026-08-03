@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 
 InventoryCategory = Literal["medication", "vaccine", "supply", "food", "accessory", "other"]
@@ -65,6 +65,7 @@ InventoryMovementType = Literal[
 ]
 InventoryReversalStatus = Literal["all", "active", "reversed", "reversal"]
 InventoryImportMode = Literal["initial_load", "catalog_update"]
+InventoryExportMode = Literal["all", "filtered", "selected"]
 InventoryImportStatus = Literal["preview", "confirmed", "failed", "expired"]
 InventoryImportRowStatus = Literal["valid", "warning", "error", "skipped"]
 InventoryImportRowAction = Literal["create", "update", "skip", "review_required"]
@@ -421,3 +422,82 @@ class InventoryImportConfirmCreate(BaseModel):
             return value
         value = value.strip()
         return value or None
+
+
+class InventoryExportFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, max_length=255)
+    category: InventoryCategory | None = None
+    brand: str | None = Field(default=None, max_length=150)
+    supplier: str | None = Field(default=None, max_length=255)
+    stock_status: InventoryStockStatus | None = None
+    is_active: bool | None = None
+    sort_by: InventorySortBy | None = None
+    sort_direction: SortOrder | None = None
+
+    @field_validator("search", "brand", "supplier", mode="before")
+    @classmethod
+    def strip_export_filter_string(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None
+
+    def has_filters_except_active(self) -> bool:
+        return any(
+            getattr(self, field) is not None
+            for field in (
+                "search",
+                "category",
+                "brand",
+                "supplier",
+                "stock_status",
+                "sort_by",
+                "sort_direction",
+            )
+        )
+
+    def has_any_filter(self) -> bool:
+        return any(
+            getattr(self, field) is not None
+            for field in (
+                "search",
+                "category",
+                "brand",
+                "supplier",
+                "stock_status",
+                "is_active",
+                "sort_by",
+                "sort_direction",
+            )
+        )
+
+
+class InventoryExportCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: InventoryExportMode
+    filters: InventoryExportFilters | None = None
+    selected_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_export_combination(self):
+        filters = self.filters
+        if self.mode == "all":
+            if filters is not None and filters.has_filters_except_active():
+                raise ValueError("all mode only accepts filters.is_active")
+            return self
+        if self.mode == "filtered":
+            if self.selected_ids:
+                raise ValueError("filtered mode does not accept selected_ids")
+            return self
+        if not self.selected_ids:
+            raise ValueError("selected mode requires selected_ids")
+        if len(self.selected_ids) > 500:
+            raise ValueError("selected mode accepts at most 500 selected_ids")
+        if filters is not None and filters.has_any_filter():
+            raise ValueError("selected mode does not accept filters")
+        return self

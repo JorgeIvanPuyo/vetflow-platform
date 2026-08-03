@@ -3,6 +3,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   FileSpreadsheet,
   Filter,
   History,
@@ -34,12 +35,14 @@ import {
 } from "@/features/inventory/components/inventory-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import {
+  exportInventory,
   getInventoryFilterOptions,
   getInventoryItems,
   getInventorySummary,
 } from "@/services/inventory";
 import type {
   InventoryCategory,
+  InventoryExportPayload,
   InventoryFilterOptions,
   InventoryItem,
   InventorySortBy,
@@ -137,6 +140,10 @@ export function InventoryScreen() {
   );
   const [viewMode, setViewMode] = useState<InventoryViewMode>("cards");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<"all" | "filtered">("filtered");
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportErrorMessage, setExportErrorMessage] = useState<string | null>(null);
 
   const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const { filterState, legacyStatus, page, pageSize } = queryState;
@@ -398,6 +405,25 @@ export function InventoryScreen() {
     router.push(`/inventory/${itemId}?return_to=${encodeURIComponent(listReturnHref)}`);
   }
 
+  async function handleExport() {
+    setIsExporting(true);
+    setExportErrorMessage(null);
+    try {
+      const response = await exportInventory(buildInventoryExportPayload(exportMode, queryState));
+      const url = URL.createObjectURL(response.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = response.filename ?? "vetflow_inventario.xlsx";
+      link.click();
+      URL.revokeObjectURL(url);
+      setIsExportOpen(false);
+    } catch (error) {
+      setExportErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   const hasFilters = hasInventoryFilters(queryState);
   const emptyMessage = hasFilters
     ? "No se encontraron items con los filtros aplicados."
@@ -415,6 +441,18 @@ export function InventoryScreen() {
           </p>
         </div>
         <div className="inventory-header-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => {
+              setExportMode(hasFilters ? "filtered" : "all");
+              setExportErrorMessage(null);
+              setIsExportOpen(true);
+            }}
+          >
+            <Download size={18} />
+            Exportar
+          </button>
           <Link className="secondary-button" href="/inventory/import">
             <FileSpreadsheet size={18} />
             Importar
@@ -938,6 +976,77 @@ export function InventoryScreen() {
           </section>
         </div>
       ) : null}
+
+      {isExportOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsExportOpen(false)}>
+          <section
+            className="bottom-sheet inventory-export-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inventory-export-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bottom-sheet__header">
+              <div>
+                <p className="eyebrow">Inventario</p>
+                <h2 id="inventory-export-title">Exportar a Excel</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setIsExportOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="inventory-export-options">
+              <button
+                type="button"
+                className={`choice-card${exportMode === "all" ? " choice-card--selected" : ""}`}
+                onClick={() => setExportMode("all")}
+              >
+                <span className="inventory-import-choice__icon" aria-hidden="true">
+                  <Download size={20} />
+                </span>
+                <strong>Exportar inventario completo</strong>
+                <small>Incluye todos los productos activos de la clínica.</small>
+              </button>
+              <button
+                type="button"
+                className={`choice-card${exportMode === "filtered" ? " choice-card--selected" : ""}`}
+                onClick={() => setExportMode("filtered")}
+              >
+                <span className="inventory-import-choice__icon" aria-hidden="true">
+                  <Filter size={20} />
+                </span>
+                <strong>Exportar resultados filtrados</strong>
+                <small>Incluye todos los resultados, no solo esta página.</small>
+              </button>
+            </div>
+
+            <div className="panel-note inventory-export-summary">
+              {exportMode === "filtered"
+                ? describeInventoryExportFilters(queryState)
+                : "Se exportarán todos los productos activos, sin depender de la página visible."}
+            </div>
+
+            {exportErrorMessage ? (
+              <div className="error-state">{exportErrorMessage}</div>
+            ) : null}
+
+            <div className="modal-actions">
+              <button className="secondary-button" type="button" onClick={() => setIsExportOpen(false)}>
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={isExporting} type="button" onClick={handleExport}>
+                {isExporting ? (
+                  <span className="vf-spinner vf-spinner--sm vf-spinner--button" />
+                ) : (
+                  <Download size={18} />
+                )}
+                Descargar
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1036,4 +1145,50 @@ function hasInventoryFilters(queryState: InventoryQueryState) {
       filterState.stock_status !== "all" ||
       filterState.active_status !== "active",
   );
+}
+
+function buildInventoryExportPayload(
+  mode: "all" | "filtered",
+  queryState: InventoryQueryState,
+): InventoryExportPayload {
+  if (mode === "all") {
+    return {
+      mode: "all",
+      filters: { is_active: true },
+      selected_ids: [],
+    };
+  }
+
+  const { page: _page, page_size: _pageSize, status: _status, ...filters } =
+    buildInventoryListFilters(
+      queryState.search,
+      queryState.filterState,
+      queryState.page,
+      queryState.pageSize,
+    );
+  return {
+    mode: "filtered",
+    filters,
+    selected_ids: [],
+  };
+}
+
+function describeInventoryExportFilters(queryState: InventoryQueryState) {
+  const filters = buildInventoryListFilters(
+    queryState.search,
+    queryState.filterState,
+    queryState.page,
+    queryState.pageSize,
+  );
+  const parts = [
+    filters.search ? `búsqueda "${filters.search}"` : null,
+    filters.category ? `categoría ${filters.category}` : null,
+    filters.brand ? `marca ${filters.brand}` : null,
+    filters.supplier ? `proveedor ${filters.supplier}` : null,
+    filters.stock_status ? `stock ${filters.stock_status}` : null,
+    filters.is_active === false ? "inactivos" : "activos",
+    `orden ${filters.sort_by ?? DEFAULT_SORT_BY} ${filters.sort_direction ?? DEFAULT_SORT_DIRECTION}`,
+  ].filter(Boolean);
+
+  return `${parts.join(" · ")}. Se exportan todos los resultados filtrados, no solo la página ${queryState.page}.`;
 }

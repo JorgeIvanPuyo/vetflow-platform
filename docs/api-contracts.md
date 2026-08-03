@@ -297,6 +297,68 @@ stock movements (`initial_stock`, `adjustment_in`, `adjustment_out`);
 `catalog_update` ignores stock. `current_stock` is never accepted from the
 catalog contract or written directly by the import flow.
 
+Inventory export to Excel:
+
+- `POST /api/v1/inventory/export` returns an `.xlsx` file with
+  `Content-Disposition: attachment`.
+- The endpoint is tenant-scoped and reuses the same permission boundary as
+  inventory listing: a user who can consult inventory can export it.
+- Export never modifies products, prices, stock, movements, imports, or audit
+  tables, and files are not stored permanently.
+
+Payload:
+
+```json
+{
+  "mode": "all",
+  "filters": {
+    "is_active": true
+  },
+  "selected_ids": []
+}
+```
+
+Modes:
+
+- `all`: exports all tenant products using the default listing active-state
+  semantics; when `filters.is_active` is sent, only that active state is applied.
+  Other filter fields are rejected as ambiguous. `selected_ids` is ignored.
+- `filtered`: exports all tenant products matching the same SQL filters as
+  `GET /api/v1/inventory/items`, without pagination. Accepted filters are
+  `search`, `category`, `brand`, `supplier`, `stock_status`, `is_active`,
+  `sort_by`, and `sort_direction`. `selected_ids` is rejected.
+- `selected`: exports explicit product IDs. The IDs are deduplicated preserving
+  first occurrence order, every ID must belong to the tenant, and the payload may
+  include at most 500 IDs. Filters are rejected.
+
+Limits and errors:
+
+- More than 10,000 matched products returns `413 inventory_export_too_large`;
+  clients should apply filters to reduce the file.
+- Empty selected IDs return `422 validation_error`.
+- Unknown or cross-tenant selected IDs return `404 inventory_item_not_found`.
+- Invalid mode, invalid filters, invalid sort fields, and extra payload fields
+  return `422 validation_error`.
+- Zero matched products still returns a valid workbook with headers and summary
+  count `0`.
+
+Workbook sheets:
+
+- `Inventario`: canonical import-compatible columns in this exact order:
+  `internal_code`, `name`, `category`, `subcategory`, `brand`, `supplier`,
+  `unit`, `purchase_price_ars`, `purchase_tax_rate_percentage`,
+  `profit_margin_percentage`, `sale_price_ars`, `minimum_stock`, `stock`,
+  `is_active`, `notes`.
+- `Resumen`: generated timestamp, requester, clinic display/name when available,
+  mode, product count, filters, order, and warnings about stock/import semantics.
+- `Catálogos`: valid categories, units, booleans, and purchase VAT notes matching
+  the import template catalog sheet.
+
+`stock` is a current-stock snapshot. In a future import preview,
+`catalog_update` ignores that stock value and `initial_load` treats it as the
+target physical stock. String values that could be interpreted as formulas are
+escaped in the workbook.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.
