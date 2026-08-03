@@ -711,6 +711,89 @@ export type ReverseInventoryMovementPayload = {
   notes?: string | null;
 };
 
+export type InventoryImportMode = "initial_load" | "catalog_update";
+export type InventoryImportStatus = "preview" | "confirmed" | "failed" | "expired";
+export type InventoryImportRowStatus = "valid" | "warning" | "error" | "skipped";
+export type InventoryImportRowAction = "create" | "update" | "skip" | "review_required";
+export type InventoryImportMatchType =
+  | "exact_match"
+  | "possible_match"
+  | "new_product"
+  | "duplicate_in_file"
+  | "conflict"
+  | "invalid";
+
+export type InventoryImportSummary = {
+  row_count: number;
+  valid_count: number;
+  warning_count: number;
+  error_count: number;
+  create_count: number;
+  update_count: number;
+  skip_count: number;
+  movement_count: number;
+  stock_increase_total: string;
+  stock_decrease_total: string;
+  warnings: string[];
+};
+
+export type InventoryImportRow = {
+  id: string;
+  row_number: number;
+  normalized_data: Record<string, string | number | boolean | null>;
+  existing_inventory_item_id: string | null;
+  match_type: InventoryImportMatchType;
+  proposed_action: InventoryImportRowAction;
+  status: InventoryImportRowStatus;
+  errors: string[];
+  warnings: string[];
+  product_snapshot: Record<string, string | number | boolean | null> | null;
+  changed_fields: string[];
+  stock_current: string | null;
+  stock_target: string | null;
+  stock_delta: string | null;
+  expected_movement_type: InventoryMovementType | null;
+};
+
+export type InventoryImport = {
+  id: string;
+  mode: InventoryImportMode;
+  status: InventoryImportStatus;
+  original_filename: string;
+  file_hash: string;
+  row_count: number;
+  valid_count: number;
+  warning_count: number;
+  error_count: number;
+  operation_id: string | null;
+  result_summary: Record<string, unknown> | null;
+  expires_at: string;
+  confirmed_at: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  rows: InventoryImportRow[];
+  summary: InventoryImportSummary | null;
+};
+
+export type InventoryImportListItem = Omit<
+  InventoryImport,
+  "file_hash" | "result_summary" | "created_by_user_id" | "rows" | "summary"
+>;
+
+export type InventoryImportConfirmRow = {
+  row_id: string;
+  selected: boolean;
+  action: InventoryImportRowAction;
+};
+
+export type InventoryImportConfirmPayload = {
+  explicit_confirm: boolean;
+  rows: InventoryImportConfirmRow[];
+  reason?: string | null;
+};
+
 export type AppointmentType =
   | "consultation"
   | "follow_up"

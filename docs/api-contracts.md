@@ -264,6 +264,39 @@ cannot make stock negative, and every creation locks the tenant-scoped inventory
 item, records before/after stock, updates the product, creates the movement, and
 commits once. A movement can be reversed only once; reversals cannot be reversed.
 
+Inventory import from Excel:
+
+- `GET /api/v1/inventory/import/template` returns an `.xlsx` template with
+  sheets `Inventario`, `Instrucciones`, and `Catálogos`.
+- `POST /api/v1/inventory/import/preview` accepts multipart `file` and `mode`.
+  `mode` is `initial_load` or `catalog_update`.
+- `GET /api/v1/inventory/imports` lists tenant-scoped import previews and
+  confirmed imports with pagination.
+- `GET /api/v1/inventory/import/{import_id}` returns the preview/detail,
+  including row diagnostics and summary.
+- `GET /api/v1/inventory/import/{import_id}/result` returns the same resource
+  after confirmation.
+- `POST /api/v1/inventory/import/{import_id}/confirm` accepts explicit
+  confirmation plus selected row actions.
+
+The import template uses canonical headers:
+
+`internal_code`, `name`, `category`, `subcategory`, `brand`, `supplier`, `unit`,
+`purchase_price_ars`, `purchase_tax_rate_percentage`,
+`profit_margin_percentage`, `sale_price_ars`, `minimum_stock`, `stock`,
+`is_active`, `notes`.
+
+Preview validates `.xlsx` content, size, sheet, headers, row limit, values,
+duplicates in the file, existing-code matches, and possible name/category/brand
+matches. Preview persists tenant-owned import rows but does not create products
+or stock movements.
+
+Confirmation is tenant-scoped, single-use, transaction-bound, and creates one
+`operation_id` for generated movements. `initial_load` reconciles stock using
+stock movements (`initial_stock`, `adjustment_in`, `adjustment_out`);
+`catalog_update` ignores stock. `current_stock` is never accepted from the
+catalog contract or written directly by the import flow.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.

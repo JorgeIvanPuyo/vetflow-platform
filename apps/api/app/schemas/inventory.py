@@ -64,6 +64,18 @@ InventoryMovementType = Literal[
     "adjustment",
 ]
 InventoryReversalStatus = Literal["all", "active", "reversed", "reversal"]
+InventoryImportMode = Literal["initial_load", "catalog_update"]
+InventoryImportStatus = Literal["preview", "confirmed", "failed", "expired"]
+InventoryImportRowStatus = Literal["valid", "warning", "error", "skipped"]
+InventoryImportRowAction = Literal["create", "update", "skip", "review_required"]
+InventoryImportMatchType = Literal[
+    "exact_match",
+    "possible_match",
+    "new_product",
+    "duplicate_in_file",
+    "conflict",
+    "invalid",
+]
 InventoryExitReason = Literal[
     "sale",
     "consultation_use",
@@ -297,3 +309,115 @@ class InventoryMovementRead(BaseModel):
 class InventoryMovementDetailRead(InventoryMovementRead):
     can_be_reversed: bool
     reversal_block_reason: str | None = None
+
+
+class InventoryImportSummaryRead(BaseModel):
+    row_count: int
+    valid_count: int
+    warning_count: int
+    error_count: int
+    create_count: int = 0
+    update_count: int = 0
+    skip_count: int = 0
+    movement_count: int = 0
+    stock_increase_total: Decimal = Decimal("0")
+    stock_decrease_total: Decimal = Decimal("0")
+    warnings: list[str] = Field(default_factory=list)
+
+
+class InventoryImportRowRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    row_number: int
+    normalized_data: dict
+    existing_inventory_item_id: uuid.UUID | None = None
+    match_type: InventoryImportMatchType
+    proposed_action: InventoryImportRowAction
+    status: InventoryImportRowStatus
+    errors: list[str]
+    warnings: list[str]
+    product_snapshot: dict | None = None
+    changed_fields: list[str]
+    stock_current: Decimal | None = None
+    stock_target: Decimal | None = None
+    stock_delta: Decimal | None = None
+    expected_movement_type: str | None = None
+
+
+class InventoryImportRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mode: InventoryImportMode
+    status: InventoryImportStatus
+    original_filename: str
+    file_hash: str
+    row_count: int
+    valid_count: int
+    warning_count: int
+    error_count: int
+    operation_id: uuid.UUID | None = None
+    result_summary: dict | None = None
+    expires_at: datetime
+    confirmed_at: datetime | None = None
+    created_by_user_id: uuid.UUID | None = None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
+    created_at: datetime
+    rows: list[InventoryImportRowRead] = Field(default_factory=list)
+    summary: InventoryImportSummaryRead | None = None
+
+    @field_serializer("created_by_user_id")
+    def serialize_import_created_by_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.created_by_user_name or self.created_by_user_email:
+            return value
+        return None
+
+
+class InventoryImportListItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    mode: InventoryImportMode
+    status: InventoryImportStatus
+    original_filename: str
+    row_count: int
+    valid_count: int
+    warning_count: int
+    error_count: int
+    operation_id: uuid.UUID | None = None
+    expires_at: datetime
+    confirmed_at: datetime | None = None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
+    created_at: datetime
+
+
+class InventoryImportConfirmRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    row_id: uuid.UUID
+    selected: bool = True
+    action: InventoryImportRowAction
+
+
+class InventoryImportConfirmCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    explicit_confirm: bool
+    rows: list[InventoryImportConfirmRow] = Field(default_factory=list)
+    reason: str | None = Field(default=None, max_length=120)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def strip_import_reason(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None

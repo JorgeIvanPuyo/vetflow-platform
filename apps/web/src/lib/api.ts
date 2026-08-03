@@ -120,7 +120,7 @@ async function requestBlob(
   }
 
   const headers = new Headers({
-    Accept: "application/pdf",
+    Accept: "application/octet-stream",
     Authorization: `Bearer ${token}`,
   });
 
@@ -281,6 +281,9 @@ function getApiErrorMessage(error: unknown) {
 export const api = {
   get<T>(path: string): Promise<T> {
     return request<T>(path, "GET");
+  },
+  getBlob(path: string): Promise<BlobResponse> {
+    return requestBlob(path, "GET");
   },
   post<T>(
     path: string,

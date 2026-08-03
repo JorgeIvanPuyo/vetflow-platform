@@ -384,6 +384,35 @@ class InventoryService:
             commit=commit,
         )
 
+    def register_import_stock_movement(
+        self,
+        tenant_id: uuid.UUID,
+        item_id: uuid.UUID,
+        *,
+        movement_type: str,
+        quantity: Decimal,
+        import_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        created_by_user_id: uuid.UUID | None,
+        reason: str,
+        commit: bool = True,
+    ) -> InventoryMovement:
+        if movement_type not in {"initial_stock", "adjustment_in", "adjustment_out"}:
+            raise AppError(422, "validation_error", "Invalid import movement type")
+        return self._create_stock_movement(
+            tenant_id,
+            item_id,
+            movement_type=movement_type,
+            quantity=quantity,
+            reason=reason,
+            notes=f"Importación de inventario {import_id}",
+            source_type="inventory_import",
+            source_id=str(import_id),
+            operation_id=operation_id,
+            created_by_user_id=created_by_user_id,
+            commit=commit,
+        )
+
     def get_movement(self, tenant_id: uuid.UUID, movement_id: uuid.UUID) -> InventoryMovement:
         movement = self.inventory_repository.get_movement_by_id(tenant_id, movement_id)
         if movement is None:

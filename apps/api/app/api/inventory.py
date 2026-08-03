@@ -1,7 +1,9 @@
 import uuid
 from datetime import date
+from io import BytesIO
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext, get_tenant_context
@@ -9,6 +11,10 @@ from app.db.session import get_db
 from app.schemas.inventory import (
     InventoryCategory,
     InventoryFilterOptionsRead,
+    InventoryImportConfirmCreate,
+    InventoryImportListItemRead,
+    InventoryImportMode,
+    InventoryImportRead,
     InventoryItemCreate,
     InventoryItemRead,
     InventoryItemUpdate,
@@ -25,6 +31,7 @@ from app.schemas.inventory import (
     InventorySummaryRead,
 )
 from app.services.inventory import InventoryService
+from app.services.inventory_import import InventoryImportService
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -89,6 +96,107 @@ def _prefer_current_parameter(current_value: str | None, legacy_value: str | Non
     if legacy_value is not None and legacy_value.strip():
         return legacy_value.strip()
     return None
+
+
+@router.get("/import/template")
+def download_inventory_import_template(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    _ = tenant
+    content = InventoryImportService(db).build_template()
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="vetflow_inventory_template.xlsx"',
+        },
+    )
+
+
+@router.post("/import/preview", status_code=status.HTTP_201_CREATED)
+async def preview_inventory_import(
+    mode: InventoryImportMode = Form(...),
+    file: UploadFile = File(...),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    inventory_import = await InventoryImportService(db).preview_import(
+        tenant.tenant_id,
+        mode=mode,
+        upload_file=file,
+        created_by_user_id=tenant.user_id,
+    )
+    return {
+        "data": InventoryImportRead.model_validate(inventory_import).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.get("/imports")
+def list_inventory_imports(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    imports, meta = InventoryImportService(db).list_imports(
+        tenant.tenant_id,
+        page=page,
+        page_size=page_size,
+    )
+    return {
+        "data": [
+            InventoryImportListItemRead.model_validate(inventory_import).model_dump(mode="json")
+            for inventory_import in imports
+        ],
+        "meta": meta,
+    }
+
+
+@router.get("/import/{import_id}")
+def get_inventory_import(
+    import_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    inventory_import = InventoryImportService(db).get_import(tenant.tenant_id, import_id)
+    return {
+        "data": InventoryImportRead.model_validate(inventory_import).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.get("/import/{import_id}/result")
+def get_inventory_import_result(
+    import_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    inventory_import = InventoryImportService(db).get_import(tenant.tenant_id, import_id)
+    return {
+        "data": InventoryImportRead.model_validate(inventory_import).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.post("/import/{import_id}/confirm")
+def confirm_inventory_import(
+    import_id: uuid.UUID,
+    payload: InventoryImportConfirmCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    inventory_import = InventoryImportService(db).confirm_import(
+        tenant.tenant_id,
+        import_id,
+        payload,
+        created_by_user_id=tenant.user_id,
+    )
+    return {
+        "data": InventoryImportRead.model_validate(inventory_import).model_dump(mode="json"),
+        "meta": {},
+    }
 
 
 @router.get("/filter-options")

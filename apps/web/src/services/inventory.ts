@@ -3,6 +3,10 @@ import type {
   ApiItemResponse,
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
+  InventoryImport,
+  InventoryImportConfirmPayload,
+  InventoryImportListItem,
+  InventoryImportMode,
   InventoryFilterOptions,
   InventoryItem,
   InventoryMovementDetail,
@@ -27,6 +31,16 @@ type InventoryListResponse = {
 
 type InventoryMovementListResponse = {
   data: InventoryMovement[];
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+};
+
+type InventoryImportListResponse = {
+  data: InventoryImportListItem[];
   meta: {
     page: number;
     page_size: number;
@@ -167,5 +181,47 @@ export function reverseInventoryMovement(
   return api.post<ApiItemResponse<InventoryMovement>>(
     `/api/v1/inventory/movements/${movementId}/reverse`,
     payload,
+  );
+}
+
+export function downloadInventoryImportTemplate() {
+  return api.getBlob("/api/v1/inventory/import/template");
+}
+
+export function previewInventoryImport(file: File, mode: InventoryImportMode) {
+  const formData = new FormData();
+  formData.set("mode", mode);
+  formData.set("file", file);
+
+  return api.postFormData<ApiItemResponse<InventoryImport>>(
+    "/api/v1/inventory/import/preview",
+    formData,
+  );
+}
+
+export function getInventoryImport(importId: string) {
+  return api.get<ApiItemResponse<InventoryImport>>(`/api/v1/inventory/import/${importId}`);
+}
+
+export function confirmInventoryImport(
+  importId: string,
+  payload: InventoryImportConfirmPayload,
+) {
+  return api.post<ApiItemResponse<InventoryImport>>(
+    `/api/v1/inventory/import/${importId}/confirm`,
+    payload,
+    { retryTransient: false },
+  );
+}
+
+export function getInventoryImportResult(importId: string) {
+  return api.get<ApiItemResponse<InventoryImport>>(
+    `/api/v1/inventory/import/${importId}/result`,
+  );
+}
+
+export function getInventoryImports(page = 1, pageSize = 10) {
+  return api.get<InventoryImportListResponse>(
+    `/api/v1/inventory/imports?page=${page}&page_size=${pageSize}`,
   );
 }

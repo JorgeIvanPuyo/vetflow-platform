@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models.inventory_code_sequence import InventoryCodeSequence
+from app.models.inventory_import import InventoryImport, InventoryImportRow
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 
@@ -82,6 +83,26 @@ class InventoryRepository:
             .with_for_update()
         )
         return self.db.scalar(statement)
+
+    def list_items_for_import_matching(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        internal_codes: set[str],
+        names: set[str],
+    ) -> list[InventoryItem]:
+        conditions = []
+        if internal_codes:
+            conditions.append(func.lower(InventoryItem.internal_code).in_(internal_codes))
+        if names:
+            conditions.append(func.lower(func.trim(InventoryItem.name)).in_(names))
+        if not conditions:
+            return []
+        statement = select(InventoryItem).where(
+            InventoryItem.tenant_id == tenant_id,
+            or_(*conditions),
+        )
+        return list(self.db.scalars(statement).all())
 
     def list_items(
         self,
@@ -234,6 +255,80 @@ class InventoryRepository:
         self.db.flush()
         self.db.refresh(movement)
         return movement
+
+    def create_import(self, inventory_import: InventoryImport) -> InventoryImport:
+        self.db.add(inventory_import)
+        self.db.flush()
+        self.db.refresh(inventory_import)
+        return inventory_import
+
+    def create_import_rows(self, rows: list[InventoryImportRow]) -> list[InventoryImportRow]:
+        self.db.add_all(rows)
+        self.db.flush()
+        return rows
+
+    def get_import_by_id(
+        self,
+        tenant_id: uuid.UUID,
+        import_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> InventoryImport | None:
+        statement = (
+            select(InventoryImport)
+            .where(
+                InventoryImport.id == import_id,
+                InventoryImport.tenant_id == tenant_id,
+            )
+            .options(
+                selectinload(InventoryImport.rows),
+                selectinload(InventoryImport.created_by_user),
+            )
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return self.db.scalar(statement)
+
+    def list_imports(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[InventoryImport], int]:
+        offset = (page - 1) * page_size
+        statement = (
+            select(InventoryImport)
+            .where(InventoryImport.tenant_id == tenant_id)
+            .options(selectinload(InventoryImport.created_by_user))
+            .order_by(InventoryImport.created_at.desc(), InventoryImport.id.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        count_statement = (
+            select(func.count())
+            .select_from(InventoryImport)
+            .where(InventoryImport.tenant_id == tenant_id)
+        )
+        return list(self.db.scalars(statement).all()), int(self.db.scalar(count_statement) or 0)
+
+    def has_confirmed_import_with_hash(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        file_hash: str,
+        mode: str,
+        exclude_import_id: uuid.UUID | None = None,
+    ) -> bool:
+        statement = select(InventoryImport.id).where(
+            InventoryImport.tenant_id == tenant_id,
+            InventoryImport.file_hash == file_hash,
+            InventoryImport.mode == mode,
+            InventoryImport.status == "confirmed",
+        )
+        if exclude_import_id is not None:
+            statement = statement.where(InventoryImport.id != exclude_import_id)
+        return self.db.scalar(statement) is not None
 
     def get_movement_by_id(
         self,

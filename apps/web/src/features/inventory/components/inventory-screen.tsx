@@ -3,6 +3,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  FileSpreadsheet,
   Filter,
   History,
   LayoutGrid,
@@ -413,10 +414,16 @@ export function InventoryScreen() {
               : `${state.meta.total} item${state.meta.total === 1 ? "" : "s"} encontrado${state.meta.total === 1 ? "" : "s"}`}
           </p>
         </div>
-        <Link className="secondary-button" href="/inventory/movements">
-          <History size={18} />
-          Movimientos
-        </Link>
+        <div className="inventory-header-actions">
+          <Link className="secondary-button" href="/inventory/import">
+            <FileSpreadsheet size={18} />
+            Importar
+          </Link>
+          <Link className="secondary-button" href="/inventory/movements">
+            <History size={18} />
+            Movimientos
+          </Link>
+        </div>
       </section>
 
       <Link
