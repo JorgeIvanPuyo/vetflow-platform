@@ -23,7 +23,8 @@ from app.schemas.inventory import (
 )
 
 
-ALLOWED_SORT_BY = {"name", "current_stock", "expiration_date", "created_at", "updated_at"}
+ALLOWED_SORT_BY = {"name", "internal_code", "current_stock", "sale_price_ars", "updated_at"}
+DEFAULT_SORT_BY = "created_at"
 ALLOWED_SORT_ORDER = {"asc", "desc"}
 INVENTORY_CATEGORY_PREFIXES = {
     "medication": "MED",
@@ -91,33 +92,39 @@ class InventoryService:
         self,
         tenant_id: uuid.UUID,
         *,
-        q: str | None = None,
+        search: str | None = None,
         category: str | None = None,
+        brand: str | None = None,
         supplier: str | None = None,
         status: str | None = None,
+        stock_status: str | None = None,
+        is_active: bool | None = None,
         page: int = 1,
         page_size: int = 10,
         sort_by: str | None = None,
-        sort_order: str | None = None,
+        sort_direction: str | None = None,
     ) -> tuple[list[InventoryItem], dict]:
         self._validate_pagination(page, page_size)
-        resolved_sort_by = sort_by or "created_at"
-        resolved_sort_order = sort_order or "desc"
-        if resolved_sort_by not in ALLOWED_SORT_BY:
+        resolved_sort_by = sort_by or DEFAULT_SORT_BY
+        resolved_sort_direction = sort_direction or "desc"
+        if sort_by is not None and sort_by not in ALLOWED_SORT_BY:
             raise AppError(422, "validation_error", "Invalid sort_by value")
-        if resolved_sort_order not in ALLOWED_SORT_ORDER:
-            raise AppError(422, "validation_error", "Invalid sort_order value")
+        if resolved_sort_direction not in ALLOWED_SORT_ORDER:
+            raise AppError(422, "validation_error", "Invalid sort_direction value")
 
         items, total = self.inventory_repository.list_items(
             tenant_id,
-            q=q,
+            search=self._normalize_optional_string(search),
             category=category,
-            supplier=supplier,
+            brand=self._normalize_optional_string(brand),
+            supplier=self._normalize_optional_string(supplier),
             status=status,
+            stock_status=stock_status,
+            is_active=is_active,
             page=page,
             page_size=page_size,
             sort_by=resolved_sort_by,
-            sort_order=resolved_sort_order,
+            sort_direction=resolved_sort_direction,
         )
         return items, {
             "page": page,
@@ -185,6 +192,9 @@ class InventoryService:
 
     def get_summary(self, tenant_id: uuid.UUID) -> dict[str, int]:
         return self.inventory_repository.summarize_items(tenant_id)
+
+    def get_filter_options(self, tenant_id: uuid.UUID) -> dict[str, list[str]]:
+        return self.inventory_repository.get_filter_options(tenant_id)
 
     def register_entry_movement(
         self,
@@ -372,8 +382,14 @@ class InventoryService:
                 )
 
     def _validate_pagination(self, page: int, page_size: int) -> None:
-        if page < 1 or page_size < 1 or page_size > 50:
+        if page < 1 or page_size < 1 or page_size > 100:
             raise AppError(422, "invalid_pagination", "Invalid pagination parameters")
+
+    def _normalize_optional_string(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     def _validate_optional_user(
         self,

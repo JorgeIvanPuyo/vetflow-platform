@@ -16,6 +16,9 @@ import type {
   InventoryListFilters,
   InventoryMovement,
   InventoryMovementType,
+  InventorySortBy,
+  InventorySortOrder,
+  InventoryStockStatus,
   InventoryStatusFilter,
   InventoryUnit,
   UpdateInventoryItemPayload,
@@ -71,6 +74,44 @@ export const inventoryStatusOptions: Array<{
   { value: "inactive", label: "Inactivos" },
 ];
 
+export const inventoryStockStatusOptions: Array<{
+  value: InventoryStockStatus | "all";
+  label: string;
+}> = [
+  { value: "all", label: "Todos" },
+  { value: "in_stock", label: "Disponible" },
+  { value: "low_stock", label: "Stock bajo" },
+  { value: "out_of_stock", label: "Agotado" },
+  { value: "negative", label: "Stock negativo" },
+];
+
+export const inventoryActiveStatusOptions: Array<{
+  value: "active" | "inactive";
+  label: string;
+}> = [
+  { value: "active", label: "Activos" },
+  { value: "inactive", label: "Inactivos" },
+];
+
+export const inventorySortOptions: Array<{
+  value: InventorySortBy;
+  label: string;
+}> = [
+  { value: "name", label: "Nombre" },
+  { value: "internal_code", label: "Código" },
+  { value: "current_stock", label: "Stock" },
+  { value: "sale_price_ars", label: "Precio de venta" },
+  { value: "updated_at", label: "Última actualización" },
+];
+
+export const inventorySortDirectionOptions: Array<{
+  value: InventorySortOrder;
+  label: string;
+}> = [
+  { value: "asc", label: "Ascendente" },
+  { value: "desc", label: "Descendente" },
+];
+
 export const inventoryMovementFilterOptions: Array<{
   value: InventoryMovementFilter;
   label: string;
@@ -116,8 +157,12 @@ export type InventoryFormState = {
 
 export type InventoryFilterState = {
   category: InventoryCategory | "all";
-  status: InventoryStatusFilter | "all";
+  brand: string;
   supplier: string;
+  stock_status: InventoryStockStatus | "all";
+  active_status: "active" | "inactive";
+  sort_by: InventorySortBy;
+  sort_direction: InventorySortOrder;
 };
 
 export type InventoryEntryFormState = {
@@ -137,8 +182,12 @@ export type InventoryExitFormState = {
 
 export const initialInventoryFilterState: InventoryFilterState = {
   category: "all",
-  status: "active",
+  brand: "",
   supplier: "",
+  stock_status: "all",
+  active_status: "active",
+  sort_by: "name",
+  sort_direction: "asc",
 };
 
 export const initialInventoryFormState: InventoryFormState = {
@@ -289,9 +338,16 @@ export function formatInventoryDateTime(value?: string | null) {
 
 export function getInventoryStatusBadges(item: InventoryItem) {
   const badges: Array<{ label: string; className: string }> = [];
+  const stockStatus = getInventoryStockStatus(item);
 
-  if (Number(item.current_stock) === 0) {
-    badges.push({ label: "Sin stock", className: "badge badge--danger" });
+  if (stockStatus === "negative") {
+    badges.push({ label: "Stock negativo", className: "badge badge--danger" });
+  } else if (stockStatus === "out_of_stock") {
+    badges.push({ label: "Agotado", className: "badge badge--danger" });
+  } else if (stockStatus === "low_stock") {
+    badges.push({ label: "Stock bajo", className: "badge badge--warning" });
+  } else {
+    badges.push({ label: "Disponible", className: "badge badge--success" });
   }
 
   if (item.is_expired) {
@@ -300,15 +356,27 @@ export function getInventoryStatusBadges(item: InventoryItem) {
     badges.push({ label: "Por vencer", className: "badge badge--warning" });
   }
 
-  if (item.is_low_stock) {
-    badges.push({ label: "Bajo stock", className: "badge badge--danger" });
-  }
-
   if (!item.is_active) {
-    badges.push({ label: "Inactivo", className: "badge badge--blue" });
+    badges.push({ label: "Inactivo", className: "badge badge--muted" });
   }
 
   return badges;
+}
+
+export function getInventoryStockStatus(item: InventoryItem): InventoryStockStatus {
+  const currentStock = Number(item.current_stock);
+  const minimumStock = Number(item.minimum_stock);
+
+  if (currentStock < 0) {
+    return "negative";
+  }
+  if (currentStock === 0) {
+    return "out_of_stock";
+  }
+  if (currentStock <= minimumStock) {
+    return "low_stock";
+  }
+  return "in_stock";
 }
 
 export function getInventoryMovementTypeLabel(movementType: InventoryMovementType) {
@@ -605,26 +673,32 @@ export function buildInventoryListFilters(
   query: string,
   filterState: InventoryFilterState,
   page: number,
-  pageSize = 12,
+  pageSize = 20,
 ): InventoryListFilters {
   const filters: InventoryListFilters = {
     page,
     page_size: pageSize,
-    sort_by: "name",
-    sort_order: "asc",
+    sort_by: filterState.sort_by,
+    sort_direction: filterState.sort_direction,
   };
 
   if (query.trim()) {
-    filters.q = query.trim();
+    filters.search = query.trim();
   }
   if (filterState.category !== "all") {
     filters.category = filterState.category;
   }
-  if (filterState.status !== "all") {
-    filters.status = filterState.status;
+  if (filterState.brand.trim()) {
+    filters.brand = filterState.brand.trim();
   }
   if (filterState.supplier.trim()) {
     filters.supplier = filterState.supplier.trim();
+  }
+  if (filterState.stock_status !== "all") {
+    filters.stock_status = filterState.stock_status;
+  }
+  if (filterState.active_status !== "active") {
+    filters.is_active = false;
   }
 
   return filters;

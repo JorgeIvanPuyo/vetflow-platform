@@ -3,6 +3,7 @@ import type {
   ApiItemResponse,
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
+  InventoryFilterOptions,
   InventoryItem,
   InventoryListFilters,
   InventoryMovement,
@@ -34,6 +35,10 @@ type InventoryMovementListResponse = {
 
 export function getInventorySummary() {
   return api.get<ApiItemResponse<InventorySummary>>("/api/v1/inventory/summary");
+}
+
+export function getInventoryFilterOptions() {
+  return api.get<ApiItemResponse<InventoryFilterOptions>>("/api/v1/inventory/filter-options");
 }
 
 export function getInventoryItems(filters: InventoryListFilters = {}) {

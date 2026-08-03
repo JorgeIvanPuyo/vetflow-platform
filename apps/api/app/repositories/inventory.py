@@ -71,14 +71,17 @@ class InventoryRepository:
         self,
         tenant_id: uuid.UUID,
         *,
-        q: str | None,
+        search: str | None,
         category: str | None,
+        brand: str | None,
         supplier: str | None,
         status: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
         page: int,
         page_size: int,
         sort_by: str,
-        sort_order: str,
+        sort_direction: str,
     ) -> tuple[list[InventoryItem], int]:
         statement: Select[tuple[InventoryItem]] = (
             select(InventoryItem)
@@ -91,30 +94,72 @@ class InventoryRepository:
 
         statement = self._apply_item_filters(
             statement,
-            q=q,
+            search=search,
             category=category,
+            brand=brand,
             supplier=supplier,
             status=status,
+            stock_status=stock_status,
+            is_active=is_active,
         )
         count_statement = self._apply_item_filters(
             count_statement,
-            q=q,
+            search=search,
             category=category,
+            brand=brand,
             supplier=supplier,
             status=status,
+            stock_status=stock_status,
+            is_active=is_active,
         )
 
         sort_column = self._get_sort_column(sort_by)
-        order_by = desc(sort_column) if sort_order == "desc" else asc(sort_column)
+        order_by = desc(sort_column) if sort_direction == "desc" else asc(sort_column)
         offset = (page - 1) * page_size
 
         items = list(
             self.db.scalars(
-                statement.order_by(order_by, InventoryItem.name.asc()).offset(offset).limit(page_size)
+                statement.order_by(order_by, InventoryItem.id.asc()).offset(offset).limit(page_size)
             ).all()
         )
         total = int(self.db.scalar(count_statement) or 0)
         return items, total
+
+    def get_filter_options(self, tenant_id: uuid.UUID) -> dict[str, list[str]]:
+        brand_values = (
+            select(func.distinct(InventoryItem.brand).label("value"))
+            .where(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.is_active.is_(True),
+                InventoryItem.brand.is_not(None),
+                func.trim(InventoryItem.brand) != "",
+            )
+            .subquery()
+        )
+        supplier_values = (
+            select(func.distinct(InventoryItem.supplier).label("value"))
+            .where(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.is_active.is_(True),
+                InventoryItem.supplier.is_not(None),
+                func.trim(InventoryItem.supplier) != "",
+            )
+            .subquery()
+        )
+        brand_statement = select(brand_values.c.value).order_by(
+            func.lower(brand_values.c.value).asc()
+        )
+        supplier_statement = select(supplier_values.c.value).order_by(
+            func.lower(supplier_values.c.value).asc()
+        )
+        return {
+            "brands": self._normalize_filter_option_values(
+                self.db.scalars(brand_statement).all()
+            ),
+            "suppliers": self._normalize_filter_option_values(
+                self.db.scalars(supplier_statement).all()
+            ),
+        }
 
     def update_item(self, item: InventoryItem, updates: dict) -> InventoryItem:
         for field, value in updates.items():
@@ -214,28 +259,46 @@ class InventoryRepository:
         self,
         statement,
         *,
-        q: str | None,
+        search: str | None,
         category: str | None,
+        brand: str | None,
         supplier: str | None,
         status: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
     ):
         today = date.today()
         expiring_limit = today + timedelta(days=30)
 
-        if q:
-            pattern = f"%{q.strip().lower()}%"
+        if search:
+            pattern = f"%{search.strip().lower()}%"
             statement = statement.where(
                 or_(
                     func.lower(InventoryItem.name).like(pattern),
-                    func.lower(func.coalesce(InventoryItem.subcategory, "")).like(pattern),
-                    func.lower(func.coalesce(InventoryItem.supplier, "")).like(pattern),
-                    func.lower(func.coalesce(InventoryItem.lot_number, "")).like(pattern),
+                    func.lower(InventoryItem.internal_code).like(pattern),
                 )
             )
         if category is not None:
             statement = statement.where(InventoryItem.category == category)
+        if brand is not None:
+            statement = statement.where(func.lower(func.trim(InventoryItem.brand)) == brand.lower())
         if supplier is not None:
-            statement = statement.where(func.lower(InventoryItem.supplier) == supplier.lower())
+            statement = statement.where(
+                func.lower(func.trim(InventoryItem.supplier)) == supplier.lower()
+            )
+
+        if stock_status == "in_stock":
+            statement = statement.where(InventoryItem.current_stock > InventoryItem.minimum_stock)
+        elif stock_status == "low_stock":
+            statement = statement.where(
+                InventoryItem.current_stock > 0,
+                InventoryItem.current_stock <= InventoryItem.minimum_stock,
+            )
+        elif stock_status == "out_of_stock":
+            statement = statement.where(InventoryItem.current_stock == 0)
+        elif stock_status == "negative":
+            statement = statement.where(InventoryItem.current_stock < 0)
+
         if status == "low_stock":
             statement = statement.where(
                 InventoryItem.is_active.is_(True),
@@ -256,19 +319,39 @@ class InventoryRepository:
             )
         elif status == "inactive":
             statement = statement.where(InventoryItem.is_active.is_(False))
+        elif status == "active":
+            statement = statement.where(InventoryItem.is_active.is_(True))
+        elif is_active is not None:
+            statement = statement.where(InventoryItem.is_active.is_(is_active))
         else:
             statement = statement.where(InventoryItem.is_active.is_(True))
         return statement
 
     def _get_sort_column(self, sort_by: str):
         mapping = {
-            "name": InventoryItem.name,
+            "name": func.lower(InventoryItem.name),
+            "internal_code": func.lower(InventoryItem.internal_code),
             "current_stock": InventoryItem.current_stock,
-            "expiration_date": InventoryItem.expiration_date,
-            "created_at": InventoryItem.created_at,
+            "sale_price_ars": InventoryItem.sale_price_ars,
             "updated_at": InventoryItem.updated_at,
+            "created_at": InventoryItem.created_at,
         }
         return mapping[sort_by]
+
+    def _normalize_filter_option_values(self, values) -> list[str]:
+        options_by_key: dict[str, str] = {}
+        for value in values:
+            if not value:
+                continue
+            option = value.strip()
+            if not option:
+                continue
+            key = option.lower()
+            options_by_key.setdefault(key, option)
+        return sorted(
+            options_by_key.values(),
+            key=lambda option: option.casefold(),
+        )
 
     def _get_code_sequence_for_update(
         self,

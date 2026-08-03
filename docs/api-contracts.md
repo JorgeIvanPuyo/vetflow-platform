@@ -147,6 +147,69 @@ tenant, immutable, and not accepted in create/update payloads.
 Valid inventory categories are `medication`, `vaccine`, `supply`, `food`,
 `accessory`, and `other`.
 
+Inventory list:
+
+- `GET /api/v1/inventory/items`
+- tenant-aware; results always belong to the authenticated tenant
+- response shape: `data` contains items, `meta` contains `page`, `page_size`,
+  `total`, and `total_pages`
+- `page` defaults to `1`
+- `page_size` defaults to `10`, must be between `1` and `100`, and the backend
+  enforces the maximum
+- without active-state parameters, the list keeps the existing behavior and
+  returns active items only
+
+List parameters:
+
+- `search`: optional trimmed partial search over `name` and `internal_code`
+  only, case-insensitive. The legacy `q` alias is still accepted when `search`
+  is absent.
+- `category`: optional category filter using the valid inventory categories.
+- `brand`: optional exact match over the normalized textual brand,
+  case-insensitive.
+- `supplier`: optional exact match over the normalized textual supplier,
+  case-insensitive.
+- `stock_status`: optional one of `in_stock`, `low_stock`, `out_of_stock`, or
+  `negative`.
+- `is_active`: optional boolean. `false` returns inactive items; absence keeps
+  the existing active-only default.
+- `sort_by`: optional one of `name`, `internal_code`, `current_stock`,
+  `sale_price_ars`, or `updated_at`.
+- `sort_direction`: optional `asc` or `desc`. The legacy `sort_order` alias is
+  still accepted when `sort_direction` is absent.
+
+Stock-status definitions are mutually exclusive:
+
+- `in_stock`: `current_stock > minimum_stock`
+- `low_stock`: `current_stock > 0 AND current_stock <= minimum_stock`
+- `out_of_stock`: `current_stock = 0`
+- `negative`: `current_stock < 0`
+
+Sorting maps allowed values to fixed backend columns and applies a stable
+secondary order by `id`. Name and internal-code ordering are case-insensitive.
+When `sort_by` is omitted, the backend preserves the existing default ordering
+by creation date descending.
+
+Inventory filter options:
+
+- `GET /api/v1/inventory/filter-options`
+- tenant-aware and active-items-only by default
+- response shape:
+
+```json
+{
+  "data": {
+    "brands": ["Marca A", "Marca B"],
+    "suppliers": ["Proveedor A", "Proveedor B"]
+  },
+  "meta": {}
+}
+```
+
+Options omit `NULL`, empty, and whitespace-only values, remove duplicates, and
+are sorted alphabetically. Categories are not returned because they are a
+controlled catalog.
+
 Create/update accepts product configuration fields such as `name`, `category`,
 `subcategory`, `brand`, `unit`, `supplier`, lot/expiration fields,
 `minimum_stock`, purchase cost, margin, final sale price, rounding, notes, and

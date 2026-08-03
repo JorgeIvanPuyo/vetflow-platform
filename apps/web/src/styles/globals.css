@@ -8035,6 +8035,23 @@ code {
   gap: 8px;
 }
 
+.inventory-filter-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.inventory-filter-grid__status {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.filter-button--quiet {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
 .inventory-view-toggle {
   display: inline-flex;
   gap: 3px;
@@ -8182,6 +8199,25 @@ code {
   gap: 5px;
 }
 
+.inventory-table__action {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
+  padding: 0 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.inventory-card-list[aria-busy="true"] {
+  opacity: 0.68;
+}
+
 @media (min-width: 760px) {
   .consultations-list-page {
     gap: 16px;
@@ -8231,6 +8267,14 @@ code {
 
   .list-pagination__actions .secondary-button {
     width: auto;
+  }
+
+  .inventory-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-filter-grid__status {
+    grid-column: 1 / -1;
   }
 }
 

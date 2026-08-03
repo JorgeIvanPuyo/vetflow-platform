@@ -6,6 +6,7 @@ from time import sleep
 import pytest
 
 from app.models.consultation import Consultation
+from app.models.inventory_item import InventoryItem
 from app.models.user import User
 
 
@@ -116,6 +117,30 @@ def _create_item(client, tenant, **overrides) -> dict:
     )
     assert item_response.status_code == 200
     return item_response.json()["data"]
+
+
+def _set_item_stock(db_session, item_id: str, current_stock: str) -> None:
+    item = db_session.get(InventoryItem, uuid.UUID(item_id))
+    assert item is not None
+    item.current_stock = Decimal(current_stock)
+    db_session.add(item)
+    db_session.commit()
+
+
+def _create_raw_item(db_session, tenant, **overrides) -> InventoryItem:
+    item = InventoryItem(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        internal_code=overrides.pop("internal_code", f"RAW-{uuid.uuid4().hex[:8]}"),
+        name=overrides.pop("name", "Item histórico"),
+        category=overrides.pop("category", "medication"),
+        unit=overrides.pop("unit", "unit"),
+        **overrides,
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+    return item
 
 
 def test_create_inventory_item(client, tenant):
@@ -249,6 +274,205 @@ def test_search_inventory_items_by_q(client, tenant):
     assert [item["name"] for item in response.json()["data"]] == ["Amoxicilina 50mg"]
 
 
+def test_search_inventory_items_by_name_and_code(client, tenant):
+    amoxi = _create_item(client, tenant, name="Amoxicilina Forte")
+    _create_item(client, tenant, name="Jeringa 5ml")
+
+    name_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "moxi"},
+    )
+    case_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "AMOXI"},
+    )
+    code_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": amoxi["internal_code"].lower()},
+    )
+    fragment_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": amoxi["internal_code"][-5:]},
+    )
+
+    assert name_response.status_code == 200
+    assert case_response.status_code == 200
+    assert code_response.status_code == 200
+    assert fragment_response.status_code == 200
+    assert [item["name"] for item in name_response.json()["data"]] == ["Amoxicilina Forte"]
+    assert [item["name"] for item in case_response.json()["data"]] == ["Amoxicilina Forte"]
+    assert [item["name"] for item in code_response.json()["data"]] == ["Amoxicilina Forte"]
+    assert [item["name"] for item in fragment_response.json()["data"]] == [
+        "Amoxicilina Forte"
+    ]
+
+
+def test_search_does_not_match_supplier_or_subcategory(client, tenant):
+    _create_item(client, tenant, name="Antiparasitario", supplier="Distrivet")
+    _create_item(client, tenant, name="Collar azul", category="accessory", subcategory="Distrivet")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "distrivet"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == []
+
+
+def test_filter_inventory_items_by_category_brand_supplier_and_active_state(client, tenant):
+    _create_item(
+        client,
+        tenant,
+        name="Alimento adulto",
+        category="food",
+        brand="Purina",
+        supplier="Distribuidora Norte",
+    )
+    _create_item(
+        client,
+        tenant,
+        name="Alimento cachorro",
+        category="food",
+        brand="Otra marca",
+        supplier="Distribuidora Norte",
+    )
+    _create_item(
+        client,
+        tenant,
+        name="Vacuna triple",
+        category="vaccine",
+        brand="Purina",
+        supplier="Distribuidora Sur",
+    )
+    _create_item(client, tenant, name="Producto inactivo", is_active=False)
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={
+            "category": "food",
+            "brand": "purina",
+            "supplier": "distribuidora norte",
+        },
+    )
+    inactive_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"is_active": False},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Alimento adulto"]
+    assert inactive_response.status_code == 200
+    assert [item["name"] for item in inactive_response.json()["data"]] == ["Producto inactivo"]
+
+
+def test_inventory_filter_options_are_distinct_active_and_tenant_scoped(
+    client,
+    tenant,
+    other_tenant,
+):
+    _create_item(client, tenant, name="A", brand="VetLab", supplier="Proveedor Uno")
+    _create_item(client, tenant, name="B", brand="VetLab", supplier="Proveedor Uno")
+    _create_item(client, tenant, name="C", brand="Zeta", supplier="Proveedor Dos")
+    _create_item(client, tenant, name="D", brand="   ", supplier="   ")
+    _create_item(client, tenant, name="E", brand="Inactiva", supplier="Inactivo SA", is_active=False)
+    _create_item(client, other_tenant, name="F", brand="Ajena", supplier="Ajeno SA")
+
+    response = client.get("/api/v1/inventory/filter-options", headers=_headers(tenant))
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "brands": ["VetLab", "Zeta"],
+        "suppliers": ["Proveedor Dos", "Proveedor Uno"],
+    }
+
+
+def test_inventory_filter_options_trim_and_dedupe_historical_text_values(
+    client,
+    db_session,
+    tenant,
+):
+    _create_raw_item(
+        db_session,
+        tenant,
+        name="Histórico A",
+        brand="  VetLab  ",
+        supplier="  Proveedor Uno  ",
+    )
+    _create_raw_item(
+        db_session,
+        tenant,
+        name="Histórico B",
+        brand="vetlab",
+        supplier="proveedor uno",
+    )
+    _create_raw_item(
+        db_session,
+        tenant,
+        name="Histórico C",
+        brand=None,
+        supplier=None,
+    )
+    _create_raw_item(
+        db_session,
+        tenant,
+        name="Histórico D",
+        brand="   ",
+        supplier="   ",
+    )
+
+    response = client.get("/api/v1/inventory/filter-options", headers=_headers(tenant))
+
+    assert response.status_code == 200
+    options = response.json()["data"]
+    assert len(options["brands"]) == 1
+    assert len(options["suppliers"]) == 1
+    assert options["brands"][0] == options["brands"][0].strip()
+    assert options["suppliers"][0] == options["suppliers"][0].strip()
+    assert options["brands"][0].lower() == "vetlab"
+    assert options["suppliers"][0].lower() == "proveedor uno"
+
+
+def test_filter_by_returned_brand_and_supplier_options_matches_trimmed_values(
+    client,
+    db_session,
+    tenant,
+):
+    raw_item = _create_raw_item(
+        db_session,
+        tenant,
+        name="Producto histórico",
+        brand="  VetLab  ",
+        supplier="  Proveedor Uno  ",
+    )
+
+    options_response = client.get("/api/v1/inventory/filter-options", headers=_headers(tenant))
+    options = options_response.json()["data"]
+    list_by_brand = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"brand": options["brands"][0]},
+    )
+    list_by_supplier = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"supplier": options["suppliers"][0]},
+    )
+
+    assert options_response.status_code == 200
+    assert list_by_brand.status_code == 200
+    assert list_by_supplier.status_code == 200
+    assert [item["id"] for item in list_by_brand.json()["data"]] == [str(raw_item.id)]
+    assert [item["id"] for item in list_by_supplier.json()["data"]] == [str(raw_item.id)]
+
+
 def test_filter_low_stock(client, tenant):
     _create_item(client, tenant, name="Bajo stock", current_stock="2", minimum_stock="3")
     _create_item(client, tenant, name="Stock sano", current_stock="8", minimum_stock="3")
@@ -261,6 +485,278 @@ def test_filter_low_stock(client, tenant):
 
     assert response.status_code == 200
     assert [item["name"] for item in response.json()["data"]] == ["Bajo stock"]
+
+
+def test_filter_stock_statuses_are_mutually_exclusive(client, db_session, tenant):
+    _create_item(client, tenant, name="Disponible", current_stock="6", minimum_stock="3")
+    _create_item(client, tenant, name="Igual al mínimo", current_stock="3", minimum_stock="3")
+    _create_item(client, tenant, name="Bajo stock", current_stock="1", minimum_stock="3")
+    _create_item(client, tenant, name="Agotado", current_stock="0", minimum_stock="3")
+    negative = _create_item(client, tenant, name="Negativo", minimum_stock="3")
+    _set_item_stock(db_session, negative["id"], "-1")
+
+    expected_by_status = {
+        "in_stock": ["Disponible"],
+        "low_stock": ["Bajo stock", "Igual al mínimo"],
+        "out_of_stock": ["Agotado"],
+        "negative": ["Negativo"],
+    }
+
+    seen_names = []
+    for stock_status, expected_names in expected_by_status.items():
+        response = client.get(
+            "/api/v1/inventory/items",
+            headers=_headers(tenant),
+            params={"stock_status": stock_status, "sort_by": "name", "sort_direction": "asc"},
+        )
+
+        assert response.status_code == 200
+        names = [item["name"] for item in response.json()["data"]]
+        assert names == expected_names
+        seen_names.extend(names)
+
+    assert sorted(seen_names) == [
+        "Agotado",
+        "Bajo stock",
+        "Disponible",
+        "Igual al mínimo",
+        "Negativo",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("sort_by", "sort_direction", "expected_names"),
+    [
+        ("current_stock", "asc", ["Stock 1", "Stock 5", "Stock 9"]),
+        ("current_stock", "desc", ["Stock 9", "Stock 5", "Stock 1"]),
+        ("sale_price_ars", "asc", ["Stock 9", "Stock 1", "Stock 5"]),
+        ("sale_price_ars", "desc", ["Stock 5", "Stock 1", "Stock 9"]),
+        ("name", "asc", ["Stock 1", "Stock 5", "Stock 9"]),
+        ("internal_code", "asc", ["Stock 1", "Stock 5", "Stock 9"]),
+    ],
+)
+def test_inventory_sorting(client, tenant, sort_by, sort_direction, expected_names):
+    _create_item(client, tenant, name="Stock 1", current_stock="1", sale_price_ars="200")
+    _create_item(client, tenant, name="Stock 5", current_stock="5", sale_price_ars="300")
+    _create_item(client, tenant, name="Stock 9", current_stock="9", sale_price_ars="100")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"sort_by": sort_by, "sort_direction": sort_direction},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == expected_names
+
+
+def test_inventory_sorting_accepts_legacy_sort_order_alias(client, tenant):
+    _create_item(client, tenant, name="A", current_stock="1")
+    _create_item(client, tenant, name="B", current_stock="5")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"sort_by": "current_stock", "sort_order": "desc"},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["B", "A"]
+
+
+def test_inventory_sorting_has_stable_secondary_order(client, tenant):
+    first = _create_item(client, tenant, name="Mismo stock A", current_stock="4")
+    second = _create_item(client, tenant, name="Mismo stock B", current_stock="4")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"sort_by": "current_stock", "sort_direction": "asc"},
+    )
+
+    assert response.status_code == 200
+    items = response.json()["data"]
+    expected_ids = sorted([first["id"], second["id"]], key=uuid.UUID)
+    assert [item["id"] for item in items] == expected_ids
+
+
+def test_inventory_combines_search_and_filters(client, tenant):
+    _create_item(
+        client,
+        tenant,
+        name="Alimento renal adulto",
+        category="food",
+        brand="Royal Canin",
+        supplier="Distribuidora Norte",
+        current_stock="2",
+        minimum_stock="5",
+    )
+    _create_item(
+        client,
+        tenant,
+        name="Alimento renal cachorro",
+        category="food",
+        brand="Royal Canin",
+        supplier="Distribuidora Sur",
+        current_stock="2",
+        minimum_stock="5",
+    )
+    _create_item(
+        client,
+        tenant,
+        name="Alimento adulto",
+        category="food",
+        brand="Purina",
+        supplier="Distribuidora Norte",
+        current_stock="8",
+        minimum_stock="3",
+    )
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={
+            "search": "renal",
+            "category": "food",
+            "brand": "royal canin",
+            "supplier": "distribuidora norte",
+            "stock_status": "low_stock",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Alimento renal adulto"]
+
+
+def test_inventory_combines_search_with_brand(client, tenant):
+    _create_item(client, tenant, name="Alimento renal adulto", brand="Royal Canin")
+    _create_item(client, tenant, name="Alimento renal cachorro", brand="Purina")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "renal", "brand": "royal canin"},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Alimento renal adulto"]
+
+
+def test_inventory_combines_search_with_supplier(client, tenant):
+    _create_item(client, tenant, name="Alimento renal adulto", supplier="Distribuidora Norte")
+    _create_item(client, tenant, name="Alimento renal cachorro", supplier="Distribuidora Sur")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "renal", "supplier": "distribuidora norte"},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Alimento renal adulto"]
+
+
+def test_inventory_search_precedes_legacy_q(client, tenant):
+    _create_item(client, tenant, name="Amoxicilina")
+    _create_item(client, tenant, name="Jeringa")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "amoxi", "q": "jeringa"},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Amoxicilina"]
+
+
+def test_inventory_empty_legacy_params_do_not_override_current_params(client, tenant):
+    _create_item(client, tenant, name="A", current_stock="1")
+    _create_item(client, tenant, name="B", current_stock="5")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={
+            "search": "b",
+            "q": "",
+            "sort_by": "current_stock",
+            "sort_direction": "desc",
+            "sort_order": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["B"]
+
+
+def test_inventory_pagination_and_page_size_limit(client, tenant):
+    for index in range(3):
+        _create_item(client, tenant, name=f"Item {index}")
+
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"page": 2, "page_size": 2, "sort_by": "name", "sort_direction": "asc"},
+    )
+    max_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"page_size": 100},
+    )
+    over_max_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"page_size": 101},
+    )
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["data"]] == ["Item 2"]
+    assert response.json()["meta"] == {"page": 2, "page_size": 2, "total": 3, "total_pages": 2}
+    assert max_response.status_code == 200
+    assert max_response.json()["meta"]["page_size"] == 100
+    assert over_max_response.status_code == 422
+    assert over_max_response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"category": "invalid"},
+        {"stock_status": "expired"},
+        {"sort_by": "created_at"},
+        {"sort_direction": "sideways"},
+    ],
+)
+def test_inventory_list_rejects_invalid_filter_values(client, tenant, params):
+    response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params=params,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_inventory_list_and_options_exclude_other_tenants(client, tenant, other_tenant):
+    _create_item(client, tenant, name="Item propio", brand="Propia", supplier="Proveedor propio")
+    _create_item(client, other_tenant, name="Item ajeno", brand="Ajena", supplier="Proveedor ajeno")
+
+    list_response = client.get(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        params={"search": "item", "sort_by": "name", "sort_direction": "asc"},
+    )
+    options_response = client.get("/api/v1/inventory/filter-options", headers=_headers(tenant))
+
+    assert list_response.status_code == 200
+    assert [item["name"] for item in list_response.json()["data"]] == ["Item propio"]
+    assert options_response.status_code == 200
+    assert options_response.json()["data"] == {
+        "brands": ["Propia"],
+        "suppliers": ["Proveedor propio"],
+    }
 
 
 def test_filter_expiring_soon(client, tenant):

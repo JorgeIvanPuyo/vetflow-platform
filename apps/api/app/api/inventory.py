@@ -7,6 +7,7 @@ from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.inventory import (
     InventoryCategory,
+    InventoryFilterOptionsRead,
     InventoryItemCreate,
     InventoryItemRead,
     InventoryItemUpdate,
@@ -15,9 +16,9 @@ from app.schemas.inventory import (
     InventoryMovementType,
     InventoryMovementExitCreate,
     InventorySortBy,
+    InventoryStockStatus,
     InventoryStatusFilter,
     InventorySummaryRead,
-    SortOrder,
 )
 from app.services.inventory import InventoryService
 
@@ -40,31 +41,61 @@ def create_inventory_item(
 
 @router.get("/items")
 def list_inventory_items(
+    search: str | None = Query(default=None),
     q: str | None = Query(default=None),
     category: InventoryCategory | None = Query(default=None),
+    brand: str | None = Query(default=None),
     supplier: str | None = Query(default=None),
     status_filter: InventoryStatusFilter | None = Query(default=None, alias="status"),
+    stock_status: InventoryStockStatus | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=50),
+    page_size: int = Query(default=10, ge=1, le=100),
     sort_by: InventorySortBy | None = Query(default=None),
-    sort_order: SortOrder | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
+    sort_order: str | None = Query(default=None),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
     items, meta = InventoryService(db).list_items(
         tenant.tenant_id,
-        q=q,
+        search=search if search is not None else q,
         category=category,
+        brand=brand,
         supplier=supplier,
         status=status_filter,
+        stock_status=stock_status,
+        is_active=is_active,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
-        sort_order=sort_order,
+        sort_direction=_prefer_current_parameter(sort_direction, sort_order),
     )
     return {
         "data": [InventoryItemRead.model_validate(item).model_dump(mode="json") for item in items],
         "meta": meta,
+    }
+
+
+def _prefer_current_parameter(current_value: str | None, legacy_value: str | None) -> str | None:
+    if current_value is not None and current_value.strip():
+        return current_value.strip()
+    if current_value is not None:
+        return None
+    if legacy_value is not None and legacy_value.strip():
+        return legacy_value.strip()
+    return None
+
+
+@router.get("/filter-options")
+def get_inventory_filter_options(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    options = InventoryService(db).get_filter_options(tenant.tenant_id)
+    return {
+        "data": InventoryFilterOptionsRead.model_validate(options).model_dump(mode="json"),
+        "meta": {},
     }
 
 

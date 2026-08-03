@@ -507,11 +507,17 @@ export type InventoryStatusFilter =
   | "active"
   | "inactive";
 
+export type InventoryStockStatus =
+  | "in_stock"
+  | "low_stock"
+  | "out_of_stock"
+  | "negative";
+
 export type InventorySortBy =
   | "name"
   | "current_stock"
-  | "expiration_date"
-  | "created_at"
+  | "internal_code"
+  | "sale_price_ars"
   | "updated_at";
 
 export type InventorySortOrder = "asc" | "desc";
@@ -558,6 +564,11 @@ export type InventorySummary = {
   expired_count: number;
 };
 
+export type InventoryFilterOptions = {
+  brands: string[];
+  suppliers: string[];
+};
+
 export type CreateInventoryItemPayload = {
   name: string;
   category: InventoryCategory;
@@ -581,13 +592,18 @@ export type CreateInventoryItemPayload = {
 export type UpdateInventoryItemPayload = Partial<CreateInventoryItemPayload>;
 
 export type InventoryListFilters = {
+  search?: string;
   q?: string;
   category?: InventoryCategory;
+  brand?: string;
   supplier?: string;
   status?: InventoryStatusFilter;
+  stock_status?: InventoryStockStatus;
+  is_active?: boolean;
   page?: number;
   page_size?: number;
   sort_by?: InventorySortBy;
+  sort_direction?: InventorySortOrder;
   sort_order?: InventorySortOrder;
 };
 

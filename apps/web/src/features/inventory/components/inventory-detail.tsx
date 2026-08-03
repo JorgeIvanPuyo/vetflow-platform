@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { InventoryItemForm } from "@/features/inventory/components/inventory-item-form";
@@ -109,6 +109,8 @@ const initialMovementState: MovementState = {
 
 export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inventoryReturnTo = getInventoryReturnTo(searchParams.get("return_to"));
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
   const [movementFilter, setMovementFilter] = useState<InventoryMovementFilter>("all");
@@ -413,7 +415,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
     try {
       await deleteInventoryItem(itemId);
-      router.push("/inventory");
+      router.push(inventoryReturnTo);
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -448,7 +450,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   return (
     <div className="page-stack inventory-detail-page">
       <section className="detail-hero inventory-detail-hero">
-        <Link className="back-link" href="/inventory">
+        <Link className="back-link" href={inventoryReturnTo}>
           Volver a inventario
         </Link>
         <div className="detail-hero__main">
@@ -1109,4 +1111,11 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
       ) : null}
     </div>
   );
+}
+
+function getInventoryReturnTo(value: string | null) {
+  if (value?.startsWith("/inventory")) {
+    return value;
+  }
+  return "/inventory";
 }

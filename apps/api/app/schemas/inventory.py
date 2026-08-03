@@ -33,7 +33,14 @@ InventoryStatusFilter = Literal[
     "active",
     "inactive",
 ]
-InventorySortBy = Literal["name", "current_stock", "expiration_date", "created_at", "updated_at"]
+InventoryStockStatus = Literal["in_stock", "low_stock", "out_of_stock", "negative"]
+InventorySortBy = Literal[
+    "name",
+    "internal_code",
+    "current_stock",
+    "sale_price_ars",
+    "updated_at",
+]
 SortOrder = Literal["asc", "desc"]
 InventoryMovementType = Literal["entry", "exit", "adjustment"]
 InventoryExitReason = Literal[
@@ -175,6 +182,11 @@ class InventorySummaryRead(BaseModel):
     low_stock_count: int
     expiring_soon_count: int
     expired_count: int
+
+
+class InventoryFilterOptionsRead(BaseModel):
+    brands: list[str]
+    suppliers: list[str]
 
 
 class InventoryMovementEntryCreate(BaseModel):
