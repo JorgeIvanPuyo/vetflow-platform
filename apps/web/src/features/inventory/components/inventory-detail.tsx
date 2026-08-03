@@ -25,6 +25,7 @@ import {
   getInventoryCategoryLabel,
   getInventoryExitReasonLabel,
   getInventoryMovementAmountLabel,
+  getInventoryMovementDirection,
   getInventoryMovementTypeLabel,
   getInventoryStatusBadges,
   getInventoryUnitLabel,
@@ -675,6 +676,9 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             <div className="inventory-movement-list">
               {movementState.data.map((movement) => {
                 const amountLabel = getInventoryMovementAmountLabel(movement);
+                const direction = getInventoryMovementDirection(movement.movement_type);
+                const iconClass =
+                  direction > 0 ? "entry" : direction < 0 ? "exit" : movement.movement_type;
                 const actor =
                   movement.created_by_user_name ||
                   movement.created_by_user_email ||
@@ -682,13 +686,13 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
                 return (
                   <article key={movement.id} className="inventory-movement-card">
-                    <span
-                      className={`inventory-movement-card__icon inventory-movement-card__icon--${movement.movement_type}`}
-                      aria-hidden="true"
-                    >
-                      {movement.movement_type === "entry" ? (
+	                    <span
+	                      className={`inventory-movement-card__icon inventory-movement-card__icon--${iconClass}`}
+	                      aria-hidden="true"
+	                    >
+                      {direction > 0 ? (
                         <ArrowUp size={18} />
-                      ) : movement.movement_type === "exit" ? (
+                      ) : direction < 0 ? (
                         <ArrowDown size={18} />
                       ) : (
                         <Package size={18} />
@@ -713,14 +717,29 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       </div>
 
                       <div className="inventory-movement-card__meta">
-                        {movement.movement_type === "exit" && movement.reason ? (
+                        {(movement.movement_type === "exit" ||
+                          movement.movement_type === "manual_exit") &&
+                        movement.reason ? (
                           <span>Motivo: {getInventoryExitReasonLabel(movement.reason)}</span>
                         ) : null}
-                        {movement.movement_type === "entry" && movement.supplier ? (
+                        {(movement.movement_type === "entry" ||
+                          movement.movement_type === "manual_entry") &&
+                        movement.supplier ? (
                           <span>Proveedor: {movement.supplier}</span>
+                        ) : null}
+                        {movement.stock_before !== null && movement.stock_after !== null ? (
+                          <span>
+                            Stock: {movement.stock_before} {"->"} {movement.stock_after}
+                          </span>
+                        ) : null}
+                        {movement.reversal_status !== "active" ? (
+                          <span>Estado: {movement.reversal_status}</span>
                         ) : null}
                         {amountLabel ? <span>Monto: {amountLabel}</span> : null}
                         <span>Registrado por: {actor}</span>
+                        <Link href={`/inventory/movements/${movement.id}`}>
+                          Ver detalle
+                        </Link>
                       </div>
 
                       {movement.notes ? (

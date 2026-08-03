@@ -14,7 +14,6 @@ from app.models.consultation import (
 )
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
-from app.models.inventory_movement import InventoryMovement
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.patient import Patient
@@ -35,6 +34,7 @@ from app.schemas.consultation import (
     MAX_CONSULTATION_STEP,
     MIN_CONSULTATION_STEP,
 )
+from app.services.inventory import InventoryService
 from app.services.ai_service import AIService
 
 
@@ -301,35 +301,14 @@ class ConsultationService:
                     "invalid_stock_quantity",
                     "quantity_used is required when inventory_item_id is provided",
                 )
-            if item.current_stock - payload.quantity_used < Decimal("0"):
-                raise AppError(
-                    409,
-                    "insufficient_stock",
-                    "Insufficient stock for this medication",
-                )
-
-            unit_sale_price = item.sale_price_ars
-            total_sale_price = (
-                self._quantize_money(unit_sale_price * payload.quantity_used)
-                if unit_sale_price is not None
-                else None
-            )
-            movement = InventoryMovement(
-                tenant_id=tenant_id,
-                inventory_item_id=item.id,
-                movement_type="exit",
-                reason="consultation_use",
+            movement = InventoryService(self.db).register_clinical_consumption_movement(
+                tenant_id,
+                item.id,
                 quantity=payload.quantity_used,
-                unit_sale_price_ars=unit_sale_price,
-                total_sale_price_ars=total_sale_price,
-                related_patient_id=consultation.patient_id,
-                related_consultation_id=consultation.id,
-                notes=f"Uso en consulta: {consultation.reason}",
-            )
-            self.inventory_repository.create_movement(movement)
-            self.inventory_repository.update_item(
-                item,
-                {"current_stock": item.current_stock - payload.quantity_used},
+                patient_id=consultation.patient_id,
+                consultation_id=consultation.id,
+                consultation_reason=consultation.reason,
+                commit=False,
             )
 
             medication_data["medication_name"] = (

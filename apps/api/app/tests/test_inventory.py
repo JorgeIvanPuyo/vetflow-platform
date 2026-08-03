@@ -1076,8 +1076,14 @@ def test_register_entry_movement_increases_stock(client, tenant):
 
     assert response.status_code == 201
     movement = response.json()["data"]
-    assert movement["movement_type"] == "entry"
+    assert movement["movement_type"] == "manual_entry"
     assert movement["unit_cost_ars"] == "1000.00"
+    assert movement["stock_before"] == "10.00"
+    assert movement["stock_after"] == "15.00"
+    assert movement["unit"] == "tablet"
+    assert movement["source_type"] == "manual"
+    assert movement["operation_id"] is not None
+    assert movement["reversal_status"] == "active"
     assert movement["created_at"] is not None
 
     item_response = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant))
@@ -1103,8 +1109,11 @@ def test_register_exit_movement_decreases_stock(client, db_session, tenant):
 
     assert response.status_code == 201
     movement = response.json()["data"]
-    assert movement["movement_type"] == "exit"
+    assert movement["movement_type"] == "manual_exit"
     assert movement["total_sale_price_ars"] == "8000.00"
+    assert movement["stock_before"] == "10.00"
+    assert movement["stock_after"] == "6.00"
+    assert movement["source_type"] == "manual"
 
     item_response = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant))
     assert item_response.json()["data"]["current_stock"] == "6.00"
@@ -1146,6 +1155,225 @@ def test_list_item_movements_paginated(client, tenant):
     payload = response.json()
     assert len(payload["data"]) == 1
     assert payload["meta"] == {"page": 1, "page_size": 1, "total": 2, "total_pages": 2}
+    assert {"stock_before", "stock_after", "operation_id", "reversal_status"} <= payload["data"][0].keys()
+
+
+def test_global_movement_list_filters_and_searches_with_tenant_scope(client, tenant, other_tenant):
+    own_item = _create_item(client, tenant, name="Antiparasitario trazable")
+    other_item = _create_item(client, other_tenant, name="Antiparasitario ajeno")
+    own_entry = client.post(
+        f"/api/v1/inventory/items/{own_item['id']}/movements/entry",
+        headers=_headers(tenant),
+        json={"quantity": "3", "notes": "Compra trazable"},
+    ).json()["data"]
+    client.post(
+        f"/api/v1/inventory/items/{other_item['id']}/movements/entry",
+        headers=_headers(other_tenant),
+        json={"quantity": "2"},
+    )
+
+    response = client.get(
+        "/api/v1/inventory/movements",
+        headers=_headers(tenant),
+        params={
+            "search": "trazable",
+            "inventory_item_id": own_item["id"],
+            "movement_type": "manual_entry",
+            "source_type": "manual",
+            "operation_id": own_entry["operation_id"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [movement["id"] for movement in payload["data"]] == [own_entry["id"]]
+    assert payload["data"][0]["inventory_item_name"] == "Antiparasitario trazable"
+    assert payload["data"][0]["inventory_item_internal_code"] == own_item["internal_code"]
+
+
+def test_global_movement_list_filters_by_created_by_and_date(client, db_session, tenant, monkeypatch):
+    _setup_auth(monkeypatch)
+    user = _create_user(db_session, tenant, "movements@example.com", "Movement Vet")
+    item_response = client.post(
+        "/api/v1/inventory/items",
+        headers=_auth_headers(user.email),
+        json=_item_payload(name="Producto con usuario"),
+    )
+    item = item_response.json()["data"]
+    client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/entry",
+        headers=_auth_headers(user.email),
+        json={"quantity": "4"},
+    )
+
+    response = client.get(
+        "/api/v1/inventory/movements",
+        headers=_headers(tenant),
+        params={
+            "created_by_user_id": str(user.id),
+            "date_from": date.today().isoformat(),
+            "date_to": date.today().isoformat(),
+        },
+    )
+
+    assert response.status_code == 200
+    movements = response.json()["data"]
+    assert len(movements) == 1
+    assert movements[0]["created_by_user_name"] == "Movement Vet"
+
+
+def test_reject_invalid_movement_date_range(client, tenant):
+    response = client.get(
+        "/api/v1/inventory/movements",
+        headers=_headers(tenant),
+        params={"date_from": "2026-08-03", "date_to": "2026-08-02"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_date_range"
+
+
+def test_reverse_movement_creates_reversal_and_updates_original_status(client, tenant):
+    item = _create_item(client, tenant, current_stock="10")
+    entry_response = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/entry",
+        headers=_headers(tenant),
+        json={"quantity": "5"},
+    )
+    original = entry_response.json()["data"]
+
+    reverse_response = client.post(
+        f"/api/v1/inventory/movements/{original['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "error_operativo", "notes": "Se anula entrada duplicada"},
+    )
+
+    assert reverse_response.status_code == 201
+    reversal = reverse_response.json()["data"]
+    assert reversal["movement_type"] == "reversal"
+    assert reversal["quantity"] == "5.00"
+    assert reversal["stock_before"] == "15.00"
+    assert reversal["stock_after"] == "10.00"
+    assert reversal["reverses_movement_id"] == original["id"]
+    assert reversal["source_type"] == "reversal"
+    assert reversal["source_id"] == original["id"]
+
+    item_response = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant))
+    assert item_response.json()["data"]["current_stock"] == "10.00"
+
+    detail_response = client.get(
+        f"/api/v1/inventory/movements/{original['id']}",
+        headers=_headers(tenant),
+    )
+    detail = detail_response.json()["data"]
+    assert detail["reversal_status"] == "reversed"
+    assert detail["reversed_by_movement_id"] == reversal["id"]
+    assert detail["can_be_reversed"] is False
+    assert detail["reversal_block_reason"] == "movement_already_reversed"
+
+
+def test_prevent_double_reversal_and_reversal_of_reversal(client, tenant):
+    item = _create_item(client, tenant, current_stock="4")
+    original = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/exit",
+        headers=_headers(tenant),
+        json={"quantity": "1", "reason": "sale"},
+    ).json()["data"]
+    reversal = client.post(
+        f"/api/v1/inventory/movements/{original['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "venta_cancelada"},
+    ).json()["data"]
+
+    second_response = client.post(
+        f"/api/v1/inventory/movements/{original['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "duplicada"},
+    )
+    reversal_response = client.post(
+        f"/api/v1/inventory/movements/{reversal['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "no_permitido"},
+    )
+
+    assert second_response.status_code == 409
+    assert second_response.json()["error"]["code"] == "movement_already_reversed"
+    assert reversal_response.status_code == 409
+    assert reversal_response.json()["error"]["code"] == "reversal_not_allowed"
+
+
+def test_reversing_entry_is_blocked_when_current_stock_is_too_low(client, tenant):
+    item = _create_item(client, tenant, current_stock="5")
+    original = client.get(
+        f"/api/v1/inventory/items/{item['id']}/movements",
+        headers=_headers(tenant),
+    ).json()["data"][0]
+    exit_response = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/exit",
+        headers=_headers(tenant),
+        json={"quantity": "4", "reason": "sale"},
+    )
+    assert exit_response.status_code == 201
+
+    response = client.post(
+        f"/api/v1/inventory/movements/{original['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "stock_insuficiente"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "insufficient_stock_for_reversal"
+
+
+def test_reversal_status_filter_classifies_movements(client, tenant):
+    item = _create_item(client, tenant, current_stock="5")
+    original = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/exit",
+        headers=_headers(tenant),
+        json={"quantity": "2", "reason": "sale"},
+    ).json()["data"]
+    reversal = client.post(
+        f"/api/v1/inventory/movements/{original['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "venta_cancelada"},
+    ).json()["data"]
+
+    reversed_response = client.get(
+        "/api/v1/inventory/movements",
+        headers=_headers(tenant),
+        params={"reversal_status": "reversed"},
+    )
+    reversal_response = client.get(
+        "/api/v1/inventory/movements",
+        headers=_headers(tenant),
+        params={"reversal_status": "reversal"},
+    )
+
+    assert reversed_response.status_code == 200
+    assert original["id"] in [movement["id"] for movement in reversed_response.json()["data"]]
+    assert reversal_response.status_code == 200
+    assert [movement["id"] for movement in reversal_response.json()["data"]] == [reversal["id"]]
+
+
+def test_prevent_cross_tenant_movement_read_and_reversal(client, tenant, other_tenant):
+    item = _create_item(client, other_tenant, current_stock="3")
+    foreign_movement = client.get(
+        f"/api/v1/inventory/items/{item['id']}/movements",
+        headers=_headers(other_tenant),
+    ).json()["data"][0]
+
+    detail_response = client.get(
+        f"/api/v1/inventory/movements/{foreign_movement['id']}",
+        headers=_headers(tenant),
+    )
+    reverse_response = client.post(
+        f"/api/v1/inventory/movements/{foreign_movement['id']}/reverse",
+        headers=_headers(tenant),
+        json={"reason": "intento_cross_tenant"},
+    )
+
+    assert detail_response.status_code == 404
+    assert reverse_response.status_code == 404
 
 
 def test_prevent_cross_tenant_item_read_update_delete(client, tenant, other_tenant):

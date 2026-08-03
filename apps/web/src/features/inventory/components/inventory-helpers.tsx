@@ -24,7 +24,9 @@ import type {
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
-export type InventoryMovementFilter = Extract<InventoryMovementType, "entry" | "exit"> | "all";
+export type InventoryMovementFilter =
+  | Extract<InventoryMovementType, "manual_entry" | "manual_exit" | "entry" | "exit" | "reversal">
+  | "all";
 
 export const inventoryCategoryOptions: Array<{
   value: InventoryCategory;
@@ -117,8 +119,9 @@ export const inventoryMovementFilterOptions: Array<{
   label: string;
 }> = [
   { value: "all", label: "Todos" },
-  { value: "entry", label: "Entradas" },
-  { value: "exit", label: "Salidas" },
+  { value: "manual_entry", label: "Entradas" },
+  { value: "manual_exit", label: "Salidas" },
+  { value: "reversal", label: "Reversas" },
 ];
 
 export const inventoryExitReasonOptions: Array<{
@@ -318,7 +321,11 @@ export function formatInventorySignedQuantity(
   unit: InventoryUnit,
   movementType: InventoryMovementType,
 ) {
-  const sign = movementType === "entry" ? "+" : movementType === "exit" ? "-" : "";
+  const sign = getInventoryMovementDirection(movementType) > 0
+    ? "+"
+    : getInventoryMovementDirection(movementType) < 0
+      ? "-"
+      : "";
   return `${sign}${formatInventoryQuantity(quantity, unit)}`;
 }
 
@@ -380,6 +387,54 @@ export function getInventoryStockStatus(item: InventoryItem): InventoryStockStat
 }
 
 export function getInventoryMovementTypeLabel(movementType: InventoryMovementType) {
+  if (movementType === "manual_entry") {
+    return "Entrada manual";
+  }
+  if (movementType === "manual_exit") {
+    return "Salida manual";
+  }
+  if (movementType === "initial_stock") {
+    return "Stock inicial";
+  }
+  if (movementType === "purchase") {
+    return "Compra";
+  }
+  if (movementType === "sale") {
+    return "Venta";
+  }
+  if (movementType === "clinical_consumption") {
+    return "Consumo clínico";
+  }
+  if (movementType === "customer_return") {
+    return "Devolución de cliente";
+  }
+  if (movementType === "supplier_return") {
+    return "Devolución a proveedor";
+  }
+  if (movementType === "adjustment_in") {
+    return "Ajuste positivo";
+  }
+  if (movementType === "adjustment_out") {
+    return "Ajuste negativo";
+  }
+  if (movementType === "expiration") {
+    return "Vencimiento";
+  }
+  if (movementType === "loss") {
+    return "Pérdida";
+  }
+  if (movementType === "breakage") {
+    return "Rotura";
+  }
+  if (movementType === "transfer_in") {
+    return "Transferencia entrante";
+  }
+  if (movementType === "transfer_out") {
+    return "Transferencia saliente";
+  }
+  if (movementType === "reversal") {
+    return "Reversa";
+  }
   if (movementType === "entry") {
     return "Compra / Entrada";
   }
@@ -389,7 +444,7 @@ export function getInventoryMovementTypeLabel(movementType: InventoryMovementTyp
   return "Ajuste";
 }
 
-export function getInventoryExitReasonLabel(reason?: InventoryExitReason | null) {
+export function getInventoryExitReasonLabel(reason?: string | null) {
   if (!reason) {
     return "Sin motivo";
   }
@@ -400,15 +455,59 @@ export function getInventoryExitReasonLabel(reason?: InventoryExitReason | null)
 }
 
 export function getInventoryMovementAmountLabel(movement: InventoryMovement) {
-  if (movement.movement_type === "entry" && movement.total_cost_ars) {
+  if (
+    (movement.movement_type === "entry" ||
+      movement.movement_type === "manual_entry" ||
+      movement.movement_type === "purchase") &&
+    movement.total_cost_ars
+  ) {
     return formatInventoryCurrency(movement.total_cost_ars);
   }
 
-  if (movement.movement_type === "exit" && movement.total_sale_price_ars) {
+  if (
+    (movement.movement_type === "exit" ||
+      movement.movement_type === "manual_exit" ||
+      movement.movement_type === "sale" ||
+      movement.movement_type === "clinical_consumption") &&
+    movement.total_sale_price_ars
+  ) {
     return formatInventoryCurrency(movement.total_sale_price_ars);
   }
 
   return null;
+}
+
+export function getInventoryMovementDirection(movementType: InventoryMovementType) {
+  if (
+    [
+      "initial_stock",
+      "manual_entry",
+      "purchase",
+      "customer_return",
+      "adjustment_in",
+      "transfer_in",
+      "entry",
+    ].includes(movementType)
+  ) {
+    return 1;
+  }
+  if (
+    [
+      "manual_exit",
+      "sale",
+      "clinical_consumption",
+      "supplier_return",
+      "adjustment_out",
+      "expiration",
+      "loss",
+      "breakage",
+      "transfer_out",
+      "exit",
+    ].includes(movementType)
+  ) {
+    return -1;
+  }
+  return 0;
 }
 
 export function isNonNegativeInteger(value: string) {

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, date, datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 from math import ceil
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -20,6 +23,7 @@ from app.schemas.inventory import (
     InventoryItemUpdate,
     InventoryMovementEntryCreate,
     InventoryMovementExitCreate,
+    InventoryMovementReverseCreate,
 )
 
 
@@ -37,6 +41,34 @@ INVENTORY_CATEGORY_PREFIXES = {
 ZERO = Decimal("0")
 TEN = Decimal("10")
 HUNDRED = Decimal("100")
+MOVEMENT_INCREASE_TYPES = {
+    "initial_stock",
+    "manual_entry",
+    "purchase",
+    "customer_return",
+    "adjustment_in",
+    "transfer_in",
+    "entry",
+}
+MOVEMENT_DECREASE_TYPES = {
+    "manual_exit",
+    "sale",
+    "clinical_consumption",
+    "supplier_return",
+    "adjustment_out",
+    "expiration",
+    "loss",
+    "breakage",
+    "transfer_out",
+    "exit",
+}
+MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES = {"adjustment"}
+ALLOWED_MOVEMENT_TYPES = (
+    MOVEMENT_INCREASE_TYPES
+    | MOVEMENT_DECREASE_TYPES
+    | MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES
+    | {"reversal"}
+)
 
 
 class InventoryService:
@@ -204,7 +236,6 @@ class InventoryService:
         *,
         created_by_user_id: uuid.UUID | None = None,
     ) -> InventoryMovement:
-        item = self.get_item(tenant_id, item_id)
         self._validate_optional_user(tenant_id, created_by_user_id)
 
         quantity = payload.quantity
@@ -215,25 +246,19 @@ class InventoryService:
         elif unit_cost is not None and total_cost is None:
             total_cost = self._quantize_money(unit_cost * quantity)
 
-        movement = InventoryMovement(
-            tenant_id=tenant_id,
-            inventory_item_id=item.id,
-            movement_type="entry",
+        return self._create_stock_movement(
+            tenant_id,
+            item_id,
+            movement_type="manual_entry",
             quantity=quantity,
+            reason="manual_entry",
             unit_cost_ars=unit_cost,
             total_cost_ars=total_cost,
             supplier=payload.supplier,
             notes=payload.notes,
+            source_type="manual",
             created_by_user_id=created_by_user_id,
         )
-        self.inventory_repository.create_movement(movement)
-
-        updates = {"current_stock": item.current_stock + quantity}
-        if payload.supplier:
-            updates["supplier"] = payload.supplier
-        self.inventory_repository.update_item(item, updates)
-        self.db.commit()
-        return movement
 
     def register_exit_movement(
         self,
@@ -243,23 +268,22 @@ class InventoryService:
         *,
         created_by_user_id: uuid.UUID | None = None,
     ) -> InventoryMovement:
-        item = self.get_item(tenant_id, item_id)
         self._validate_optional_user(tenant_id, created_by_user_id)
         self._validate_optional_patient(tenant_id, payload.related_patient_id)
         self._validate_optional_consultation(tenant_id, payload.related_consultation_id)
 
-        if item.current_stock - payload.quantity < ZERO:
-            raise AppError(409, "insufficient_stock", "Insufficient stock for this movement")
-
+        item = self.inventory_repository.get_item_by_id(tenant_id, item_id)
+        if item is None:
+            raise AppError(404, "inventory_item_not_found", "Inventory item not found")
         unit_sale_price = payload.unit_sale_price_ars or item.sale_price_ars
         total_sale_price = None
         if unit_sale_price is not None:
             total_sale_price = self._quantize_money(unit_sale_price * payload.quantity)
 
-        movement = InventoryMovement(
-            tenant_id=tenant_id,
-            inventory_item_id=item.id,
-            movement_type="exit",
+        return self._create_stock_movement(
+            tenant_id,
+            item_id,
+            movement_type="manual_exit",
             reason=payload.reason,
             quantity=payload.quantity,
             unit_sale_price_ars=unit_sale_price,
@@ -267,33 +291,166 @@ class InventoryService:
             notes=payload.notes,
             related_patient_id=payload.related_patient_id,
             related_consultation_id=payload.related_consultation_id,
+            source_type="manual",
             created_by_user_id=created_by_user_id,
         )
-        self.inventory_repository.create_movement(movement)
-        self.inventory_repository.update_item(
-            item,
-            {"current_stock": item.current_stock - payload.quantity},
-        )
-        self.db.commit()
-        return movement
 
-    def list_movements(
+    def reverse_movement(
+        self,
+        tenant_id: uuid.UUID,
+        movement_id: uuid.UUID,
+        payload: InventoryMovementReverseCreate,
+        *,
+        created_by_user_id: uuid.UUID | None = None,
+    ) -> InventoryMovement:
+        self._validate_optional_user(tenant_id, created_by_user_id)
+        original = self.inventory_repository.get_movement_by_id(
+            tenant_id,
+            movement_id,
+            for_update=True,
+        )
+        if original is None:
+            raise AppError(404, "inventory_movement_not_found", "Inventory movement not found")
+        if original.movement_type == "reversal":
+            raise AppError(
+                409,
+                "reversal_not_allowed",
+                "Reversal movements cannot be reversed",
+            )
+        if original.reversed_by_movement_id is not None:
+            raise AppError(
+                409,
+                "movement_already_reversed",
+                "Inventory movement has already been reversed",
+            )
+        if original.movement_type in MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES:
+            raise AppError(
+                409,
+                "movement_type_not_reversible",
+                "This historical movement type cannot be reversed safely",
+            )
+
+        return self._create_stock_movement(
+            tenant_id,
+            original.inventory_item_id,
+            movement_type="reversal",
+            quantity=original.quantity,
+            reason=payload.reason,
+            notes=payload.notes,
+            source_type="reversal",
+            source_id=str(original.id),
+            reverses_movement_id=original.id,
+            created_by_user_id=created_by_user_id,
+            reverse_of=original,
+            unit_override=original.unit,
+        )
+
+    def register_clinical_consumption_movement(
         self,
         tenant_id: uuid.UUID,
         item_id: uuid.UUID,
         *,
+        quantity: Decimal,
+        patient_id: uuid.UUID,
+        consultation_id: uuid.UUID,
+        consultation_reason: str,
+        created_by_user_id: uuid.UUID | None = None,
+        commit: bool = True,
+    ) -> InventoryMovement:
+        item = self.inventory_repository.get_item_by_id(tenant_id, item_id)
+        if item is None:
+            raise AppError(404, "inventory_item_not_found", "Inventory item not found")
+        unit_sale_price = item.sale_price_ars
+        total_sale_price = (
+            self._quantize_money(unit_sale_price * quantity)
+            if unit_sale_price is not None
+            else None
+        )
+
+        return self._create_stock_movement(
+            tenant_id,
+            item_id,
+            movement_type="clinical_consumption",
+            reason="consultation_use",
+            quantity=quantity,
+            unit_sale_price_ars=unit_sale_price,
+            total_sale_price_ars=total_sale_price,
+            related_patient_id=patient_id,
+            related_consultation_id=consultation_id,
+            notes=f"Uso en consulta: {consultation_reason}",
+            source_type="consultation",
+            source_id=str(consultation_id),
+            created_by_user_id=created_by_user_id,
+            commit=commit,
+        )
+
+    def get_movement(self, tenant_id: uuid.UUID, movement_id: uuid.UUID) -> InventoryMovement:
+        movement = self.inventory_repository.get_movement_by_id(tenant_id, movement_id)
+        if movement is None:
+            raise AppError(404, "inventory_movement_not_found", "Inventory movement not found")
+        return movement
+
+    def get_movement_reversal_status(self, movement: InventoryMovement) -> tuple[bool, str | None]:
+        if movement.movement_type == "reversal":
+            return False, "reversal_movements_cannot_be_reversed"
+        if movement.reversed_by_movement_id is not None:
+            return False, "movement_already_reversed"
+        if movement.movement_type in MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES:
+            return False, "movement_type_not_reversible"
+
+        direction = self._movement_direction(movement.movement_type)
+        stock_after_reversal = movement.inventory_item.current_stock - (movement.quantity * direction)
+        if stock_after_reversal < ZERO:
+            return False, "insufficient_stock_for_reversal"
+        return True, None
+
+    def list_movements(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item_id: uuid.UUID | None = None,
         page: int = 1,
         page_size: int = 10,
         movement_type: str | None = None,
+        search: str | None = None,
+        created_by_user_id: uuid.UUID | None = None,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        operation_id: uuid.UUID | None = None,
+        reversal_status: str = "all",
+        date_from: date | None = None,
+        date_to: date | None = None,
+        sort_direction: str = "desc",
     ) -> tuple[list[InventoryMovement], dict]:
-        self.get_item(tenant_id, item_id)
         self._validate_pagination(page, page_size)
+        if item_id is not None:
+            self.get_item(tenant_id, item_id)
+        if movement_type is not None and movement_type not in ALLOWED_MOVEMENT_TYPES:
+            raise AppError(422, "validation_error", "Invalid movement_type value")
+        if reversal_status not in {"all", "active", "reversed", "reversal"}:
+            raise AppError(422, "validation_error", "Invalid reversal_status value")
+        if sort_direction not in ALLOWED_SORT_ORDER:
+            raise AppError(422, "validation_error", "Invalid sort_direction value")
+        if date_from is not None and date_to is not None and date_from > date_to:
+            raise AppError(422, "invalid_date_range", "date_from cannot be after date_to")
+
+        date_from_dt = self._start_of_day(date_from)
+        date_to_dt = self._end_of_day(date_to)
         movements, total = self.inventory_repository.list_movements(
             tenant_id,
-            item_id,
             page=page,
             page_size=page_size,
+            inventory_item_id=item_id,
             movement_type=movement_type,
+            search=self._normalize_optional_string(search),
+            created_by_user_id=created_by_user_id,
+            source_type=self._normalize_optional_string(source_type),
+            source_id=self._normalize_optional_string(source_id),
+            operation_id=operation_id,
+            reversal_status=reversal_status,
+            date_from=date_from_dt,
+            date_to=date_to_dt,
+            sort_direction=sort_direction,
         )
         return movements, {
             "page": page,
@@ -301,6 +458,109 @@ class InventoryService:
             "total": total,
             "total_pages": ceil(total / page_size) if total else 0,
         }
+
+    def _create_stock_movement(
+        self,
+        tenant_id: uuid.UUID,
+        item_id: uuid.UUID,
+        *,
+        movement_type: str,
+        quantity: Decimal,
+        reason: str | None = None,
+        unit_cost_ars: Decimal | None = None,
+        total_cost_ars: Decimal | None = None,
+        unit_sale_price_ars: Decimal | None = None,
+        total_sale_price_ars: Decimal | None = None,
+        supplier: str | None = None,
+        notes: str | None = None,
+        related_patient_id: uuid.UUID | None = None,
+        related_consultation_id: uuid.UUID | None = None,
+        created_by_user_id: uuid.UUID | None = None,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        operation_id: uuid.UUID | None = None,
+        reverses_movement_id: uuid.UUID | None = None,
+        reverse_of: InventoryMovement | None = None,
+        unit_override: str | None = None,
+        commit: bool = True,
+    ) -> InventoryMovement:
+        if movement_type not in ALLOWED_MOVEMENT_TYPES:
+            raise AppError(422, "validation_error", "Invalid movement_type value")
+        if quantity <= ZERO:
+            raise AppError(422, "invalid_quantity", "Movement quantity must be greater than zero")
+
+        item = self.inventory_repository.get_item_by_id_for_update(tenant_id, item_id)
+        if item is None:
+            raise AppError(404, "inventory_item_not_found", "Inventory item not found")
+
+        direction = (
+            -self._movement_direction(reverse_of.movement_type)
+            if movement_type == "reversal" and reverse_of is not None
+            else self._movement_direction(movement_type)
+        )
+        stock_before = item.current_stock
+        stock_after = stock_before + (quantity * Decimal(direction))
+        if stock_after < ZERO:
+            error_code = (
+                "insufficient_stock_for_reversal"
+                if movement_type == "reversal"
+                else "insufficient_stock"
+            )
+            raise AppError(409, error_code, "Insufficient stock for this movement")
+
+        movement = InventoryMovement(
+            tenant_id=tenant_id,
+            inventory_item_id=item.id,
+            movement_type=movement_type,
+            reason=reason,
+            quantity=quantity,
+            stock_before=stock_before,
+            stock_after=stock_after,
+            unit=unit_override or item.unit,
+            unit_cost_ars=unit_cost_ars,
+            total_cost_ars=total_cost_ars,
+            unit_sale_price_ars=unit_sale_price_ars,
+            total_sale_price_ars=total_sale_price_ars,
+            supplier=supplier,
+            notes=notes,
+            related_patient_id=related_patient_id,
+            related_consultation_id=related_consultation_id,
+            created_by_user_id=created_by_user_id,
+            source_type=source_type,
+            source_id=source_id,
+            operation_id=operation_id or uuid.uuid4(),
+            reverses_movement_id=reverses_movement_id,
+        )
+        self.inventory_repository.create_movement(movement)
+
+        updates = {"current_stock": stock_after}
+        if movement_type == "manual_entry" and supplier:
+            updates["supplier"] = supplier
+        self.inventory_repository.update_item(item, updates)
+        if not commit:
+            return movement
+
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise AppError(
+                409,
+                "movement_already_reversed",
+                "Inventory movement has already been reversed",
+            ) from exc
+        return self.get_movement(tenant_id, movement.id)
+
+    def _movement_direction(self, movement_type: str) -> int:
+        if movement_type in MOVEMENT_INCREASE_TYPES:
+            return 1
+        if movement_type in MOVEMENT_DECREASE_TYPES:
+            return -1
+        raise AppError(
+            409,
+            "movement_type_not_reversible",
+            "This movement type does not have a stock direction",
+        )
 
     def _resolve_sale_price(
         self,
@@ -391,6 +651,16 @@ class InventoryService:
         value = value.strip()
         return value or None
 
+    def _start_of_day(self, value: date | None) -> datetime | None:
+        if value is None:
+            return None
+        return datetime.combine(value, time.min, tzinfo=UTC)
+
+    def _end_of_day(self, value: date | None) -> datetime | None:
+        if value is None:
+            return None
+        return datetime.combine(value, time.max, tzinfo=UTC)
+
     def _validate_optional_user(
         self,
         tenant_id: uuid.UUID,
@@ -436,12 +706,19 @@ class InventoryService:
     ) -> None:
         if consultation_id is None:
             return
-        consultation = self.db.get(Consultation, consultation_id)
-        if consultation is None:
-            raise AppError(404, "consultation_not_found", "Consultation not found")
-        if consultation.tenant_id != tenant_id:
+        consultation = self.db.scalar(
+            select(Consultation).where(
+                Consultation.id == consultation_id,
+                Consultation.tenant_id == tenant_id,
+            )
+        )
+        if consultation is not None:
+            return
+        consultation_any_tenant = self.db.get(Consultation, consultation_id)
+        if consultation_any_tenant is not None:
             raise AppError(
                 409,
                 "invalid_cross_tenant_access",
                 "Consultation does not belong to the provided tenant",
             )
+        raise AppError(404, "consultation_not_found", "Consultation not found")

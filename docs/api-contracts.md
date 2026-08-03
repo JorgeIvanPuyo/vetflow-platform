@@ -229,6 +229,41 @@ send or keep `sale_tax_rate_percentage` as `0`. `sale_tax_rate_percentage`,
 contract for compatibility with historical clients; in the new flow,
 `sale_price_with_tax_ars` matches `sale_price_ars`.
 
+Inventory movement traceability:
+
+- `POST /api/v1/inventory/items/{item_id}/movements/entry` creates
+  `manual_entry`; the legacy endpoint is preserved for current clients.
+- `POST /api/v1/inventory/items/{item_id}/movements/exit` creates
+  `manual_exit`; the legacy endpoint is preserved for current clients.
+- `GET /api/v1/inventory/items/{item_id}/movements` returns the same movement
+  contract as the global list, filtered to one product.
+- `GET /api/v1/inventory/movements` lists movements globally for the tenant.
+- `GET /api/v1/inventory/movements/{movement_id}` returns detail plus
+  `can_be_reversed` and `reversal_block_reason`.
+- `POST /api/v1/inventory/movements/{movement_id}/reverse` accepts only
+  `reason` and optional `notes`; product, amount, direction, stock values, user,
+  type, and operation fields are computed by the backend.
+
+Movement responses include `movement_type`, positive `quantity`, `unit`,
+`stock_before`, `stock_after`, `source_type`, `source_id`, `operation_id`,
+`reverses_movement_id`, `reversed_by_movement_id`, `reversal_status`, product
+summary fields, actor fields, timestamps, commercial amount fields, and notes.
+Historical `entry`, `exit`, and `adjustment` values remain valid for reads and
+filters. New movement types include manual, purchase/sale, clinical consumption,
+returns, adjustments, expiration/loss/breakage, transfers, and `reversal`.
+
+Global movement filters are `search`, `inventory_item_id`, `movement_type`,
+`created_by_user_id`, `source_type`, `source_id`, `operation_id`,
+`reversal_status`, `date_from`, `date_to`, `page`, `page_size`, and
+`sort_direction`. `search` matches product name, product code, reason, and
+`source_id`. Dates are ISO date values; `date_to` is inclusive. Default order is
+`created_at DESC, id DESC`.
+
+The backend owns stock direction. Quantities must be positive, output movements
+cannot make stock negative, and every creation locks the tenant-scoped inventory
+item, records before/after stock, updates the product, creates the movement, and
+commits once. A movement can be reversed only once; reversals cannot be reversed.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.

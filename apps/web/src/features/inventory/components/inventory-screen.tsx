@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  History,
   LayoutGrid,
   List,
   Plus,
@@ -412,6 +413,10 @@ export function InventoryScreen() {
               : `${state.meta.total} item${state.meta.total === 1 ? "" : "s"} encontrado${state.meta.total === 1 ? "" : "s"}`}
           </p>
         </div>
+        <Link className="secondary-button" href="/inventory/movements">
+          <History size={18} />
+          Movimientos
+        </Link>
       </section>
 
       <Link

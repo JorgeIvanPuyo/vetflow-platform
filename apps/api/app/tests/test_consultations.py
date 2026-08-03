@@ -1049,9 +1049,13 @@ def test_add_medication_from_inventory_creates_movement_and_decreases_stock(clie
         if movement["id"] == medication["inventory_movement_id"]
     )
     assert movement["id"] == medication["inventory_movement_id"]
-    assert movement["movement_type"] == "exit"
+    assert movement["movement_type"] == "clinical_consumption"
     assert movement["reason"] == "consultation_use"
     assert movement["quantity"] == "3.00"
+    assert movement["stock_before"] == "10.00"
+    assert movement["stock_after"] == "7.00"
+    assert movement["source_type"] == "consultation"
+    assert movement["source_id"] == consultation["id"]
     assert movement["related_patient_id"] == patient["id"]
     assert movement["related_consultation_id"] == consultation["id"]
 

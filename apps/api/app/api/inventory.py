@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
@@ -11,8 +12,11 @@ from app.schemas.inventory import (
     InventoryItemCreate,
     InventoryItemRead,
     InventoryItemUpdate,
+    InventoryMovementDetailRead,
     InventoryMovementEntryCreate,
     InventoryMovementRead,
+    InventoryMovementReverseCreate,
+    InventoryReversalStatus,
     InventoryMovementType,
     InventoryMovementExitCreate,
     InventorySortBy,
@@ -111,6 +115,86 @@ def get_inventory_summary(
     }
 
 
+@router.get("/movements")
+def list_inventory_movements(
+    search: str | None = Query(default=None),
+    inventory_item_id: uuid.UUID | None = Query(default=None),
+    movement_type: InventoryMovementType | None = Query(default=None),
+    created_by_user_id: uuid.UUID | None = Query(default=None),
+    source_type: str | None = Query(default=None),
+    source_id: str | None = Query(default=None),
+    operation_id: uuid.UUID | None = Query(default=None),
+    reversal_status: InventoryReversalStatus = Query(default="all"),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    sort_direction: str = Query(default="desc"),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    movements, meta = InventoryService(db).list_movements(
+        tenant.tenant_id,
+        item_id=inventory_item_id,
+        search=search,
+        movement_type=movement_type,
+        created_by_user_id=created_by_user_id,
+        source_type=source_type,
+        source_id=source_id,
+        operation_id=operation_id,
+        reversal_status=reversal_status,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size,
+        sort_direction=sort_direction,
+    )
+    return {
+        "data": [
+            InventoryMovementRead.model_validate(movement).model_dump(mode="json")
+            for movement in movements
+        ],
+        "meta": meta,
+    }
+
+
+@router.get("/movements/{movement_id}")
+def get_inventory_movement(
+    movement_id: uuid.UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    service = InventoryService(db)
+    movement = service.get_movement(tenant.tenant_id, movement_id)
+    can_be_reversed, reversal_block_reason = service.get_movement_reversal_status(movement)
+    data = InventoryMovementRead.model_validate(movement).model_dump(mode="json")
+    data["can_be_reversed"] = can_be_reversed
+    data["reversal_block_reason"] = reversal_block_reason
+    return {
+        "data": InventoryMovementDetailRead.model_validate(data).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.post("/movements/{movement_id}/reverse", status_code=status.HTTP_201_CREATED)
+def reverse_inventory_movement(
+    movement_id: uuid.UUID,
+    payload: InventoryMovementReverseCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    movement = InventoryService(db).reverse_movement(
+        tenant.tenant_id,
+        movement_id,
+        payload,
+        created_by_user_id=tenant.user_id,
+    )
+    return {
+        "data": InventoryMovementRead.model_validate(movement).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
 @router.get("/items/{item_id}")
 def get_inventory_item(
     item_id: uuid.UUID,
@@ -191,7 +275,7 @@ def list_item_movements(
 ) -> dict:
     movements, meta = InventoryService(db).list_movements(
         tenant.tenant_id,
-        item_id,
+        item_id=item_id,
         page=page,
         page_size=page_size,
         movement_type=movement_type,

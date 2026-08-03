@@ -607,7 +607,28 @@ export type InventoryListFilters = {
   sort_order?: InventorySortOrder;
 };
 
-export type InventoryMovementType = "entry" | "exit" | "adjustment";
+export type InventoryMovementType =
+  | "initial_stock"
+  | "manual_entry"
+  | "manual_exit"
+  | "purchase"
+  | "sale"
+  | "clinical_consumption"
+  | "customer_return"
+  | "supplier_return"
+  | "adjustment_in"
+  | "adjustment_out"
+  | "expiration"
+  | "loss"
+  | "breakage"
+  | "transfer_in"
+  | "transfer_out"
+  | "reversal"
+  | "entry"
+  | "exit"
+  | "adjustment";
+
+export type InventoryReversalStatus = "all" | "active" | "reversed" | "reversal";
 
 export type InventoryExitReason =
   | "sale"
@@ -620,9 +641,20 @@ export type InventoryExitReason =
 export type InventoryMovement = {
   id: string;
   inventory_item_id: string;
+  inventory_item_name?: string | null;
+  inventory_item_internal_code?: string | null;
   movement_type: InventoryMovementType;
-  reason: InventoryExitReason | null;
+  reason: string | null;
   quantity: string;
+  unit: InventoryUnit | string | null;
+  stock_before: string | null;
+  stock_after: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  operation_id: string | null;
+  reverses_movement_id: string | null;
+  reversed_by_movement_id: string | null;
+  reversal_status: InventoryReversalStatus;
   unit_cost_ars: string | null;
   total_cost_ars: string | null;
   unit_sale_price_ars: string | null;
@@ -634,6 +666,11 @@ export type InventoryMovement = {
   created_by_user_name?: string | null;
   created_by_user_email?: string | null;
   created_at: string;
+};
+
+export type InventoryMovementDetail = InventoryMovement & {
+  can_be_reversed: boolean;
+  reversal_block_reason: string | null;
 };
 
 export type CreateInventoryEntryPayload = {
@@ -656,7 +693,22 @@ export type CreateInventoryExitPayload = {
 export type InventoryMovementsFilters = {
   page?: number;
   page_size?: number;
-  movement_type?: Extract<InventoryMovementType, "entry" | "exit">;
+  search?: string;
+  inventory_item_id?: string;
+  movement_type?: InventoryMovementType;
+  created_by_user_id?: string;
+  source_type?: string;
+  source_id?: string;
+  operation_id?: string;
+  reversal_status?: InventoryReversalStatus;
+  date_from?: string;
+  date_to?: string;
+  sort_direction?: InventorySortOrder;
+};
+
+export type ReverseInventoryMovementPayload = {
+  reason: string;
+  notes?: string | null;
 };
 
 export type AppointmentType =

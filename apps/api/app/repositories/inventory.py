@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, timedelta
+from datetime import datetime
 
 from sqlalchemy import Select, asc, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_item import InventoryItem
@@ -64,6 +65,21 @@ class InventoryRepository:
                 InventoryItem.tenant_id == tenant_id,
             )
             .options(selectinload(InventoryItem.created_by_user))
+        )
+        return self.db.scalar(statement)
+
+    def get_item_by_id_for_update(
+        self,
+        tenant_id: uuid.UUID,
+        item_id: uuid.UUID,
+    ) -> InventoryItem | None:
+        statement = (
+            select(InventoryItem)
+            .where(
+                InventoryItem.id == item_id,
+                InventoryItem.tenant_id == tenant_id,
+            )
+            .with_for_update()
         )
         return self.db.scalar(statement)
 
@@ -219,37 +235,140 @@ class InventoryRepository:
         self.db.refresh(movement)
         return movement
 
-    def list_movements(
+    def get_movement_by_id(
         self,
         tenant_id: uuid.UUID,
-        item_id: uuid.UUID,
+        movement_id: uuid.UUID,
         *,
-        page: int,
-        page_size: int,
-        movement_type: str | None,
-    ) -> tuple[list[InventoryMovement], int]:
-        statement: Select[tuple[InventoryMovement]] = (
+        for_update: bool = False,
+    ) -> InventoryMovement | None:
+        statement = (
+            select(InventoryMovement)
+            .join(
+                InventoryItem,
+                (InventoryItem.id == InventoryMovement.inventory_item_id)
+                & (InventoryItem.tenant_id == tenant_id),
+            )
+            .where(
+                InventoryMovement.id == movement_id,
+                InventoryMovement.tenant_id == tenant_id,
+            )
+            .options(
+                selectinload(InventoryMovement.inventory_item),
+                selectinload(InventoryMovement.created_by_user),
+                selectinload(InventoryMovement.reverses_movement),
+                selectinload(InventoryMovement.reversed_by_movement),
+            )
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return self.db.scalar(statement)
+
+    def get_reversal_for_movement(
+        self,
+        tenant_id: uuid.UUID,
+        movement_id: uuid.UUID,
+    ) -> InventoryMovement | None:
+        statement = (
             select(InventoryMovement)
             .where(
                 InventoryMovement.tenant_id == tenant_id,
-                InventoryMovement.inventory_item_id == item_id,
+                InventoryMovement.reverses_movement_id == movement_id,
             )
-            .options(selectinload(InventoryMovement.created_by_user))
-        )
-        count_statement = select(func.count()).select_from(InventoryMovement).where(
-            InventoryMovement.tenant_id == tenant_id,
-            InventoryMovement.inventory_item_id == item_id,
-        )
-        if movement_type is not None:
-            statement = statement.where(InventoryMovement.movement_type == movement_type)
-            count_statement = count_statement.where(
-                InventoryMovement.movement_type == movement_type
+            .options(
+                selectinload(InventoryMovement.inventory_item),
+                selectinload(InventoryMovement.created_by_user),
+                selectinload(InventoryMovement.reverses_movement),
             )
+        )
+        return self.db.scalar(statement)
+
+    def list_movements(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        page: int,
+        page_size: int,
+        inventory_item_id: uuid.UUID | None = None,
+        movement_type: str | None,
+        search: str | None = None,
+        created_by_user_id: uuid.UUID | None = None,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        operation_id: uuid.UUID | None = None,
+        reversal_status: str = "all",
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_direction: str = "desc",
+    ) -> tuple[list[InventoryMovement], int]:
+        statement: Select[tuple[InventoryMovement]] = (
+            select(InventoryMovement)
+            .join(
+                InventoryItem,
+                (InventoryItem.id == InventoryMovement.inventory_item_id)
+                & (InventoryItem.tenant_id == tenant_id),
+            )
+            .where(InventoryMovement.tenant_id == tenant_id)
+            .options(
+                selectinload(InventoryMovement.inventory_item),
+                selectinload(InventoryMovement.created_by_user),
+                selectinload(InventoryMovement.reverses_movement),
+                selectinload(InventoryMovement.reversed_by_movement),
+            )
+        )
+        count_statement = (
+            select(func.count())
+            .select_from(InventoryMovement)
+            .join(
+                InventoryItem,
+                (InventoryItem.id == InventoryMovement.inventory_item_id)
+                & (InventoryItem.tenant_id == tenant_id),
+            )
+            .where(InventoryMovement.tenant_id == tenant_id)
+        )
+        statement = self._apply_movement_filters(
+            statement,
+            tenant_id=tenant_id,
+            inventory_item_id=inventory_item_id,
+            movement_type=movement_type,
+            search=search,
+            created_by_user_id=created_by_user_id,
+            source_type=source_type,
+            source_id=source_id,
+            operation_id=operation_id,
+            reversal_status=reversal_status,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        count_statement = self._apply_movement_filters(
+            count_statement,
+            tenant_id=tenant_id,
+            inventory_item_id=inventory_item_id,
+            movement_type=movement_type,
+            search=search,
+            created_by_user_id=created_by_user_id,
+            source_type=source_type,
+            source_id=source_id,
+            operation_id=operation_id,
+            reversal_status=reversal_status,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
         offset = (page - 1) * page_size
+        first_sort = (
+            InventoryMovement.created_at.asc()
+            if sort_direction == "asc"
+            else InventoryMovement.created_at.desc()
+        )
+        second_sort = (
+            InventoryMovement.id.asc()
+            if sort_direction == "asc"
+            else InventoryMovement.id.desc()
+        )
         movements = list(
             self.db.scalars(
-                statement.order_by(InventoryMovement.created_at.desc()).offset(offset).limit(page_size)
+                statement.order_by(first_sort, second_sort).offset(offset).limit(page_size)
             ).all()
         )
         total = int(self.db.scalar(count_statement) or 0)
@@ -325,6 +444,73 @@ class InventoryRepository:
             statement = statement.where(InventoryItem.is_active.is_(is_active))
         else:
             statement = statement.where(InventoryItem.is_active.is_(True))
+        return statement
+
+    def _apply_movement_filters(
+        self,
+        statement,
+        *,
+        tenant_id: uuid.UUID,
+        inventory_item_id: uuid.UUID | None,
+        movement_type: str | None,
+        search: str | None,
+        created_by_user_id: uuid.UUID | None,
+        source_type: str | None,
+        source_id: str | None,
+        operation_id: uuid.UUID | None,
+        reversal_status: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ):
+        if inventory_item_id is not None:
+            statement = statement.where(InventoryMovement.inventory_item_id == inventory_item_id)
+        if movement_type is not None:
+            statement = statement.where(InventoryMovement.movement_type == movement_type)
+        if created_by_user_id is not None:
+            statement = statement.where(InventoryMovement.created_by_user_id == created_by_user_id)
+        if source_type is not None:
+            statement = statement.where(InventoryMovement.source_type == source_type)
+        if source_id is not None:
+            statement = statement.where(InventoryMovement.source_id == source_id)
+        if operation_id is not None:
+            statement = statement.where(InventoryMovement.operation_id == operation_id)
+        if date_from is not None:
+            statement = statement.where(InventoryMovement.created_at >= date_from)
+        if date_to is not None:
+            statement = statement.where(InventoryMovement.created_at <= date_to)
+        if search:
+            pattern = f"%{search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    func.lower(InventoryItem.name).like(pattern),
+                    func.lower(InventoryItem.internal_code).like(pattern),
+                    func.lower(func.coalesce(InventoryMovement.reason, "")).like(pattern),
+                    func.lower(func.coalesce(InventoryMovement.source_id, "")).like(pattern),
+                )
+            )
+
+        reversal = aliased(InventoryMovement)
+        reversal_exists = (
+            select(reversal.id)
+            .where(
+                reversal.tenant_id == tenant_id,
+                reversal.reverses_movement_id == InventoryMovement.id,
+            )
+            .exists()
+        )
+        if reversal_status == "active":
+            statement = statement.where(
+                InventoryMovement.movement_type != "reversal",
+                ~reversal_exists,
+            )
+        elif reversal_status == "reversed":
+            statement = statement.where(
+                InventoryMovement.movement_type != "reversal",
+                reversal_exists,
+            )
+        elif reversal_status == "reversal":
+            statement = statement.where(InventoryMovement.movement_type == "reversal")
+
         return statement
 
     def _get_sort_column(self, sort_by: str):

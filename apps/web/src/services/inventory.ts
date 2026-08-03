@@ -5,11 +5,13 @@ import type {
   CreateInventoryExitPayload,
   InventoryFilterOptions,
   InventoryItem,
+  InventoryMovementDetail,
   InventoryListFilters,
   InventoryMovement,
   InventoryMovementsFilters,
   InventorySummary,
   CreateInventoryItemPayload,
+  ReverseInventoryMovementPayload,
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
@@ -132,5 +134,38 @@ export function getInventoryMovements(
     query
       ? `/api/v1/inventory/items/${itemId}/movements?${query}`
       : `/api/v1/inventory/items/${itemId}/movements`,
+  );
+}
+
+export function getInventoryMovementList(filters: InventoryMovementsFilters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    params.set(key, String(value));
+  });
+
+  const query = params.toString();
+  return api.get<InventoryMovementListResponse>(
+    query ? `/api/v1/inventory/movements?${query}` : "/api/v1/inventory/movements",
+  );
+}
+
+export function getInventoryMovement(movementId: string) {
+  return api.get<ApiItemResponse<InventoryMovementDetail>>(
+    `/api/v1/inventory/movements/${movementId}`,
+  );
+}
+
+export function reverseInventoryMovement(
+  movementId: string,
+  payload: ReverseInventoryMovementPayload,
+) {
+  return api.post<ApiItemResponse<InventoryMovement>>(
+    `/api/v1/inventory/movements/${movementId}/reverse`,
+    payload,
   );
 }

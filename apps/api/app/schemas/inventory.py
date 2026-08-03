@@ -42,7 +42,28 @@ InventorySortBy = Literal[
     "updated_at",
 ]
 SortOrder = Literal["asc", "desc"]
-InventoryMovementType = Literal["entry", "exit", "adjustment"]
+InventoryMovementType = Literal[
+    "initial_stock",
+    "manual_entry",
+    "manual_exit",
+    "purchase",
+    "sale",
+    "clinical_consumption",
+    "customer_return",
+    "supplier_return",
+    "adjustment_in",
+    "adjustment_out",
+    "expiration",
+    "loss",
+    "breakage",
+    "transfer_in",
+    "transfer_out",
+    "reversal",
+    "entry",
+    "exit",
+    "adjustment",
+]
+InventoryReversalStatus = Literal["all", "active", "reversed", "reversal"]
 InventoryExitReason = Literal[
     "sale",
     "consultation_use",
@@ -206,14 +227,50 @@ class InventoryMovementExitCreate(BaseModel):
     related_consultation_id: uuid.UUID | None = None
 
 
+class InventoryMovementReverseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=50)
+    notes: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def strip_required_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def strip_optional_notes(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None
+
+
 class InventoryMovementRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     inventory_item_id: uuid.UUID
+    inventory_item_name: str | None = None
+    inventory_item_internal_code: str | None = None
     movement_type: InventoryMovementType
     reason: str | None = None
     quantity: Decimal
+    unit: str | None = None
+    stock_before: Decimal | None = None
+    stock_after: Decimal | None = None
+    source_type: str | None = None
+    source_id: str | None = None
+    operation_id: uuid.UUID | None = None
+    reverses_movement_id: uuid.UUID | None = None
+    reversed_by_movement_id: uuid.UUID | None = None
+    reversal_status: InventoryReversalStatus
     unit_cost_ars: Decimal | None = None
     total_cost_ars: Decimal | None = None
     unit_sale_price_ars: Decimal | None = None
@@ -235,3 +292,8 @@ class InventoryMovementRead(BaseModel):
         if self.created_by_user_name or self.created_by_user_email:
             return value
         return None
+
+
+class InventoryMovementDetailRead(InventoryMovementRead):
+    can_be_reversed: bool
+    reversal_block_reason: str | None = None
