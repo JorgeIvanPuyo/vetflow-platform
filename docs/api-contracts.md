@@ -359,6 +359,54 @@ Workbook sheets:
 target physical stock. String values that could be interpreted as formulas are
 escaped in the workbook.
 
+Inventory bulk product edits:
+
+- `POST /api/v1/inventory/bulk-operations/preview` persists a tenant-scoped
+  preview and returns the operation with paginated row diagnostics.
+- `GET /api/v1/inventory/bulk-operations` lists tenant-scoped operations with
+  optional `status`, `operation_type`, `created_by_user_id`, `date_from`, and
+  `date_to` filters.
+- `GET /api/v1/inventory/bulk-operations/{operation_id}` returns detail,
+  summary, and row diagnostics. Rows can be filtered by `row_status`.
+- `POST /api/v1/inventory/bulk-operations/{operation_id}/confirm` applies a
+  live preview once, transactionally.
+- `POST /api/v1/inventory/bulk-operations/{operation_id}/reverse` reverts
+  changed rows when current product values still match the confirmed values.
+
+Selection modes:
+
+- `selected`: accepts up to 500 explicit product IDs, deduplicated while
+  preserving first occurrence order. Every selected ID must belong to the tenant.
+- `filtered`: uses the same product SQL filters as `GET /api/v1/inventory/items`
+  for `search`, `category`, `brand`, `supplier`, `stock_status`, and
+  `is_active`. The selected result set may contain at most 2,000 products.
+- `excluded_ids`: accepts up to 500 product IDs and removes them from either
+  selection mode.
+
+Supported operations are limited to product metadata and commercial fields:
+increase/decrease `sale_price_ars` by percentage, set
+`profit_margin_percentage` and derived sale price, set `sale_price_ars`, set or
+clear `brand`/`supplier`, set `minimum_stock`, `activate`, and `deactivate`.
+Bulk product edits never change `current_stock`, `category`, `unit`,
+`internal_code`, product IDs, stock movements, import records, export records,
+or clinical-consumption movement history.
+
+Preview has a 24-hour TTL, is persisted before confirmation, and records
+old/new values plus product `updated_at` snapshots. Confirmation locks the
+operation and selected products, rejects expired previews, rejects stale product
+snapshots with `409 inventory_bulk_operation_conflict`, and commits all product
+changes and row statuses together. Reverse is partial-safe: rows whose current
+value no longer matches the confirmed bulk value become conflicts and are not
+overwritten; rows already reverted are not applied again.
+
+Bulk operation history and detail responses expose visible traceability fields:
+`created_by_user_name`, `created_by_user_email`, `created_at`, `confirmed_at`,
+`reversed_by_user_name`, `reversed_by_user_email`, `reversed_at`, and
+`reversal_reason`. User summary fields are nullable when no authenticated user
+was resolved or when a related user does not belong to the same tenant. Detail
+keeps `created_by_user_id` and `reversed_by_user_id` only when the matching
+same-tenant user summary is available.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.

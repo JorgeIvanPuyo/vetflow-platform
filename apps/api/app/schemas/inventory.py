@@ -66,6 +66,35 @@ InventoryMovementType = Literal[
 InventoryReversalStatus = Literal["all", "active", "reversed", "reversal"]
 InventoryImportMode = Literal["initial_load", "catalog_update"]
 InventoryExportMode = Literal["all", "filtered", "selected"]
+InventoryBulkOperationType = Literal[
+    "increase_sale_price_percentage",
+    "decrease_sale_price_percentage",
+    "set_profit_margin_percentage",
+    "set_sale_price",
+    "set_brand",
+    "set_supplier",
+    "set_minimum_stock",
+    "activate",
+    "deactivate",
+]
+InventoryBulkSelectionMode = Literal["selected", "filtered"]
+InventoryBulkOperationStatus = Literal[
+    "preview",
+    "confirmed",
+    "partially_reversed",
+    "reversed",
+    "failed",
+    "expired",
+]
+InventoryBulkOperationItemStatus = Literal[
+    "pending",
+    "changed",
+    "unchanged",
+    "invalid",
+    "conflict",
+    "reverted",
+    "excluded",
+]
 InventoryImportStatus = Literal["preview", "confirmed", "failed", "expired"]
 InventoryImportRowStatus = Literal["valid", "warning", "error", "skipped"]
 InventoryImportRowAction = Literal["create", "update", "skip", "review_required"]
@@ -501,3 +530,231 @@ class InventoryExportCreate(BaseModel):
         if filters is not None and filters.has_any_filter():
             raise ValueError("selected mode does not accept filters")
         return self
+
+
+class InventoryBulkOperationFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = Field(default=None, max_length=255)
+    category: InventoryCategory | None = None
+    brand: str | None = Field(default=None, max_length=150)
+    supplier: str | None = Field(default=None, max_length=255)
+    stock_status: InventoryStockStatus | None = None
+    is_active: bool | None = None
+
+    @field_validator("search", "brand", "supplier", mode="before")
+    @classmethod
+    def strip_bulk_filter_string(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value or None
+
+
+class InventoryBulkSelectionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selection_mode: InventoryBulkSelectionMode
+    selected_ids: list[uuid.UUID] = Field(default_factory=list)
+    filters: InventoryBulkOperationFilters | None = None
+    excluded_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_bulk_selection(self):
+        if len(self.selected_ids) > 500:
+            raise ValueError("selected_ids accepts at most 500 ids")
+        if len(self.excluded_ids) > 500:
+            raise ValueError("excluded_ids accepts at most 500 ids")
+        if self.selection_mode == "selected":
+            if not self.selected_ids:
+                raise ValueError("selected mode requires selected_ids")
+            if self.filters is not None:
+                raise ValueError("selected mode does not accept filters")
+        elif self.selected_ids:
+            raise ValueError("filtered mode does not accept selected_ids")
+        return self
+
+
+class InventoryBulkOperationValueCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_type: InventoryBulkOperationType
+    percentage: Decimal | None = Field(default=None, gt=0, le=1000)
+    sale_price_ars: Decimal | None = Field(default=None, ge=0)
+    profit_margin_percentage: Decimal | None = Field(default=None, ge=0, le=1000)
+    brand: str | None = Field(default=None, max_length=150)
+    supplier: str | None = Field(default=None, max_length=255)
+    minimum_stock: Decimal | None = Field(default=None, ge=0)
+    confirm_clear: bool = False
+
+    @field_validator("brand", "supplier", mode="before")
+    @classmethod
+    def strip_bulk_value_string(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_bulk_value(self):
+        if self.operation_type in {
+            "increase_sale_price_percentage",
+            "decrease_sale_price_percentage",
+        }:
+            if self.percentage is None:
+                raise ValueError("percentage is required")
+        elif self.operation_type == "set_profit_margin_percentage":
+            if self.profit_margin_percentage is None:
+                raise ValueError("profit_margin_percentage is required")
+        elif self.operation_type == "set_sale_price":
+            if self.sale_price_ars is None:
+                raise ValueError("sale_price_ars is required")
+        elif self.operation_type == "set_brand":
+            if self.brand is None:
+                raise ValueError("brand is required")
+            if self.brand == "" and not self.confirm_clear:
+                raise ValueError("confirm_clear is required to clear brand")
+        elif self.operation_type == "set_supplier":
+            if self.supplier is None:
+                raise ValueError("supplier is required")
+            if self.supplier == "" and not self.confirm_clear:
+                raise ValueError("confirm_clear is required to clear supplier")
+        elif self.operation_type == "set_minimum_stock":
+            if self.minimum_stock is None:
+                raise ValueError("minimum_stock is required")
+        return self
+
+
+class InventoryBulkOperationPreviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selection: InventoryBulkSelectionCreate
+    operation: InventoryBulkOperationValueCreate
+
+
+class InventoryBulkOperationConfirmCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: bool
+
+    @model_validator(mode="after")
+    def validate_confirm(self):
+        if not self.confirm:
+            raise ValueError("confirm must be true")
+        return self
+
+
+class InventoryBulkOperationReverseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=255)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reverse_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
+
+
+class InventoryBulkOperationSummaryRead(BaseModel):
+    selected_count: int
+    affected_count: int
+    unchanged_count: int
+    invalid_count: int
+    excluded_count: int
+    reversed_count: int
+    conflict_count: int
+
+
+class InventoryBulkOperationItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    inventory_item_id: uuid.UUID
+    inventory_item_name: str | None = None
+    inventory_item_internal_code: str | None = None
+    field_name: str
+    old_value_json: dict | None = None
+    new_value_json: dict | None = None
+    product_updated_at_snapshot: datetime
+    status: InventoryBulkOperationItemStatus
+    error_message: str | None = None
+    reverted_at: datetime | None = None
+    created_at: datetime
+
+
+class InventoryBulkOperationRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    operation_type: InventoryBulkOperationType
+    selection_mode: InventoryBulkSelectionMode
+    filters_json: dict | None = None
+    request_json: dict
+    status: InventoryBulkOperationStatus
+    selected_count: int
+    affected_count: int
+    unchanged_count: int
+    invalid_count: int
+    excluded_count: int
+    reversed_count: int
+    conflict_count: int
+    expires_at: datetime
+    confirmed_at: datetime | None = None
+    reversed_at: datetime | None = None
+    reversed_by_user_id: uuid.UUID | None = None
+    reversed_by_user_name: str | None = None
+    reversed_by_user_email: str | None = None
+    reversal_reason: str | None = None
+    created_by_user_id: uuid.UUID | None = None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
+    created_at: datetime
+    items: list[InventoryBulkOperationItemRead] = Field(default_factory=list)
+    summary: InventoryBulkOperationSummaryRead | None = None
+
+    @field_serializer("created_by_user_id")
+    def serialize_bulk_created_by_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.created_by_user_name or self.created_by_user_email:
+            return value
+        return None
+
+    @field_serializer("reversed_by_user_id")
+    def serialize_bulk_reversed_by_user_id(
+        self,
+        value: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        if self.reversed_by_user_name or self.reversed_by_user_email:
+            return value
+        return None
+
+
+class InventoryBulkOperationListItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    operation_type: InventoryBulkOperationType
+    selection_mode: InventoryBulkSelectionMode
+    status: InventoryBulkOperationStatus
+    selected_count: int
+    affected_count: int
+    unchanged_count: int
+    invalid_count: int
+    excluded_count: int
+    reversed_count: int
+    conflict_count: int
+    confirmed_at: datetime | None = None
+    reversed_at: datetime | None = None
+    reversed_by_user_name: str | None = None
+    reversed_by_user_email: str | None = None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
+    created_at: datetime

@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Edit3,
   FileSpreadsheet,
   Filter,
   History,
@@ -21,6 +22,7 @@ import {
   buildInventoryListFilters,
   formatInventoryCurrency,
   formatInventoryDateCompact,
+  formatInventoryDateTime,
   formatInventoryQuantity,
   getInventoryCategoryIcon,
   getInventoryCategoryLabel,
@@ -33,14 +35,20 @@ import {
   inventoryStockStatusOptions,
   InventoryFilterState,
 } from "@/features/inventory/components/inventory-helpers";
+import { formatUserName } from "@/features/inventory/components/inventory-bulk-operations-screen";
 import { getApiErrorMessage } from "@/lib/api";
 import {
   exportInventory,
+  confirmInventoryBulkOperation,
   getInventoryFilterOptions,
   getInventoryItems,
   getInventorySummary,
+  previewInventoryBulkOperation,
 } from "@/services/inventory";
 import type {
+  InventoryBulkOperation,
+  InventoryBulkOperationPreviewPayload,
+  InventoryBulkOperationType,
   InventoryCategory,
   InventoryExportPayload,
   InventoryFilterOptions,
@@ -67,6 +75,7 @@ type InventoryScreenState = {
 };
 
 type InventoryViewMode = "cards" | "table";
+type BulkSelectionMode = "selected" | "filtered";
 
 type InventoryFilterOptionsState = {
   data: InventoryFilterOptions;
@@ -87,6 +96,17 @@ const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT_BY: InventorySortBy = "name";
 const DEFAULT_SORT_DIRECTION: InventorySortOrder = "asc";
 const SEARCH_DEBOUNCE_MS = 400;
+const bulkOperationOptions: Array<{ value: InventoryBulkOperationType; label: string }> = [
+  { value: "increase_sale_price_percentage", label: "Aumentar precio %" },
+  { value: "decrease_sale_price_percentage", label: "Disminuir precio %" },
+  { value: "set_profit_margin_percentage", label: "Establecer margen" },
+  { value: "set_sale_price", label: "Establecer precio final" },
+  { value: "set_brand", label: "Establecer marca" },
+  { value: "set_supplier", label: "Establecer proveedor" },
+  { value: "set_minimum_stock", label: "Establecer stock mínimo" },
+  { value: "activate", label: "Activar" },
+  { value: "deactivate", label: "Inactivar" },
+];
 
 const inventoryCategoryValues = new Set<InventoryFilterState["category"]>([
   "all",
@@ -144,6 +164,19 @@ export function InventoryScreen() {
   const [exportMode, setExportMode] = useState<"all" | "filtered">("filtered");
   const [isExporting, setIsExporting] = useState(false);
   const [exportErrorMessage, setExportErrorMessage] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSelectionMode, setBulkSelectionMode] = useState<BulkSelectionMode>("selected");
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [bulkOperationType, setBulkOperationType] =
+    useState<InventoryBulkOperationType>("increase_sale_price_percentage");
+  const [bulkValue, setBulkValue] = useState("");
+  const [bulkConfirmClear, setBulkConfirmClear] = useState(false);
+  const [bulkPreview, setBulkPreview] = useState<InventoryBulkOperation | null>(null);
+  const [bulkResult, setBulkResult] = useState<InventoryBulkOperation | null>(null);
+  const [bulkErrorMessage, setBulkErrorMessage] = useState<string | null>(null);
+  const [isBulkPreviewing, setIsBulkPreviewing] = useState(false);
+  const [isBulkConfirming, setIsBulkConfirming] = useState(false);
 
   const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const { filterState, legacyStatus, page, pageSize } = queryState;
@@ -165,6 +198,15 @@ export function InventoryScreen() {
   const listReturnHref = useMemo(() => {
     return `${pathname}${queryString ? `?${queryString}` : ""}`;
   }, [pathname, queryString]);
+  const selectedCount =
+    bulkSelectionMode === "filtered"
+      ? Math.max(0, state.meta.total - excludedIds.size)
+      : selectedIds.size;
+  const isPageSelected =
+    state.items.length > 0 &&
+    state.items.every((item) =>
+      bulkSelectionMode === "filtered" ? !excludedIds.has(item.id) : selectedIds.has(item.id),
+    );
 
   const updateInventoryUrl = useCallback(
     (
@@ -401,8 +443,95 @@ export function InventoryScreen() {
     );
   }
 
-  function openItem(itemId: string) {
-    router.push(`/inventory/${itemId}?return_to=${encodeURIComponent(listReturnHref)}`);
+  function toggleItemSelection(itemId: string) {
+    if (bulkSelectionMode === "filtered") {
+      setExcludedIds((current) => {
+        const next = new Set(current);
+        if (next.has(itemId)) {
+          next.delete(itemId);
+        } else {
+          next.add(itemId);
+        }
+        return next;
+      });
+      return;
+    }
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }
+
+  function selectCurrentPage() {
+    setBulkSelectionMode("selected");
+    setExcludedIds(new Set());
+    setSelectedIds(new Set(state.items.map((item) => item.id)));
+  }
+
+  function selectAllFiltered() {
+    setBulkSelectionMode("filtered");
+    setSelectedIds(new Set());
+    setExcludedIds(new Set());
+  }
+
+  function clearBulkSelection() {
+    setBulkSelectionMode("selected");
+    setSelectedIds(new Set());
+    setExcludedIds(new Set());
+    setBulkPreview(null);
+    setBulkErrorMessage(null);
+  }
+
+  async function handleBulkPreview() {
+    const payload = buildBulkOperationPayload(
+      bulkSelectionMode,
+      selectedIds,
+      excludedIds,
+      queryState,
+      bulkOperationType,
+      bulkValue,
+      bulkConfirmClear,
+    );
+    if (typeof payload === "string") {
+      setBulkErrorMessage(payload);
+      return;
+    }
+    setIsBulkPreviewing(true);
+    setBulkErrorMessage(null);
+    try {
+      const response = await previewInventoryBulkOperation(payload);
+      setBulkPreview(response.data);
+      setBulkResult(null);
+    } catch (error) {
+      setBulkErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsBulkPreviewing(false);
+    }
+  }
+
+  async function handleBulkConfirm() {
+    if (!bulkPreview) {
+      return;
+    }
+    setIsBulkConfirming(true);
+    setBulkErrorMessage(null);
+    try {
+      const response = await confirmInventoryBulkOperation(bulkPreview.id);
+      setBulkPreview(response.data);
+      setBulkResult(response.data);
+      await loadInventory();
+      clearBulkSelection();
+      setIsBulkOpen(false);
+    } catch (error) {
+      setBulkErrorMessage(getApiErrorMessage(error));
+    } finally {
+      setIsBulkConfirming(false);
+    }
   }
 
   async function handleExport() {
@@ -441,6 +570,10 @@ export function InventoryScreen() {
           </p>
         </div>
         <div className="inventory-header-actions">
+          <Link className="secondary-button" href="/inventory/bulk-operations">
+            <History size={18} />
+            Historial grupal
+          </Link>
           <button
             className="secondary-button"
             type="button"
@@ -589,6 +722,51 @@ export function InventoryScreen() {
         </div>
       </section>
 
+      <section className="panel inventory-bulk-selection-bar">
+        <div>
+          <strong>{selectedCount} seleccionado{selectedCount === 1 ? "" : "s"}</strong>
+          <span>
+            {bulkSelectionMode === "filtered"
+              ? "Todos los productos que cumplen los filtros, con exclusiones locales."
+              : "Selección manual de productos visibles."}
+          </span>
+        </div>
+        <div className="inventory-bulk-selection-bar__actions">
+          <button className="secondary-button" type="button" onClick={selectCurrentPage}>
+            Seleccionar esta página
+          </button>
+          <button className="secondary-button" type="button" onClick={selectAllFiltered}>
+            Seleccionar todos los resultados
+          </button>
+          <button className="secondary-button" type="button" onClick={clearBulkSelection}>
+            Limpiar
+          </button>
+          <button
+            className="primary-button"
+            disabled={selectedCount === 0}
+            type="button"
+            onClick={() => {
+              setBulkPreview(null);
+              setBulkResult(null);
+              setBulkErrorMessage(null);
+              setIsBulkOpen(true);
+            }}
+          >
+            <Edit3 size={18} />
+            Editar grupo
+          </button>
+        </div>
+      </section>
+
+      {bulkResult ? (
+        <section className="panel-note inventory-bulk-result" aria-live="polite">
+          Operación confirmada por{" "}
+          {formatUserName(bulkResult.created_by_user_name, bulkResult.created_by_user_email)} el{" "}
+          {formatInventoryDateTime(bulkResult.confirmed_at)}. {bulkResult.affected_count} productos cambiados.
+          <Link href={`/inventory/bulk-operations/${bulkResult.id}`}>Ver detalle</Link>
+        </section>
+      ) : null}
+
       {state.errorMessage && state.summary === null ? (
         <section className="error-state">
           <strong>No pudimos cargar el inventario.</strong> {state.errorMessage}
@@ -619,12 +797,23 @@ export function InventoryScreen() {
 
           {state.items.length > 0 && viewMode === "cards" ? (
             <section className="inventory-card-list" aria-busy={state.isRefreshing}>
-              {state.items.map((item) => (
-                <Link
+                  {state.items.map((item) => (
+                <article
                   key={item.id}
-                  className="inventory-card"
-                  href={`/inventory/${item.id}?return_to=${encodeURIComponent(listReturnHref)}`}
+                  className="inventory-card inventory-card--selectable"
                 >
+                  <label className="inventory-row-checkbox">
+                    <input
+                      checked={bulkSelectionMode === "filtered" ? !excludedIds.has(item.id) : selectedIds.has(item.id)}
+                      type="checkbox"
+                      onChange={() => toggleItemSelection(item.id)}
+                    />
+                    <span className="sr-only">Seleccionar {item.name}</span>
+                  </label>
+                  <Link
+                    className="inventory-card__link"
+                    href={`/inventory/${item.id}?return_to=${encodeURIComponent(listReturnHref)}`}
+                  >
                   <span className="inventory-card__icon" aria-hidden="true">
                     {getInventoryCategoryIcon(item.category)}
                   </span>
@@ -656,7 +845,8 @@ export function InventoryScreen() {
                       ) : null}
                     </div>
                   </div>
-                </Link>
+                  </Link>
+                </article>
               ))}
             </section>
           ) : null}
@@ -668,6 +858,20 @@ export function InventoryScreen() {
                   <caption className="sr-only">Items de inventario</caption>
                   <thead>
                     <tr>
+                      <th>
+                        <input
+                          aria-label="Seleccionar página"
+                          checked={isPageSelected}
+                          type="checkbox"
+                          onChange={() => {
+                            if (isPageSelected) {
+                              clearBulkSelection();
+                            } else {
+                              selectCurrentPage();
+                            }
+                          }}
+                        />
+                      </th>
                       <th>Producto</th>
                       <th>Categoría / proveedor</th>
                       <th>Stock</th>
@@ -683,16 +887,16 @@ export function InventoryScreen() {
                       return (
                         <tr
                           key={item.id}
-                          tabIndex={0}
-                          aria-label={`Abrir ${item.name}`}
-                          onClick={() => openItem(item.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              openItem(item.id);
-                            }
-                          }}
+                          className="inventory-table__row--static"
                         >
+                          <td>
+                            <input
+                              aria-label={`Seleccionar ${item.name}`}
+                              checked={bulkSelectionMode === "filtered" ? !excludedIds.has(item.id) : selectedIds.has(item.id)}
+                              type="checkbox"
+                              onChange={() => toggleItemSelection(item.id)}
+                            />
+                          </td>
                           <td>
                             <span className="inventory-table__product">
                               <span className="inventory-table__icon" aria-hidden="true">
@@ -729,7 +933,6 @@ export function InventoryScreen() {
                             <Link
                               className="inventory-table__action"
                               href={`/inventory/${item.id}?return_to=${encodeURIComponent(listReturnHref)}`}
-                              onClick={(event) => event.stopPropagation()}
                             >
                               Abrir
                               <ChevronRight size={16} aria-hidden="true" />
@@ -1047,6 +1250,120 @@ export function InventoryScreen() {
           </section>
         </div>
       ) : null}
+
+      {isBulkOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsBulkOpen(false)}>
+          <section
+            className="bottom-sheet inventory-bulk-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inventory-bulk-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bottom-sheet__header">
+              <div>
+                <p className="eyebrow">Inventario</p>
+                <h2 id="inventory-bulk-title">Edición grupal</h2>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setIsBulkOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="inventory-filter-grid">
+              <label className="field">
+                <span>Operación</span>
+                <select
+                  value={bulkOperationType}
+                  onChange={(event) => {
+                    setBulkOperationType(event.target.value as InventoryBulkOperationType);
+                    setBulkPreview(null);
+                  }}
+                >
+                  {bulkOperationOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              {requiresBulkValue(bulkOperationType) ? (
+                <label className="field">
+                  <span>Valor</span>
+                  <input
+                    value={bulkValue}
+                    onChange={(event) => {
+                      setBulkValue(event.target.value);
+                      setBulkPreview(null);
+                    }}
+                    placeholder={bulkValuePlaceholder(bulkOperationType)}
+                  />
+                </label>
+              ) : null}
+              {bulkOperationType === "set_brand" || bulkOperationType === "set_supplier" ? (
+                <label className="inventory-import-row-checkbox">
+                  <input
+                    checked={bulkConfirmClear}
+                    type="checkbox"
+                    onChange={(event) => setBulkConfirmClear(event.target.checked)}
+                  />
+                  <span>Confirmar limpieza si el valor está vacío</span>
+                </label>
+              ) : null}
+            </div>
+            <div className="panel-note">
+              {bulkSelectionMode === "filtered"
+                ? "Se seleccionaron todos los productos que cumplen los filtros actuales."
+                : `${selectedIds.size} productos seleccionados manualmente.`}
+            </div>
+            {bulkErrorMessage ? <div className="error-state">{bulkErrorMessage}</div> : null}
+            {bulkPreview ? (
+              <section className="inventory-table-card" aria-label="Preview de edición grupal">
+                <div className="inventory-table-scroll">
+                  <table className="inventory-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Campo</th>
+                        <th>Anterior</th>
+                        <th>Nuevo</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkPreview.items.slice(0, 20).map((row) => (
+                        <tr key={row.id} className="inventory-table__row--static">
+                          <td>{row.inventory_item_name ?? row.inventory_item_id}</td>
+                          <td>{row.field_name}</td>
+                          <td>{formatBulkValue(row.old_value_json)}</td>
+                          <td>{formatBulkValue(row.new_value_json)}</td>
+                          <td>{row.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="panel-note">
+                  Afectados {bulkPreview.affected_count}, sin cambio {bulkPreview.unchanged_count}, inválidos {bulkPreview.invalid_count}.
+                </p>
+              </section>
+            ) : null}
+            <div className="modal-actions">
+              <button className="secondary-button" type="button" onClick={() => setIsBulkOpen(false)}>
+                Cancelar
+              </button>
+              <button className="secondary-button" disabled={isBulkPreviewing} type="button" onClick={handleBulkPreview}>
+                Simular
+              </button>
+              <button
+                className="primary-button"
+                disabled={!bulkPreview || bulkPreview.affected_count === 0 || isBulkConfirming}
+                type="button"
+                onClick={handleBulkConfirm}
+              >
+                Confirmar
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1191,4 +1508,124 @@ function describeInventoryExportFilters(queryState: InventoryQueryState) {
   ].filter(Boolean);
 
   return `${parts.join(" · ")}. Se exportan todos los resultados filtrados, no solo la página ${queryState.page}.`;
+}
+
+function buildBulkOperationPayload(
+  selectionMode: BulkSelectionMode,
+  selectedIds: Set<string>,
+  excludedIds: Set<string>,
+  queryState: InventoryQueryState,
+  operationType: InventoryBulkOperationType,
+  rawValue: string,
+  confirmClear: boolean,
+): InventoryBulkOperationPreviewPayload | string {
+  const operation: InventoryBulkOperationPreviewPayload["operation"] = {
+    operation_type: operationType,
+    confirm_clear: confirmClear,
+  };
+
+  if (operationType === "increase_sale_price_percentage" || operationType === "decrease_sale_price_percentage") {
+    const value = readBulkNumber(rawValue);
+    if (value === null || value <= 0) {
+      return "Ingresa un porcentaje mayor que cero.";
+    }
+    operation.percentage = value;
+  } else if (operationType === "set_profit_margin_percentage") {
+    const value = readBulkNumber(rawValue);
+    if (value === null || value < 0) {
+      return "Ingresa un margen mayor o igual a cero.";
+    }
+    operation.profit_margin_percentage = value;
+  } else if (operationType === "set_sale_price") {
+    const value = readBulkNumber(rawValue);
+    if (value === null || value < 0) {
+      return "Ingresa un precio mayor o igual a cero.";
+    }
+    operation.sale_price_ars = value;
+  } else if (operationType === "set_minimum_stock") {
+    const value = readBulkNumber(rawValue);
+    if (value === null || value < 0) {
+      return "Ingresa un stock mínimo mayor o igual a cero.";
+    }
+    operation.minimum_stock = value;
+  } else if (operationType === "set_brand") {
+    operation.brand = rawValue.trim();
+  } else if (operationType === "set_supplier") {
+    operation.supplier = rawValue.trim();
+  }
+
+  if (selectionMode === "selected") {
+    if (selectedIds.size === 0) {
+      return "Selecciona al menos un producto.";
+    }
+    return {
+      selection: {
+        selection_mode: "selected",
+        selected_ids: Array.from(selectedIds),
+        excluded_ids: Array.from(excludedIds),
+      },
+      operation,
+    };
+  }
+
+  const { page: _page, page_size: _pageSize, status: _status, sort_by: _sortBy, sort_direction: _sortDirection, ...filters } =
+    buildInventoryListFilters(
+      queryState.search,
+      queryState.filterState,
+      queryState.page,
+      queryState.pageSize,
+    );
+  return {
+    selection: {
+      selection_mode: "filtered",
+      filters,
+      excluded_ids: Array.from(excludedIds),
+    },
+    operation,
+  };
+}
+
+function readBulkNumber(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function requiresBulkValue(operationType: InventoryBulkOperationType) {
+  return !["activate", "deactivate"].includes(operationType);
+}
+
+function bulkValuePlaceholder(operationType: InventoryBulkOperationType) {
+  if (operationType.includes("percentage")) {
+    return "Porcentaje";
+  }
+  if (operationType === "set_sale_price") {
+    return "Precio final";
+  }
+  if (operationType === "set_minimum_stock") {
+    return "Stock mínimo";
+  }
+  if (operationType === "set_brand") {
+    return "Marca";
+  }
+  if (operationType === "set_supplier") {
+    return "Proveedor";
+  }
+  return "Valor";
+}
+
+function formatBulkValue(value: Record<string, unknown> | null) {
+  if (!value) {
+    return "";
+  }
+  const innerValue = value.value;
+  if (innerValue && typeof innerValue === "object") {
+    return Object.entries(innerValue as Record<string, unknown>)
+      .map(([key, item]) => `${key}: ${String(item ?? "")}`)
+      .join(", ");
+  }
+  return String(innerValue ?? "");
 }

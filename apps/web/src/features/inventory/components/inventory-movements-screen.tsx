@@ -334,12 +334,15 @@ export function InventoryMovementsScreen() {
                   <th>Origen</th>
                   <th>Estado</th>
                   <th>Fecha</th>
-                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {state.data.map((movement) => (
-                  <MovementRow key={movement.id} movement={movement} />
+                  <MovementRow
+                    key={movement.id}
+                    movement={movement}
+                    onOpen={() => router.push(`/inventory/movements/${movement.id}`)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -497,14 +500,26 @@ export function InventoryMovementsScreen() {
   );
 }
 
-function MovementRow({ movement }: { movement: InventoryMovement }) {
+function MovementRow({ movement, onOpen }: { movement: InventoryMovement; onOpen: () => void }) {
   const direction = getInventoryMovementDirection(movement.movement_type);
   const unit = (movement.unit || "unit") as InventoryUnit;
   const productName = movement.inventory_item_name || "Producto de inventario";
   const code = movement.inventory_item_internal_code || "Sin código";
 
   return (
-    <tr>
+    <tr
+      aria-label={`Abrir movimiento de ${productName}`}
+      className="inventory-table__row--clickable"
+      role="link"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <td>
         <span className="inventory-table__product">
           <span className="inventory-table__icon" aria-hidden="true">
@@ -530,12 +545,6 @@ function MovementRow({ movement }: { movement: InventoryMovement }) {
         </span>
       </td>
       <td>{formatInventoryDateTime(movement.created_at)}</td>
-      <td>
-        <Link className="inventory-table__action" href={`/inventory/movements/${movement.id}`}>
-          Abrir
-          <ChevronRight size={16} aria-hidden="true" />
-        </Link>
-      </td>
     </tr>
   );
 }

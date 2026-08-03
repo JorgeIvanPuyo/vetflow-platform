@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
@@ -9,6 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.inventory import (
+    InventoryBulkOperationConfirmCreate,
+    InventoryBulkOperationListItemRead,
+    InventoryBulkOperationPreviewCreate,
+    InventoryBulkOperationRead,
+    InventoryBulkOperationReverseCreate,
+    InventoryBulkOperationStatus,
+    InventoryBulkOperationType,
     InventoryCategory,
     InventoryExportCreate,
     InventoryFilterOptionsRead,
@@ -31,6 +38,7 @@ from app.schemas.inventory import (
     InventoryStatusFilter,
     InventorySummaryRead,
 )
+from app.services.inventory_bulk_operation import InventoryBulkOperationService
 from app.services.inventory_export import InventoryExportService, XLSX_MEDIA_TYPE
 from app.services.inventory import InventoryService
 from app.services.inventory_import import InventoryImportService
@@ -114,6 +122,110 @@ def export_inventory(
             "Content-Disposition": f'attachment; filename="{export_file.filename}"',
         },
     )
+
+
+@router.post("/bulk-operations/preview", status_code=status.HTTP_201_CREATED)
+def preview_inventory_bulk_operation(
+    payload: InventoryBulkOperationPreviewCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    operation = InventoryBulkOperationService(db).preview_operation(tenant, payload)
+    return {
+        "data": InventoryBulkOperationRead.model_validate(operation).model_dump(mode="json"),
+        "meta": getattr(operation, "items_meta", {}),
+    }
+
+
+@router.get("/bulk-operations")
+def list_inventory_bulk_operations(
+    status_filter: InventoryBulkOperationStatus | None = Query(default=None, alias="status"),
+    operation_type: InventoryBulkOperationType | None = Query(default=None),
+    created_by_user_id: uuid.UUID | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    date_from_dt = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    date_to_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
+    operations, meta = InventoryBulkOperationService(db).list_operations(
+        tenant.tenant_id,
+        status=status_filter,
+        operation_type=operation_type,
+        created_by_user_id=created_by_user_id,
+        date_from=date_from_dt,
+        date_to=date_to_dt,
+        page=page,
+        page_size=page_size,
+    )
+    return {
+        "data": [
+            InventoryBulkOperationListItemRead.model_validate(operation).model_dump(mode="json")
+            for operation in operations
+        ],
+        "meta": meta,
+    }
+
+
+@router.get("/bulk-operations/{operation_id}")
+def get_inventory_bulk_operation(
+    operation_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+    row_status: str | None = Query(default=None),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    operation = InventoryBulkOperationService(db).get_operation(
+        tenant.tenant_id,
+        operation_id,
+        page=page,
+        page_size=page_size,
+        status=row_status,
+    )
+    return {
+        "data": InventoryBulkOperationRead.model_validate(operation).model_dump(mode="json"),
+        "meta": getattr(operation, "items_meta", {}),
+    }
+
+
+@router.post("/bulk-operations/{operation_id}/confirm")
+def confirm_inventory_bulk_operation(
+    operation_id: uuid.UUID,
+    payload: InventoryBulkOperationConfirmCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    operation = InventoryBulkOperationService(db).confirm_operation(
+        tenant,
+        operation_id,
+        payload,
+    )
+    return {
+        "data": InventoryBulkOperationRead.model_validate(operation).model_dump(mode="json"),
+        "meta": getattr(operation, "items_meta", {}),
+    }
+
+
+@router.post("/bulk-operations/{operation_id}/reverse")
+def reverse_inventory_bulk_operation(
+    operation_id: uuid.UUID,
+    payload: InventoryBulkOperationReverseCreate,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    operation = InventoryBulkOperationService(db).reverse_operation(
+        tenant,
+        operation_id,
+        payload,
+    )
+    return {
+        "data": InventoryBulkOperationRead.model_validate(operation).model_dump(mode="json"),
+        "meta": getattr(operation, "items_meta", {}),
+    }
 
 
 @router.get("/import/template")

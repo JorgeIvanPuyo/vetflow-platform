@@ -2,6 +2,7 @@ from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
+from app.models.inventory_bulk_operation import InventoryBulkOperation, InventoryBulkOperationItem
 from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_import import InventoryImport, InventoryImportRow
 from app.models.inventory_item import InventoryItem
@@ -25,6 +26,8 @@ __all__ = [
     "Appointment",
     "FollowUp",
     "InventoryCodeSequence",
+    "InventoryBulkOperation",
+    "InventoryBulkOperationItem",
     "InventoryImport",
     "InventoryImportRow",
     "InventoryItem",

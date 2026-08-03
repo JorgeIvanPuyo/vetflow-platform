@@ -604,7 +604,7 @@ function ImportRowLine({
   const messages = [...row.errors, ...row.warnings];
   const actions = getAllowedActions(row);
   return (
-    <tr>
+    <tr className="inventory-table__row--static">
       <td>#{row.row_number}</td>
       <td>
         <span className="inventory-table__product">

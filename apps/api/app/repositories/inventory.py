@@ -8,6 +8,10 @@ from sqlalchemy import Select, asc, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, selectinload
 
+from app.models.inventory_bulk_operation import (
+    InventoryBulkOperation,
+    InventoryBulkOperationItem,
+)
 from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_import import InventoryImport, InventoryImportRow
 from app.models.inventory_item import InventoryItem
@@ -200,6 +204,206 @@ class InventoryRepository:
         )
         items_by_id = {item.id: item for item in self.db.scalars(statement).all()}
         return [items_by_id[item_id] for item_id in item_ids if item_id in items_by_id]
+
+    def list_items_by_ids_for_bulk(
+        self,
+        tenant_id: uuid.UUID,
+        item_ids: list[uuid.UUID],
+        *,
+        excluded_ids: set[uuid.UUID] | None = None,
+        for_update: bool = False,
+    ) -> list[InventoryItem]:
+        if not item_ids:
+            return []
+        statement = select(InventoryItem).where(
+            InventoryItem.tenant_id == tenant_id,
+            InventoryItem.id.in_(item_ids),
+        )
+        if excluded_ids:
+            statement = statement.where(InventoryItem.id.not_in(excluded_ids))
+        if for_update:
+            statement = statement.with_for_update()
+        items_by_id = {item.id: item for item in self.db.scalars(statement).all()}
+        ordered_ids = sorted(items_by_id) if for_update else item_ids
+        return [items_by_id[item_id] for item_id in ordered_ids if item_id in items_by_id]
+
+    def list_items_for_bulk_filter(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        search: str | None,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        stock_status: str | None,
+        is_active: bool | None,
+        excluded_ids: set[uuid.UUID],
+        limit: int,
+        for_update: bool = False,
+    ) -> tuple[list[InventoryItem], int]:
+        statement = self._build_item_list_statement(
+            tenant_id,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=None,
+            stock_status=stock_status,
+            is_active=is_active,
+            sort_by="id",
+            sort_direction="asc",
+        )
+        count_statement = self._build_item_count_statement(
+            tenant_id,
+            search=search,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            status=None,
+            stock_status=stock_status,
+            is_active=is_active,
+        )
+        if excluded_ids:
+            statement = statement.where(InventoryItem.id.not_in(excluded_ids))
+            count_statement = count_statement.where(InventoryItem.id.not_in(excluded_ids))
+        if for_update:
+            statement = statement.with_for_update()
+        return list(self.db.scalars(statement.limit(limit)).all()), int(
+            self.db.scalar(count_statement) or 0
+        )
+
+    def create_bulk_operation(
+        self,
+        operation: InventoryBulkOperation,
+    ) -> InventoryBulkOperation:
+        self.db.add(operation)
+        self.db.flush()
+        self.db.refresh(operation)
+        return operation
+
+    def create_bulk_operation_items(
+        self,
+        rows: list[InventoryBulkOperationItem],
+    ) -> list[InventoryBulkOperationItem]:
+        self.db.add_all(rows)
+        self.db.flush()
+        return rows
+
+    def get_bulk_operation_by_id(
+        self,
+        tenant_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        *,
+        for_update: bool = False,
+    ) -> InventoryBulkOperation | None:
+        statement = (
+            select(InventoryBulkOperation)
+            .where(
+                InventoryBulkOperation.tenant_id == tenant_id,
+                InventoryBulkOperation.id == operation_id,
+            )
+            .options(
+                selectinload(InventoryBulkOperation.created_by_user),
+                selectinload(InventoryBulkOperation.reversed_by_user),
+            )
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return self.db.scalar(statement)
+
+    def list_bulk_operations(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        status: str | None,
+        operation_type: str | None,
+        created_by_user_id: uuid.UUID | None,
+        date_from: datetime | None,
+        date_to: datetime | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[InventoryBulkOperation], int]:
+        statement = (
+            select(InventoryBulkOperation)
+            .where(InventoryBulkOperation.tenant_id == tenant_id)
+            .options(
+                selectinload(InventoryBulkOperation.created_by_user),
+                selectinload(InventoryBulkOperation.reversed_by_user),
+            )
+        )
+        count_statement = select(func.count()).select_from(InventoryBulkOperation).where(
+            InventoryBulkOperation.tenant_id == tenant_id
+        )
+        if status is not None:
+            statement = statement.where(InventoryBulkOperation.status == status)
+            count_statement = count_statement.where(InventoryBulkOperation.status == status)
+        if operation_type is not None:
+            statement = statement.where(InventoryBulkOperation.operation_type == operation_type)
+            count_statement = count_statement.where(InventoryBulkOperation.operation_type == operation_type)
+        if created_by_user_id is not None:
+            statement = statement.where(InventoryBulkOperation.created_by_user_id == created_by_user_id)
+            count_statement = count_statement.where(InventoryBulkOperation.created_by_user_id == created_by_user_id)
+        if date_from is not None:
+            statement = statement.where(InventoryBulkOperation.created_at >= date_from)
+            count_statement = count_statement.where(InventoryBulkOperation.created_at >= date_from)
+        if date_to is not None:
+            statement = statement.where(InventoryBulkOperation.created_at <= date_to)
+            count_statement = count_statement.where(InventoryBulkOperation.created_at <= date_to)
+        offset = (page - 1) * page_size
+        statement = (
+            statement.order_by(InventoryBulkOperation.created_at.desc(), InventoryBulkOperation.id.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+        return list(self.db.scalars(statement).all()), int(self.db.scalar(count_statement) or 0)
+
+    def list_bulk_operation_items(
+        self,
+        tenant_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        *,
+        page: int,
+        page_size: int,
+        status: str | None = None,
+    ) -> tuple[list[InventoryBulkOperationItem], int]:
+        statement = (
+            select(InventoryBulkOperationItem)
+            .where(
+                InventoryBulkOperationItem.tenant_id == tenant_id,
+                InventoryBulkOperationItem.operation_id == operation_id,
+            )
+            .options(selectinload(InventoryBulkOperationItem.inventory_item))
+            .order_by(InventoryBulkOperationItem.created_at.asc(), InventoryBulkOperationItem.id.asc())
+        )
+        count_statement = select(func.count()).select_from(InventoryBulkOperationItem).where(
+            InventoryBulkOperationItem.tenant_id == tenant_id,
+            InventoryBulkOperationItem.operation_id == operation_id,
+        )
+        if status is not None:
+            statement = statement.where(InventoryBulkOperationItem.status == status)
+            count_statement = count_statement.where(InventoryBulkOperationItem.status == status)
+        offset = (page - 1) * page_size
+        return list(self.db.scalars(statement.offset(offset).limit(page_size)).all()), int(
+            self.db.scalar(count_statement) or 0
+        )
+
+    def list_bulk_operation_change_items(
+        self,
+        tenant_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        *,
+        statuses: set[str],
+    ) -> list[InventoryBulkOperationItem]:
+        statement = (
+            select(InventoryBulkOperationItem)
+            .where(
+                InventoryBulkOperationItem.tenant_id == tenant_id,
+                InventoryBulkOperationItem.operation_id == operation_id,
+                InventoryBulkOperationItem.status.in_(statuses),
+            )
+            .order_by(InventoryBulkOperationItem.inventory_item_id.asc())
+        )
+        return list(self.db.scalars(statement).all())
 
     def get_filter_options(self, tenant_id: uuid.UUID) -> dict[str, list[str]]:
         brand_values = (
@@ -721,6 +925,7 @@ class InventoryRepository:
             "sale_price_ars": InventoryItem.sale_price_ars,
             "updated_at": InventoryItem.updated_at,
             "created_at": InventoryItem.created_at,
+            "id": InventoryItem.id,
         }
         return mapping[sort_by]
 

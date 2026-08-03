@@ -3,6 +3,9 @@ import type {
   ApiItemResponse,
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
+  InventoryBulkOperation,
+  InventoryBulkOperationListItem,
+  InventoryBulkOperationPreviewPayload,
   InventoryExportPayload,
   InventoryImport,
   InventoryImportConfirmPayload,
@@ -47,6 +50,25 @@ type InventoryImportListResponse = {
     page_size: number;
     total: number;
     total_pages: number;
+  };
+};
+
+type InventoryBulkOperationListResponse = {
+  data: InventoryBulkOperationListItem[];
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+};
+
+type InventoryBulkOperationResponse = ApiItemResponse<InventoryBulkOperation> & {
+  meta: {
+    page?: number;
+    page_size?: number;
+    total?: number;
+    total_pages?: number;
   };
 };
 
@@ -229,4 +251,39 @@ export function getInventoryImports(page = 1, pageSize = 10) {
 
 export function exportInventory(payload: InventoryExportPayload) {
   return api.postBlob("/api/v1/inventory/export", payload);
+}
+
+export function previewInventoryBulkOperation(payload: InventoryBulkOperationPreviewPayload) {
+  return api.post<InventoryBulkOperationResponse>(
+    "/api/v1/inventory/bulk-operations/preview",
+    payload,
+  );
+}
+
+export function confirmInventoryBulkOperation(operationId: string) {
+  return api.post<InventoryBulkOperationResponse>(
+    `/api/v1/inventory/bulk-operations/${operationId}/confirm`,
+    { confirm: true },
+    { retryTransient: false },
+  );
+}
+
+export function reverseInventoryBulkOperation(operationId: string, reason: string) {
+  return api.post<InventoryBulkOperationResponse>(
+    `/api/v1/inventory/bulk-operations/${operationId}/reverse`,
+    { reason },
+    { retryTransient: false },
+  );
+}
+
+export function getInventoryBulkOperation(operationId: string, page = 1, pageSize = 100) {
+  return api.get<InventoryBulkOperationResponse>(
+    `/api/v1/inventory/bulk-operations/${operationId}?page=${page}&page_size=${pageSize}`,
+  );
+}
+
+export function getInventoryBulkOperations(page = 1, pageSize = 10) {
+  return api.get<InventoryBulkOperationListResponse>(
+    `/api/v1/inventory/bulk-operations?page=${page}&page_size=${pageSize}`,
+  );
 }

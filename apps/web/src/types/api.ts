@@ -730,6 +730,124 @@ export type InventoryExportPayload = {
   selected_ids?: string[];
 };
 
+export type InventoryBulkOperationType =
+  | "increase_sale_price_percentage"
+  | "decrease_sale_price_percentage"
+  | "set_profit_margin_percentage"
+  | "set_sale_price"
+  | "set_brand"
+  | "set_supplier"
+  | "set_minimum_stock"
+  | "activate"
+  | "deactivate";
+export type InventoryBulkSelectionMode = "selected" | "filtered";
+export type InventoryBulkOperationStatus =
+  | "preview"
+  | "confirmed"
+  | "partially_reversed"
+  | "reversed"
+  | "failed"
+  | "expired";
+export type InventoryBulkOperationItemStatus =
+  | "pending"
+  | "changed"
+  | "unchanged"
+  | "invalid"
+  | "conflict"
+  | "reverted"
+  | "excluded";
+
+export type InventoryBulkOperationFilters = {
+  search?: string | null;
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  stock_status?: InventoryStockStatus | null;
+  is_active?: boolean | null;
+};
+
+export type InventoryBulkSelectionPayload = {
+  selection_mode: InventoryBulkSelectionMode;
+  selected_ids?: string[];
+  filters?: InventoryBulkOperationFilters | null;
+  excluded_ids?: string[];
+};
+
+export type InventoryBulkOperationValuePayload = {
+  operation_type: InventoryBulkOperationType;
+  percentage?: number | null;
+  sale_price_ars?: number | null;
+  profit_margin_percentage?: number | null;
+  brand?: string | null;
+  supplier?: string | null;
+  minimum_stock?: number | null;
+  confirm_clear?: boolean;
+};
+
+export type InventoryBulkOperationPreviewPayload = {
+  selection: InventoryBulkSelectionPayload;
+  operation: InventoryBulkOperationValuePayload;
+};
+
+export type InventoryBulkOperationSummary = {
+  selected_count: number;
+  affected_count: number;
+  unchanged_count: number;
+  invalid_count: number;
+  excluded_count: number;
+  reversed_count: number;
+  conflict_count: number;
+};
+
+export type InventoryBulkOperationItem = {
+  id: string;
+  inventory_item_id: string;
+  inventory_item_name: string | null;
+  inventory_item_internal_code: string | null;
+  field_name: string;
+  old_value_json: Record<string, unknown> | null;
+  new_value_json: Record<string, unknown> | null;
+  product_updated_at_snapshot: string;
+  status: InventoryBulkOperationItemStatus;
+  error_message: string | null;
+  reverted_at: string | null;
+  created_at: string;
+};
+
+export type InventoryBulkOperation = {
+  id: string;
+  operation_type: InventoryBulkOperationType;
+  selection_mode: InventoryBulkSelectionMode;
+  filters_json: Record<string, unknown> | null;
+  request_json: Record<string, unknown>;
+  status: InventoryBulkOperationStatus;
+  selected_count: number;
+  affected_count: number;
+  unchanged_count: number;
+  invalid_count: number;
+  excluded_count: number;
+  reversed_count: number;
+  conflict_count: number;
+  expires_at: string;
+  confirmed_at: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name?: string | null;
+  reversed_by_user_email?: string | null;
+  reversal_reason: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  items: InventoryBulkOperationItem[];
+  summary: InventoryBulkOperationSummary | null;
+};
+
+export type InventoryBulkOperationListItem = Omit<
+  InventoryBulkOperation,
+  "filters_json" | "request_json" | "expires_at" | "reversed_by_user_id" | "reversal_reason" | "created_by_user_id" | "items" | "summary"
+>;
+
 export type InventoryImportMode = "initial_load" | "catalog_update";
 export type InventoryImportStatus = "preview" | "confirmed" | "failed" | "expired";
 export type InventoryImportRowStatus = "valid" | "warning" | "error" | "skipped";
