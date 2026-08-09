@@ -21,6 +21,8 @@ class Sale(BaseModel):
         Index("ix_sales_tenant_owner", "tenant_id", "owner_id"),
         Index("ix_sales_tenant_patient", "tenant_id", "patient_id"),
         Index("ix_sales_tenant_created_by", "tenant_id", "created_by_user_id"),
+        Index("ix_sales_tenant_inventory_operation", "tenant_id", "inventory_operation_id"),
+        Index("ix_sales_tenant_reversal_operation", "tenant_id", "reversal_operation_id"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
@@ -42,12 +44,21 @@ class Sale(BaseModel):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    inventory_operation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reversed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    reversal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reversal_operation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="sales")
     owner: Mapped[Owner | None] = relationship("Owner", foreign_keys=[owner_id])
     patient: Mapped[Patient | None] = relationship("Patient", foreign_keys=[patient_id])
     created_by_user: Mapped[User | None] = relationship("User", foreign_keys=[created_by_user_id])
     cancelled_by_user: Mapped[User | None] = relationship("User", foreign_keys=[cancelled_by_user_id])
+    confirmed_by_user: Mapped[User | None] = relationship("User", foreign_keys=[confirmed_by_user_id])
+    reversed_by_user: Mapped[User | None] = relationship("User", foreign_keys=[reversed_by_user_id])
     items: Mapped[list[SaleItem]] = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan", order_by="SaleItem.line_order")
 
     @staticmethod
@@ -69,6 +80,22 @@ class Sale(BaseModel):
     @property
     def cancelled_by_user_email(self) -> str | None:
         return self._user_value(self.cancelled_by_user, self.tenant_id, "email")
+
+    @property
+    def confirmed_by_user_name(self) -> str | None:
+        return self._user_value(self.confirmed_by_user, self.tenant_id, "full_name")
+
+    @property
+    def confirmed_by_user_email(self) -> str | None:
+        return self._user_value(self.confirmed_by_user, self.tenant_id, "email")
+
+    @property
+    def reversed_by_user_name(self) -> str | None:
+        return self._user_value(self.reversed_by_user, self.tenant_id, "full_name")
+
+    @property
+    def reversed_by_user_email(self) -> str | None:
+        return self._user_value(self.reversed_by_user, self.tenant_id, "email")
 
     @property
     def item_count(self) -> int:

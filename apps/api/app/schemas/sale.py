@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 
-SaleStatus = Literal["draft", "cancelled"]
+SaleStatus = Literal["draft", "confirmed", "cancelled", "reversed"]
 SaleLineType = Literal["product", "service"]
 SaleSortBy = Literal["sale_date", "created_at", "total_ars", "status"]
 SaleSortDirection = Literal["asc", "desc"]
@@ -89,6 +89,24 @@ class SaleCancel(BaseModel):
         return value
 
 
+class SaleConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: Literal[True]
+
+
+class SaleReverse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
+
+
 class SaleItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -159,11 +177,27 @@ class SaleDetailRead(BaseModel):
     cancelled_by_user_name: str | None = None
     cancelled_by_user_email: str | None = None
     cancellation_reason: str | None = None
+    confirmed_at: datetime | None = None
+    confirmed_by_user_id: uuid.UUID | None = None
+    confirmed_by_user_name: str | None = None
+    confirmed_by_user_email: str | None = None
+    inventory_operation_id: uuid.UUID | None = None
+    reversed_at: datetime | None = None
+    reversed_by_user_id: uuid.UUID | None = None
+    reversed_by_user_name: str | None = None
+    reversed_by_user_email: str | None = None
+    reversal_reason: str | None = None
+    reversal_operation_id: uuid.UUID | None = None
     items: list[SaleItemRead]
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer("created_by_user_id", "cancelled_by_user_id")
+    @field_serializer(
+        "created_by_user_id",
+        "cancelled_by_user_id",
+        "confirmed_by_user_id",
+        "reversed_by_user_id",
+    )
     def serialize_user_id(self, value: uuid.UUID | None, info) -> uuid.UUID | None:
         prefix = info.field_name.removesuffix("_id")
         return value if getattr(self, f"{prefix}_name") or getattr(self, f"{prefix}_email") else None

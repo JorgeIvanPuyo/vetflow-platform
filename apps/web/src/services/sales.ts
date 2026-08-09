@@ -14,4 +14,6 @@ export function getSale(id: string) { return api.get<ApiItemResponse<Sale>>(`/ap
 export function createSale(payload: SaleWritePayload) { return api.post<ApiItemResponse<Sale>>("/api/v1/sales", payload); }
 export function updateSale(id: string, payload: SaleWritePayload) { return api.patch<ApiItemResponse<Sale>>(`/api/v1/sales/${id}`, payload); }
 export function cancelSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/cancel`, { reason }, { retryTransient: false }); }
+export function confirmSale(id: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, { confirm: true }, { retryTransient: false }); }
+export function reverseSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/reverse`, { reason }, { retryTransient: false }); }
 export function getSaleFilterOptions() { return api.get<{ data: { creators: PurchaseCreatorOption[] }; meta: Record<string, never> }>("/api/v1/sales/filter-options"); }

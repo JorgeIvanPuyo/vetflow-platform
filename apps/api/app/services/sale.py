@@ -11,11 +11,13 @@ from app.core.errors import AppError
 from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.sale import Sale, SaleItem
+from app.repositories.inventory import InventoryRepository
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.sale import SaleRepository
 from app.repositories.user import UserRepository
 from app.schemas.sale import SaleCreate, SaleProductItemInput, SaleUpdate
+from app.services.inventory import InventoryService
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -29,6 +31,8 @@ class SaleService:
         self.owner_repository = OwnerRepository(db)
         self.patient_repository = PatientRepository(db)
         self.user_repository = UserRepository(db)
+        self.inventory_repository = InventoryRepository(db)
+        self.inventory_service = InventoryService(db)
 
     def create(self, tenant_id: uuid.UUID, payload: SaleCreate, *, created_by_user_id: uuid.UUID | None) -> Sale:
         self._validate_user(tenant_id, created_by_user_id)
@@ -120,6 +124,162 @@ class SaleService:
             raise
         return self.get(tenant_id, sale_id)
 
+    def confirm(
+        self,
+        tenant_id: uuid.UUID,
+        sale_id: uuid.UUID,
+        *,
+        confirmed_by_user_id: uuid.UUID | None,
+    ) -> Sale:
+        self._validate_user(tenant_id, confirmed_by_user_id)
+        try:
+            sale = self.repository.get_by_id(tenant_id, sale_id, for_update=True)
+            if sale is None:
+                raise AppError(404, "sale_not_found", "Venta no encontrada")
+            self._require_draft(sale, "confirmar")
+
+            product_lines = self._validated_product_lines(tenant_id, sale)
+            lines_by_item_id = {
+                line.inventory_item_id: line for line in product_lines
+            }
+            locked_items = self.inventory_repository.list_items_by_ids_for_update(
+                tenant_id, sorted(lines_by_item_id)
+            )
+            if len(locked_items) != len(lines_by_item_id):
+                raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
+
+            for item in locked_items:
+                line = lines_by_item_id[item.id]
+                if item.current_stock < line.quantity:
+                    raise AppError(
+                        409,
+                        "sale_insufficient_stock",
+                        f"Stock insuficiente para {line.description_snapshot}. "
+                        f"Disponible: {item.current_stock}. Solicitado: {line.quantity}.",
+                    )
+
+            operation_id = uuid.uuid4() if product_lines else None
+            for item in locked_items:
+                line = lines_by_item_id[item.id]
+                self.inventory_service.register_sale_movement(
+                    tenant_id,
+                    item=item,
+                    sale_id=sale.id,
+                    operation_id=operation_id,
+                    quantity=line.quantity,
+                    unit_sale_price_ars=line.unit_price_ars,
+                    total_sale_price_ars=line.line_total_ars,
+                    created_by_user_id=confirmed_by_user_id,
+                )
+
+            now = datetime.now(UTC)
+            sale.status = "confirmed"
+            sale.confirmed_at = now
+            sale.confirmed_by_user_id = confirmed_by_user_id
+            sale.inventory_operation_id = operation_id
+            sale.updated_at = now
+            self.repository.save(sale)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self.get(tenant_id, sale_id)
+
+    def reverse(
+        self,
+        tenant_id: uuid.UUID,
+        sale_id: uuid.UUID,
+        *,
+        reason: str,
+        reversed_by_user_id: uuid.UUID | None,
+    ) -> Sale:
+        self._validate_user(tenant_id, reversed_by_user_id)
+        try:
+            sale = self.repository.get_by_id(tenant_id, sale_id, for_update=True)
+            if sale is None:
+                raise AppError(404, "sale_not_found", "Venta no encontrada")
+            if sale.status != "confirmed":
+                raise AppError(
+                    409,
+                    "sale_not_reversible",
+                    "Sólo se puede revertir una venta confirmada",
+                )
+
+            product_lines = self._validated_product_lines(tenant_id, sale)
+            lines_by_item_id = {
+                line.inventory_item_id: line for line in product_lines
+            }
+            originals = []
+            if product_lines:
+                if sale.inventory_operation_id is None:
+                    raise AppError(
+                        409,
+                        "sale_movements_inconsistent",
+                        "La venta no tiene una operación de inventario válida",
+                    )
+                originals = self.inventory_repository.list_sale_movements_for_update(
+                    tenant_id,
+                    sale_id=sale.id,
+                    operation_id=sale.inventory_operation_id,
+                )
+
+            originals_by_item_id = {
+                movement.inventory_item_id: movement for movement in originals
+            }
+            if (
+                len(originals) != len(product_lines)
+                or set(originals_by_item_id) != set(lines_by_item_id)
+                or any(
+                    originals_by_item_id[item_id].quantity != line.quantity
+                    for item_id, line in lines_by_item_id.items()
+                )
+            ):
+                raise AppError(
+                    409,
+                    "sale_movements_inconsistent",
+                    "Los movimientos de la venta están incompletos o son inconsistentes",
+                )
+            if self.inventory_repository.list_reversals_for_movements(
+                tenant_id, [movement.id for movement in originals]
+            ):
+                raise AppError(
+                    409,
+                    "sale_already_reversed",
+                    "La venta ya contiene movimientos revertidos",
+                )
+
+            locked_items = self.inventory_repository.list_items_by_ids_for_update(
+                tenant_id, sorted(lines_by_item_id)
+            )
+            if len(locked_items) != len(lines_by_item_id):
+                raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
+
+            reversal_operation_id = uuid.uuid4() if originals else None
+            for item in locked_items:
+                self.inventory_service.register_sale_reversal_movement(
+                    tenant_id,
+                    item=item,
+                    sale_id=sale.id,
+                    original=originals_by_item_id[item.id],
+                    operation_id=reversal_operation_id,
+                    reason=reason,
+                    created_by_user_id=reversed_by_user_id,
+                )
+
+            now = datetime.now(UTC)
+            sale.status = "reversed"
+            sale.reversed_at = now
+            sale.reversed_by_user_id = reversed_by_user_id
+            sale.reversal_reason = reason
+            sale.reversal_operation_id = reversal_operation_id
+            sale.updated_at = now
+            self.repository.save(sale)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self.get(tenant_id, sale_id)
+
     def list(self, tenant_id: uuid.UUID, **filters) -> tuple[list[dict], dict]:
         if filters["date_from"] and filters["date_to"] and filters["date_from"] > filters["date_to"]:
             raise AppError(422, "validation_error", "date_from must be before date_to")
@@ -197,6 +357,55 @@ class SaleService:
     def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
         if user_id is not None and self.user_repository.get_by_id(tenant_id, user_id) is None:
             raise AppError(404, "user_not_found", "Usuario no encontrado")
+
+    @staticmethod
+    def _validated_product_lines(
+        tenant_id: uuid.UUID, sale: Sale
+    ) -> list[SaleItem]:
+        if not sale.items:
+            raise AppError(
+                409,
+                "sale_items_required",
+                "La venta requiere al menos una línea",
+            )
+        product_lines: list[SaleItem] = []
+        seen_item_ids: set[uuid.UUID] = set()
+        for line in sale.items:
+            if line.tenant_id != tenant_id or line.sale_id != sale.id:
+                raise AppError(
+                    409,
+                    "sale_items_inconsistent",
+                    "Las líneas de la venta son inconsistentes",
+                )
+            if line.quantity <= 0 or line.quantity != line.quantity.to_integral_value():
+                raise AppError(
+                    409,
+                    "sale_quantity_must_be_integer",
+                    "Todas las cantidades deben ser números enteros mayores que cero",
+                )
+            if line.line_type == "service":
+                if line.inventory_item_id is not None:
+                    raise AppError(
+                        409,
+                        "sale_items_inconsistent",
+                        "Las líneas de la venta son inconsistentes",
+                    )
+                continue
+            if line.line_type != "product" or line.inventory_item_id is None:
+                raise AppError(
+                    409,
+                    "sale_items_inconsistent",
+                    "Las líneas de la venta son inconsistentes",
+                )
+            if line.inventory_item_id in seen_item_ids:
+                raise AppError(
+                    409,
+                    "sale_items_inconsistent",
+                    "Las líneas de la venta repiten un producto",
+                )
+            seen_item_ids.add(line.inventory_item_id)
+            product_lines.append(line)
+        return product_lines
 
     @staticmethod
     def _require_draft(sale: Sale, action: str) -> None:

@@ -40,6 +40,8 @@ class SaleRepository:
                 selectinload(Sale.items.and_(SaleItem.tenant_id == tenant_id)),
                 selectinload(Sale.created_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.cancelled_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(Sale.confirmed_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(Sale.reversed_by_user.and_(User.tenant_id == tenant_id)),
             )
         )
         if for_update:

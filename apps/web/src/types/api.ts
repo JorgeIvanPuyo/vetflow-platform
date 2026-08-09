@@ -1698,7 +1698,7 @@ export type PurchaseDashboard = {
   recent_purchases: PurchaseDashboardRecentPurchase[];
 };
 
-export type SaleStatus = "draft" | "cancelled";
+export type SaleStatus = "draft" | "confirmed" | "cancelled" | "reversed";
 export type SaleLineType = "product" | "service";
 
 export type SaleProductItemInput = {
@@ -1769,6 +1769,17 @@ export type Sale = Omit<SaleSummary, "item_count"> & {
   cancelled_by_user_name: string | null;
   cancelled_by_user_email: string | null;
   cancellation_reason: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
+  confirmed_by_user_name: string | null;
+  confirmed_by_user_email: string | null;
+  inventory_operation_id: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name: string | null;
+  reversed_by_user_email: string | null;
+  reversal_reason: string | null;
+  reversal_operation_id: string | null;
   items: SaleItem[];
 };
 

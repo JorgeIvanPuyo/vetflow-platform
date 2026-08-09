@@ -8,9 +8,11 @@ from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.sale import (
     SaleCancel,
+    SaleConfirm,
     SaleCreate,
     SaleDetailRead,
     SaleLineType,
+    SaleReverse,
     SaleSortBy,
     SaleSortDirection,
     SaleStatus,
@@ -77,4 +79,35 @@ def update_sale(sale_id: uuid.UUID, payload: SaleUpdate, tenant: TenantContext =
 @router.post("/{sale_id}/cancel")
 def cancel_sale(sale_id: uuid.UUID, payload: SaleCancel, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
     sale = SaleService(db).cancel(tenant.tenant_id, sale_id, reason=payload.reason, cancelled_by_user_id=tenant.user_id)
+    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/{sale_id}/confirm")
+def confirm_sale(
+    sale_id: uuid.UUID,
+    payload: SaleConfirm,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    sale = SaleService(db).confirm(
+        tenant.tenant_id,
+        sale_id,
+        confirmed_by_user_id=tenant.user_id,
+    )
+    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/{sale_id}/reverse")
+def reverse_sale(
+    sale_id: uuid.UUID,
+    payload: SaleReverse,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    sale = SaleService(db).reverse(
+        tenant.tenant_id,
+        sale_id,
+        reason=payload.reason,
+        reversed_by_user_id=tenant.user_id,
+    )
     return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}

@@ -59,6 +59,15 @@ def _create(client, tenant, product_id=None, **overrides):
     return response.json()["data"]
 
 
+def _add_stock(client, tenant, product_id, quantity):
+    response = client.post(
+        f"/api/v1/inventory/items/{product_id}/movements/entry",
+        headers=_headers(tenant),
+        json={"quantity": str(quantity)},
+    )
+    assert response.status_code == 201, response.text
+
+
 def test_sales_require_authentication(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production"); get_settings.cache_clear()
     response = client.get("/api/v1/sales")
@@ -160,3 +169,291 @@ def test_list_filters_pagination_stable_sort_detail_tenant_and_bounded_queries(c
     assert client.get(f"/api/v1/sales/{first['id']}", headers=_headers(other_tenant)).status_code == 404
     search = client.get("/api/v1/sales", headers=_headers(tenant), params={"search": "Alimento"})
     assert [item["id"] for item in search.json()["data"]] == [first["id"]]
+
+
+def test_confirm_mixed_sale_is_atomic_traceable_allows_inactive_and_closes_draft(
+    client, db_session, tenant, monkeypatch
+):
+    _setup_auth(monkeypatch)
+    user = _user(db_session, tenant)
+    product = _product(client, tenant, price="123.45")
+    _add_stock(client, tenant, product["id"], 5)
+    sale = _create(client, tenant, product["id"])
+    product_model = db_session.get(InventoryItem, uuid.UUID(product["id"]))
+    product_model.is_active = False
+    product_model.purchase_price_ars = Decimal("30.00")
+    product_model.profit_margin_percentage = Decimal("40.00")
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_auth_headers(user.email),
+        json={"confirm": True},
+    )
+
+    assert response.status_code == 200, response.text
+    confirmed = response.json()["data"]
+    assert confirmed["status"] == "confirmed"
+    assert confirmed["confirmed_at"] is not None
+    assert confirmed["confirmed_by_user_id"] == str(user.id)
+    assert confirmed["confirmed_by_user_name"] == "Vendedor"
+    assert confirmed["inventory_operation_id"] is not None
+    db_session.expire_all()
+    product_model = db_session.get(InventoryItem, uuid.UUID(product["id"]))
+    assert product_model.current_stock == Decimal("3.00")
+    assert product_model.is_active is False
+    assert product_model.sale_price_ars == Decimal("123.45")
+    assert product_model.purchase_price_ars == Decimal("30.00")
+    assert product_model.profit_margin_percentage == Decimal("40.00")
+
+    movements = list(
+        db_session.scalars(
+            select(InventoryMovement).where(InventoryMovement.movement_type == "sale")
+        ).all()
+    )
+    assert len(movements) == 1
+    movement = movements[0]
+    assert movement.operation_id == uuid.UUID(confirmed["inventory_operation_id"])
+    assert movement.source_type == "sale" and movement.source_id == sale["id"]
+    assert movement.quantity == Decimal("2.00")
+    assert movement.stock_before == Decimal("5.00")
+    assert movement.stock_after == Decimal("3.00")
+    assert movement.unit_sale_price_ars == Decimal("100.00")
+    assert movement.total_sale_price_ars == Decimal("180.00")
+    assert movement.created_by_user_id == user.id
+
+    assert client.patch(
+        f"/api/v1/sales/{sale['id']}",
+        headers=_headers(tenant),
+        json={"notes": "No"},
+    ).status_code == 409
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/cancel",
+        headers=_headers(tenant),
+        json={"reason": "No"},
+    ).status_code == 409
+    second = client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(tenant),
+        json={"confirm": True},
+    )
+    assert second.status_code == 409
+    assert db_session.scalar(
+        select(func.count()).select_from(InventoryMovement).where(
+            InventoryMovement.movement_type == "sale"
+        )
+    ) == 1
+    rows = client.get(
+        "/api/v1/sales", headers=_headers(tenant), params={"status": "confirmed"}
+    ).json()["data"]
+    assert [row["id"] for row in rows] == [sale["id"]]
+
+
+def test_confirm_rejects_payload_auth_states_tenant_and_rolls_back_insufficient_stock(
+    client, db_session, tenant, other_tenant, monkeypatch
+):
+    first = _product(client, tenant, "Primero")
+    second = _product(client, tenant, "Segundo")
+    _add_stock(client, tenant, first["id"], 5)
+    _add_stock(client, tenant, second["id"], 1)
+    items = [
+        {"line_type": "product", "inventory_item_id": first["id"], "quantity": "2", "unit_price_ars": "10", "discount_percentage": "0"},
+        {"line_type": "product", "inventory_item_id": second["id"], "quantity": "2", "unit_price_ars": "20", "discount_percentage": "0"},
+    ]
+    sale = _create(client, tenant, items=items)
+
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(other_tenant), json={"confirm": True}
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(tenant), json={"confirm": False}
+    ).status_code == 422
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(tenant), json={"confirm": True, "stock": "999"}
+    ).status_code == 422
+
+    response = client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(tenant), json={"confirm": True}
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sale_insufficient_stock"
+    assert "Segundo" in response.json()["error"]["message"]
+    assert "Disponible: 1.00" in response.json()["error"]["message"]
+    db_session.expire_all()
+    assert db_session.get(InventoryItem, uuid.UUID(first["id"])).current_stock == Decimal("5")
+    assert db_session.get(InventoryItem, uuid.UUID(second["id"])).current_stock == Decimal("1")
+    assert client.get(
+        f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)
+    ).json()["data"]["status"] == "draft"
+    assert db_session.scalar(
+        select(func.count()).select_from(InventoryMovement).where(
+            InventoryMovement.movement_type == "sale"
+        )
+    ) == 0
+
+    cancelled = _create(client, tenant)
+    client.post(
+        f"/api/v1/sales/{cancelled['id']}/cancel",
+        headers=_headers(tenant), json={"reason": "Cancelada"}
+    )
+    assert client.post(
+        f"/api/v1/sales/{cancelled['id']}/confirm",
+        headers=_headers(tenant), json={"confirm": True}
+    ).status_code == 409
+
+    monkeypatch.setenv("APP_ENV", "production")
+    get_settings.cache_clear()
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/confirm", json={"confirm": True}
+    ).status_code == 401
+
+
+def test_confirm_rolls_back_all_products_when_movement_creation_fails(
+    client, db_session, tenant, monkeypatch
+):
+    first = _product(client, tenant, "Primero")
+    second = _product(client, tenant, "Segundo")
+    _add_stock(client, tenant, first["id"], 3)
+    _add_stock(client, tenant, second["id"], 3)
+    sale = _create(client, tenant, items=[
+        {"line_type": "product", "inventory_item_id": first["id"], "quantity": "2", "unit_price_ars": "10", "discount_percentage": "0"},
+        {"line_type": "product", "inventory_item_id": second["id"], "quantity": "2", "unit_price_ars": "20", "discount_percentage": "0"},
+    ])
+    from app.services.inventory import InventoryService
+
+    original = InventoryService.register_sale_movement
+    calls = 0
+
+    def fail_second(self, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated sale movement failure")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(InventoryService, "register_sale_movement", fail_second)
+    with pytest.raises(RuntimeError, match="simulated sale movement failure"):
+        client.post(
+            f"/api/v1/sales/{sale['id']}/confirm",
+            headers=_headers(tenant), json={"confirm": True}
+        )
+
+    db_session.expire_all()
+    assert db_session.get(InventoryItem, uuid.UUID(first["id"])).current_stock == Decimal("3")
+    assert db_session.get(InventoryItem, uuid.UUID(second["id"])).current_stock == Decimal("3")
+    assert client.get(
+        f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)
+    ).json()["data"]["status"] == "draft"
+    assert db_session.scalar(
+        select(func.count()).select_from(InventoryMovement).where(
+            InventoryMovement.movement_type == "sale"
+        )
+    ) == 0
+
+
+def test_service_only_sale_confirms_and_reverses_without_inventory_operations(
+    client, db_session, tenant, monkeypatch
+):
+    _setup_auth(monkeypatch)
+    user = _user(db_session, tenant)
+    sale = _create(client, tenant)
+
+    confirmed = client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_auth_headers(user.email), json={"confirm": True}
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["data"]["status"] == "confirmed"
+    assert confirmed.json()["data"]["inventory_operation_id"] is None
+    assert db_session.scalar(select(func.count()).select_from(InventoryMovement)) == 0
+
+    reversed_response = client.post(
+        f"/api/v1/sales/{sale['id']}/reverse",
+        headers=_auth_headers(user.email), json={"reason": "Registro erróneo"}
+    )
+    assert reversed_response.status_code == 200
+    reversed_sale = reversed_response.json()["data"]
+    assert reversed_sale["status"] == "reversed"
+    assert reversed_sale["reversed_at"] is not None
+    assert reversed_sale["reversed_by_user_id"] == str(user.id)
+    assert reversed_sale["reversal_reason"] == "Registro erróneo"
+    assert reversed_sale["reversal_operation_id"] is None
+    assert db_session.scalar(select(func.count()).select_from(InventoryMovement)) == 0
+
+
+def test_reverse_sale_restores_stock_links_movements_and_rejects_invalid_reversals(
+    client, db_session, tenant, other_tenant, monkeypatch
+):
+    _setup_auth(monkeypatch)
+    user = _user(db_session, tenant)
+    product = _product(client, tenant)
+    _add_stock(client, tenant, product["id"], 2)
+    sale = _create(client, tenant, product["id"])
+    confirmed = client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_auth_headers(user.email), json={"confirm": True}
+    ).json()["data"]
+    original = db_session.scalar(
+        select(InventoryMovement).where(InventoryMovement.movement_type == "sale")
+    )
+
+    generic = client.post(
+        f"/api/v1/inventory/movements/{original.id}/reverse",
+        headers=_headers(tenant), json={"reason": "other"}
+    )
+    assert generic.status_code == 409
+    assert generic.json()["error"]["code"] == "sale_movement_requires_sale_reversal"
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/reverse",
+        headers=_headers(other_tenant), json={"reason": "Ataque"}
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/reverse",
+        headers=_headers(tenant), json={"reason": "   "}
+    ).status_code == 422
+
+    response = client.post(
+        f"/api/v1/sales/{sale['id']}/reverse",
+        headers=_auth_headers(user.email), json={"reason": "Venta duplicada"}
+    )
+    assert response.status_code == 200
+    reversed_sale = response.json()["data"]
+    assert reversed_sale["status"] == "reversed"
+    assert reversed_sale["inventory_operation_id"] == confirmed["inventory_operation_id"]
+    assert reversed_sale["reversal_operation_id"] is not None
+    assert reversed_sale["reversal_operation_id"] != confirmed["inventory_operation_id"]
+    assert reversed_sale["reversed_by_user_id"] == str(user.id)
+    db_session.expire_all()
+    assert db_session.get(InventoryItem, uuid.UUID(product["id"])).current_stock == Decimal("2")
+    movements = list(
+        db_session.scalars(
+            select(InventoryMovement).where(
+                InventoryMovement.movement_type.in_(["sale", "reversal"])
+            )
+        ).all()
+    )
+    assert len(movements) == 2
+    original = next(item for item in movements if item.movement_type == "sale")
+    reversal = next(item for item in movements if item.movement_type == "reversal")
+    assert reversal.reverses_movement_id == original.id
+    assert reversal.source_type == "sale_reversal"
+    assert reversal.source_id == sale["id"]
+    assert reversal.operation_id == uuid.UUID(reversed_sale["reversal_operation_id"])
+    assert reversal.stock_before == Decimal("0")
+    assert reversal.stock_after == Decimal("2")
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/reverse",
+        headers=_headers(tenant), json={"reason": "Otra"}
+    ).status_code == 409
+    assert client.post(
+        f"/api/v1/sales/{sale['id']}/confirm",
+        headers=_headers(tenant), json={"confirm": True}
+    ).status_code == 409
+    rows = client.get(
+        "/api/v1/sales", headers=_headers(tenant), params={"status": "reversed"}
+    ).json()["data"]
+    assert [row["id"] for row in rows] == [sale["id"]]

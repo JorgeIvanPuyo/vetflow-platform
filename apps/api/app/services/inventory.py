@@ -324,6 +324,12 @@ class InventoryService:
                 "purchase_movement_requires_purchase_reversal",
                 "Purchase movements must be reversed from the purchase receipt",
             )
+        if original.movement_type == "sale" and original.source_type == "sale":
+            raise AppError(
+                409,
+                "sale_movement_requires_sale_reversal",
+                "Sale movements must be reversed from the sale",
+            )
         if (
             original.movement_type == "purchase_return"
             and original.source_type == "purchase_return"
@@ -520,6 +526,64 @@ class InventoryService:
             commit=False,
         )
 
+    def register_sale_movement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item: InventoryItem,
+        sale_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        quantity: Decimal,
+        unit_sale_price_ars: Decimal,
+        total_sale_price_ars: Decimal,
+        created_by_user_id: uuid.UUID | None,
+    ) -> InventoryMovement:
+        return self._create_stock_movement(
+            tenant_id,
+            item.id,
+            movement_type="sale",
+            quantity=quantity,
+            reason="sale_confirmation",
+            unit_sale_price_ars=unit_sale_price_ars,
+            total_sale_price_ars=total_sale_price_ars,
+            notes=f"Confirmación de venta {sale_id}",
+            source_type="sale",
+            source_id=str(sale_id),
+            operation_id=operation_id,
+            created_by_user_id=created_by_user_id,
+            locked_item=item,
+            commit=False,
+        )
+
+    def register_sale_reversal_movement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item: InventoryItem,
+        sale_id: uuid.UUID,
+        original: InventoryMovement,
+        operation_id: uuid.UUID,
+        reason: str,
+        created_by_user_id: uuid.UUID | None,
+    ) -> InventoryMovement:
+        return self._create_stock_movement(
+            tenant_id,
+            item.id,
+            movement_type="reversal",
+            quantity=original.quantity,
+            reason="sale_reversal",
+            notes=reason,
+            source_type="sale_reversal",
+            source_id=str(sale_id),
+            operation_id=operation_id,
+            reverses_movement_id=original.id,
+            created_by_user_id=created_by_user_id,
+            reverse_of=original,
+            unit_override=original.unit,
+            locked_item=item,
+            commit=False,
+        )
+
     def get_movement(self, tenant_id: uuid.UUID, movement_id: uuid.UUID) -> InventoryMovement:
         movement = self.inventory_repository.get_movement_by_id(tenant_id, movement_id)
         if movement is None:
@@ -531,6 +595,8 @@ class InventoryService:
             return False, "reversal_movements_cannot_be_reversed"
         if movement.movement_type == "purchase" and movement.source_type == "purchase":
             return False, "purchase_movement_requires_purchase_reversal"
+        if movement.movement_type == "sale" and movement.source_type == "sale":
+            return False, "sale_movement_requires_sale_reversal"
         if (
             movement.movement_type == "purchase_return"
             and movement.source_type == "purchase_return"

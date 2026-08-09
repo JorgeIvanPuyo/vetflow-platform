@@ -274,9 +274,19 @@
   color: #7c5200;
 }
 
+.sale-status--confirmed {
+  background: var(--color-success-soft);
+  color: var(--color-primary-dark);
+}
+
 .sale-status--cancelled {
   background: #f1f5f9;
   color: #475569;
+}
+
+.sale-status--reversed {
+  background: var(--color-blue-soft);
+  color: #1d4ed8;
 }
 
 @media (max-width: 900px) {

@@ -763,11 +763,12 @@ No cross-tenant access is allowed.
 
 ## Ventas — Fundación
 
-`Sale` es un documento comercial tenant-owned que nace en estado `draft`. En
-esta fase también existe `cancelled`; los estados futuros `confirmed`,
-`invoiced` y `reversed` están reservados en persistencia pero ningún endpoint
-los habilita todavía. Un borrador es editable y cancelarlo conserva cabecera y
-líneas sin eliminación física.
+`Sale` es un documento comercial tenant-owned que nace en estado `draft`. Los
+estados funcionales son `draft`, `confirmed`, `cancelled` y `reversed`. Un
+borrador es editable; cancelarlo conserva cabecera y líneas sin afectar stock;
+confirmarlo cierra la operación y descuenta inventario; revertir una confirmada
+compensa el inventario sin volverla a borrador. `invoiced` continúa reservado y
+no está habilitado en esta fase.
 
 Una venta puede referenciar un `Owner` y un `Patient` del tenant autenticado, o
 no tener ninguno para representar una venta de mostrador. Un paciente requiere
@@ -807,6 +808,44 @@ fiscales.
 - `PATCH /api/v1/sales/{sale_id}` edita exclusivamente un borrador y reemplaza
   líneas completas cuando se envían.
 - `POST /api/v1/sales/{sale_id}/cancel` exige motivo y registra usuario y fecha.
+- `POST /api/v1/sales/{sale_id}/confirm` acepta exclusivamente
+  `{ "confirm": true }` y confirma las líneas persistidas.
+- `POST /api/v1/sales/{sale_id}/reverse` exige motivo y revierte de forma
+  completa una venta confirmada.
+
+Confirmar bloquea primero la venta con `FOR UPDATE`, valida que continúe en
+`draft`, separa servicios de productos y bloquea todos los `InventoryItem` por
+UUID ascendente. La validación autoritativa de stock ocurre bajo esos locks. Si
+un producto no alcanza, devuelve `409 sale_insufficient_stock` con nombre,
+cantidad disponible y solicitada; venta, stock y movimientos hacen rollback
+completo. Dos ventas concurrentes no pueden sobre-vender el mismo producto y
+dos confirmaciones concurrentes de la misma venta no duplican descuentos.
+
+Cada línea `product` crea un `InventoryMovement` con `movement_type = sale`,
+`source_type = sale`, `source_id = sale.id`, actor, unidad y
+`stock_before`/`stock_after`. Todos comparten el `inventory_operation_id` de la
+venta. El precio histórico permanece en `SaleItem`; confirmar no modifica
+precio de venta, costo de compra, IVA, margen ni estado activo del catálogo. Un
+producto inactivado después de crear el borrador puede confirmarse si todavía
+existe y no se reactiva. Las líneas `service` siguen formando parte del total,
+pero no crean movimientos ni requieren stock. Una venta sólo de servicios se
+confirma con `inventory_operation_id = null`.
+
+La confirmación guarda `confirmed_at` y `confirmed_by_user_id`; una venta
+confirmada deja de admitir edición o cancelación. El detalle expone actor,
+fecha e ID de operación y el listado permite filtrar `confirmed` y `reversed`.
+La trazabilidad de Inventario se consulta con
+`/inventory/movements?operation_id=<uuid>`.
+
+Revertir bloquea venta, movimientos `sale` originales y productos en orden
+estable. Exige que los movimientos coincidan exactamente con las líneas y que
+ninguno tenga una reversión previa. Crea movimientos compensatorios `reversal`
+con un nuevo `reversal_operation_id`, `source_type = sale_reversal` y
+`reverses_movement_id` hacia cada original; aumenta stock, conserva los
+originales y cambia la venta a `reversed`. Guarda fecha, actor y motivo. Una
+venta sólo de servicios también puede revertirse y conserva ambos IDs de
+operación nulos. Los movimientos `sale` no pueden revertirse desde el endpoint
+genérico de Inventario.
 
 El actor se deriva de `TenantContext`; no existe selector libre de vendedor o
 veterinario. Todas las lecturas, búsquedas, conteos, subconsultas y relaciones
@@ -815,5 +854,8 @@ comportan como inexistentes y devuelven `404` sin revelar datos. Se reutilizan
 los permisos operativos existentes y no se agregan roles.
 
 Crear, editar, consultar o cancelar un borrador no modifica stock y no crea
-`InventoryMovement`. Este slice no implementa confirmación, facturación,
-comprobantes, ARCA, pagos, caja, devoluciones ni dashboard de ventas.
+`InventoryMovement`. Confirmar y revertir son transacciones únicas. Sale,
+SaleItem, InventoryItem, InventoryMovement y actores se resuelven dentro del
+tenant autenticado; IDs cross-tenant devuelven `404` sin revelar existencia.
+No se implementan todavía facturación, comprobantes, ARCA, pagos, caja,
+devoluciones comerciales, notas de crédito ni dashboard de ventas.
