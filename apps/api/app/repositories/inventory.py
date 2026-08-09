@@ -4,7 +4,7 @@ import uuid
 from datetime import date, timedelta
 from datetime import datetime
 
-from sqlalchemy import Select, asc, desc, func, or_, select
+from sqlalchemy import Select, and_, asc, case, desc, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased, selectinload
 
@@ -404,6 +404,272 @@ class InventoryRepository:
             .order_by(InventoryBulkOperationItem.inventory_item_id.asc())
         )
         return list(self.db.scalars(statement).all())
+
+    def get_dashboard_catalog_metrics(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        is_active: bool | None,
+    ) -> dict:
+        filters = self._dashboard_item_filters(
+            tenant_id,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            is_active=is_active,
+        )
+        purchase_cost_with_tax = (
+            func.coalesce(InventoryItem.purchase_price_ars, 0)
+            * (1 + (func.coalesce(InventoryItem.purchase_tax_rate_percentage, 0) / 100))
+        )
+        statement = select(
+            func.count(InventoryItem.id).label("total_products"),
+            func.count(InventoryItem.id).filter(InventoryItem.is_active.is_(True)).label("active_products"),
+            func.count(InventoryItem.id).filter(InventoryItem.is_active.is_(False)).label("inactive_products"),
+            func.count(InventoryItem.id)
+            .filter(InventoryItem.current_stock > InventoryItem.minimum_stock)
+            .label("in_stock_products"),
+            func.count(InventoryItem.id)
+            .filter(
+                InventoryItem.current_stock > 0,
+                InventoryItem.current_stock <= InventoryItem.minimum_stock,
+            )
+            .label("low_stock_products"),
+            func.count(InventoryItem.id).filter(InventoryItem.current_stock == 0).label("out_of_stock_products"),
+            func.count(InventoryItem.id).filter(InventoryItem.current_stock < 0).label("negative_stock_products"),
+            func.coalesce(func.sum(InventoryItem.current_stock * purchase_cost_with_tax), 0).label("estimated_cost_value_ars"),
+            func.coalesce(
+                func.sum(InventoryItem.current_stock * func.coalesce(InventoryItem.sale_price_ars, 0)),
+                0,
+            ).label("estimated_sale_value_ars"),
+            func.count(InventoryItem.id)
+            .filter(InventoryItem.is_active.is_(False), InventoryItem.current_stock != 0)
+            .label("inactive_with_stock_products"),
+            func.count(InventoryItem.id)
+            .filter(InventoryItem.is_active.is_(True), InventoryItem.purchase_price_ars.is_(None))
+            .label("missing_purchase_cost_products"),
+            func.count(InventoryItem.id)
+            .filter(InventoryItem.is_active.is_(True), InventoryItem.sale_price_ars.is_(None))
+            .label("missing_sale_price_products"),
+            func.count(InventoryItem.id)
+            .filter(or_(InventoryItem.brand.is_(None), func.trim(InventoryItem.brand) == ""))
+            .label("missing_brand_products"),
+            func.count(InventoryItem.id)
+            .filter(or_(InventoryItem.supplier.is_(None), func.trim(InventoryItem.supplier) == ""))
+            .label("missing_supplier_products"),
+        ).where(*filters)
+        row = self.db.execute(statement).mappings().one()
+        return dict(row)
+
+    def list_dashboard_attention_items(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        is_active: bool | None,
+        limit: int,
+    ) -> list[InventoryItem]:
+        filters = self._dashboard_item_filters(
+            tenant_id,
+            category=category,
+            brand=brand,
+            supplier=supplier,
+            is_active=is_active,
+        )
+        alert_condition = or_(
+            InventoryItem.current_stock < 0,
+            InventoryItem.current_stock == 0,
+            and_(InventoryItem.current_stock > 0, InventoryItem.current_stock <= InventoryItem.minimum_stock),
+            and_(InventoryItem.is_active.is_(False), InventoryItem.current_stock != 0),
+            and_(InventoryItem.is_active.is_(True), InventoryItem.purchase_price_ars.is_(None)),
+            and_(InventoryItem.is_active.is_(True), InventoryItem.sale_price_ars.is_(None)),
+            InventoryItem.brand.is_(None),
+            func.trim(InventoryItem.brand) == "",
+            InventoryItem.supplier.is_(None),
+            func.trim(InventoryItem.supplier) == "",
+        )
+        priority_order = case(
+            (InventoryItem.current_stock < 0, 0),
+            (
+                or_(
+                    InventoryItem.current_stock == 0,
+                    and_(InventoryItem.is_active.is_(True), InventoryItem.sale_price_ars.is_(None)),
+                    and_(InventoryItem.is_active.is_(True), InventoryItem.purchase_price_ars.is_(None)),
+                ),
+                1,
+            ),
+            (
+                or_(
+                    and_(InventoryItem.current_stock > 0, InventoryItem.current_stock <= InventoryItem.minimum_stock),
+                    and_(InventoryItem.is_active.is_(False), InventoryItem.current_stock != 0),
+                ),
+                2,
+            ),
+            else_=3,
+        )
+        statement = (
+            select(InventoryItem)
+            .where(*filters, alert_condition)
+            .order_by(priority_order.asc(), InventoryItem.current_stock.asc(), func.lower(InventoryItem.name).asc(), InventoryItem.id.asc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
+    def get_dashboard_movement_metrics(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> dict:
+        statement = select(
+            func.count(InventoryMovement.id).label("total_movements"),
+            func.count(InventoryMovement.id)
+            .filter(InventoryMovement.movement_type.in_(
+                [
+                    "initial_stock",
+                    "manual_entry",
+                    "purchase",
+                    "customer_return",
+                    "adjustment_in",
+                    "transfer_in",
+                    "entry",
+                ]
+            ))
+            .label("entry_movements"),
+            func.count(InventoryMovement.id)
+            .filter(InventoryMovement.movement_type.in_(
+                [
+                    "manual_exit",
+                    "sale",
+                    "clinical_consumption",
+                    "supplier_return",
+                    "adjustment_out",
+                    "expiration",
+                    "loss",
+                    "breakage",
+                    "transfer_out",
+                    "exit",
+                ]
+            ))
+            .label("exit_movements"),
+            func.count(InventoryMovement.id)
+            .filter(InventoryMovement.movement_type.in_(["adjustment_in", "adjustment_out", "adjustment"]))
+            .label("adjustment_movements"),
+            func.count(InventoryMovement.id)
+            .filter(InventoryMovement.movement_type == "reversal")
+            .label("reversal_movements"),
+            func.count(InventoryMovement.id)
+            .filter(InventoryMovement.movement_type == "clinical_consumption")
+            .label("clinical_consumption_movements"),
+        ).where(
+            InventoryMovement.tenant_id == tenant_id,
+            InventoryMovement.created_at >= date_from,
+            InventoryMovement.created_at <= date_to,
+        )
+        row = self.db.execute(statement).mappings().one()
+        return dict(row)
+
+    def list_dashboard_recent_movements(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+        limit: int,
+    ) -> list[InventoryMovement]:
+        statement = (
+            select(InventoryMovement)
+            .join(
+                InventoryItem,
+                (InventoryItem.id == InventoryMovement.inventory_item_id)
+                & (InventoryItem.tenant_id == tenant_id),
+            )
+            .where(
+                InventoryMovement.tenant_id == tenant_id,
+                InventoryMovement.created_at >= date_from,
+                InventoryMovement.created_at <= date_to,
+            )
+            .options(
+                selectinload(InventoryMovement.inventory_item),
+                selectinload(InventoryMovement.created_by_user),
+                selectinload(InventoryMovement.reverses_movement),
+                selectinload(InventoryMovement.reversed_by_movement),
+            )
+            .order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
+    def list_dashboard_recent_imports(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+        limit: int,
+    ) -> list[InventoryImport]:
+        statement = (
+            select(InventoryImport)
+            .where(
+                InventoryImport.tenant_id == tenant_id,
+                InventoryImport.created_at >= date_from,
+                InventoryImport.created_at <= date_to,
+            )
+            .options(selectinload(InventoryImport.created_by_user))
+            .order_by(InventoryImport.created_at.desc(), InventoryImport.id.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
+    def list_dashboard_recent_bulk_operations(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        date_from: datetime,
+        date_to: datetime,
+        limit: int,
+    ) -> list[InventoryBulkOperation]:
+        statement = (
+            select(InventoryBulkOperation)
+            .where(
+                InventoryBulkOperation.tenant_id == tenant_id,
+                InventoryBulkOperation.created_at >= date_from,
+                InventoryBulkOperation.created_at <= date_to,
+            )
+            .options(
+                selectinload(InventoryBulkOperation.created_by_user),
+                selectinload(InventoryBulkOperation.reversed_by_user),
+            )
+            .order_by(InventoryBulkOperation.created_at.desc(), InventoryBulkOperation.id.desc())
+            .limit(limit)
+        )
+        return list(self.db.scalars(statement).all())
+
+    def _dashboard_item_filters(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        category: str | None,
+        brand: str | None,
+        supplier: str | None,
+        is_active: bool | None,
+    ) -> list:
+        filters = [InventoryItem.tenant_id == tenant_id]
+        if category is not None:
+            filters.append(InventoryItem.category == category)
+        if brand is not None:
+            filters.append(func.lower(func.trim(InventoryItem.brand)) == brand.lower())
+        if supplier is not None:
+            filters.append(func.lower(func.trim(InventoryItem.supplier)) == supplier.lower())
+        if is_active is not None:
+            filters.append(InventoryItem.is_active.is_(is_active))
+        return filters
 
     def get_filter_options(self, tenant_id: uuid.UUID) -> dict[str, list[str]]:
         brand_values = (

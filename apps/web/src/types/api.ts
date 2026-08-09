@@ -564,6 +564,84 @@ export type InventorySummary = {
   expired_count: number;
 };
 
+export type InventoryDashboardAlertType =
+  | "negative_stock"
+  | "out_of_stock"
+  | "low_stock"
+  | "inactive_with_stock"
+  | "missing_purchase_cost"
+  | "missing_sale_price"
+  | "missing_brand"
+  | "missing_supplier";
+
+export type InventoryDashboardAlertPriority = "critical" | "high" | "medium" | "info";
+
+export type InventoryDashboardFilters = {
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  is_active?: boolean | null;
+  date_from?: string | null;
+  date_to?: string | null;
+};
+
+export type InventoryDashboard = {
+  generated_at: string;
+  filters: {
+    category: InventoryCategory | null;
+    brand: string | null;
+    supplier: string | null;
+    is_active: boolean | null;
+    date_from: string;
+    date_to: string;
+  };
+  indicators: {
+    total_products: number;
+    active_products: number;
+    inactive_products: number;
+    in_stock_products: number;
+    low_stock_products: number;
+    out_of_stock_products: number;
+    negative_stock_products: number;
+  };
+  valuation: {
+    estimated_cost_value_ars: string;
+    estimated_sale_value_ars: string;
+    includes_negative_stock: boolean;
+    disclaimer: string;
+  };
+  movement_metrics: {
+    total_movements: number;
+    entry_movements: number;
+    exit_movements: number;
+    adjustment_movements: number;
+    reversal_movements: number;
+    clinical_consumption_movements: number;
+  };
+  alerts: Array<{
+    alert_type: InventoryDashboardAlertType;
+    priority: InventoryDashboardAlertPriority;
+    count: number;
+    label: string;
+  }>;
+  attention_items: Array<{
+    id: string;
+    internal_code: string;
+    name: string;
+    category: InventoryCategory;
+    current_stock: string;
+    minimum_stock: string;
+    sale_price_ars: string | null;
+    alerts: InventoryDashboardAlertType[];
+    priority: InventoryDashboardAlertPriority;
+  }>;
+  activity: {
+    recent_movements: InventoryMovement[];
+    recent_imports: InventoryImportListItem[];
+    recent_bulk_operations: InventoryBulkOperationListItem[];
+  };
+};
+
 export type InventoryFilterOptions = {
   brands: string[];
   suppliers: string[];

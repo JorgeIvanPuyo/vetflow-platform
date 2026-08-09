@@ -407,6 +407,44 @@ was resolved or when a related user does not belong to the same tenant. Detail
 keeps `created_by_user_id` and `reversed_by_user_id` only when the matching
 same-tenant user summary is available.
 
+Inventory operational dashboard:
+
+- `GET /api/v1/inventory/dashboard` returns a tenant-scoped, read-only snapshot
+  for inventory operations.
+- Query filters are `category`, `brand`, `supplier`, `is_active`, `date_from`,
+  and `date_to`.
+- Catalog filters (`category`, `brand`, `supplier`, `is_active`) apply to product
+  counts, stock-state counts, valuation, alert counts, and products requiring
+  attention.
+- Date filters apply to movement period metrics, recent movements, recent
+  imports, and recent bulk operations. `date_to` is inclusive.
+- When dates are omitted, the backend uses the last 30 days ending today. Ranges
+  where `date_from` is after `date_to`, or ranges longer than 365 days, return
+  `422`.
+
+Dashboard indicators use the same stock-state rules as the inventory listing:
+
+- available: `current_stock > minimum_stock`
+- low stock: `current_stock > 0 AND current_stock <= minimum_stock`
+- out of stock: `current_stock = 0`
+- negative stock: `current_stock < 0`
+
+Valuation is operational only. `estimated_cost_value_ars` is calculated as
+`SUM(current_stock * purchase_price_ars * (1 + purchase_tax_rate_percentage/100))`,
+with missing purchase cost contributing `0`. `estimated_sale_value_ars` is
+`SUM(current_stock * sale_price_ars)`, with missing sale price contributing `0`.
+Both values include negative stock as a net adjustment and must be shown with
+the operational disclaimer returned by the API; they are not profit, equity, or
+official accounting values.
+
+Derived, non-persistent dashboard alerts are `negative_stock` (critical),
+`out_of_stock`, `missing_purchase_cost`, `missing_sale_price` (high),
+`low_stock`, `inactive_with_stock` (medium), and `missing_brand`,
+`missing_supplier` (info). `attention_items` returns up to 10 products ordered
+by priority, most critical stock, name, and id. Activity returns up to 10 recent
+movements, 5 imports, and 5 bulk operations, with same-tenant user summaries
+when available. No export history is included because exports are not persisted.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.

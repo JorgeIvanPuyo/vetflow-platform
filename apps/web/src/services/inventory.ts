@@ -6,6 +6,8 @@ import type {
   InventoryBulkOperation,
   InventoryBulkOperationListItem,
   InventoryBulkOperationPreviewPayload,
+  InventoryDashboard,
+  InventoryDashboardFilters,
   InventoryExportPayload,
   InventoryImport,
   InventoryImportConfirmPayload,
@@ -74,6 +76,22 @@ type InventoryBulkOperationResponse = ApiItemResponse<InventoryBulkOperation> & 
 
 export function getInventorySummary() {
   return api.get<ApiItemResponse<InventorySummary>>("/api/v1/inventory/summary");
+}
+
+export function getInventoryDashboard(filters: InventoryDashboardFilters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+    params.set(key, String(value));
+  });
+
+  const query = params.toString();
+  return api.get<ApiItemResponse<InventoryDashboard>>(
+    query ? `/api/v1/inventory/dashboard?${query}` : "/api/v1/inventory/dashboard",
+  );
 }
 
 export function getInventoryFilterOptions() {

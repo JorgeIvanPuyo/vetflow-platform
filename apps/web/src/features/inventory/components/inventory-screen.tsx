@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -570,6 +571,10 @@ export function InventoryScreen() {
           </p>
         </div>
         <div className="inventory-header-actions">
+          <Link className="secondary-button" href="/inventory/dashboard">
+            <Activity size={18} />
+            Dashboard
+          </Link>
           <Link className="secondary-button" href="/inventory/bulk-operations">
             <History size={18} />
             Historial grupal

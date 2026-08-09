@@ -21,7 +21,7 @@ export function AppSidebar() {
   const visibleItems = filterNavigationByRole(navigationItems, role);
 
   function isActive(href: string) {
-    if (href === "/inventory") {
+    if (href === "/inventory/dashboard") {
       return pathname.startsWith("/inventory") || pathname.startsWith("/inventario");
     }
 

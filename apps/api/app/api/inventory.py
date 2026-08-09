@@ -17,6 +17,7 @@ from app.schemas.inventory import (
     InventoryBulkOperationStatus,
     InventoryBulkOperationType,
     InventoryCategory,
+    InventoryDashboardRead,
     InventoryExportCreate,
     InventoryFilterOptionsRead,
     InventoryImportConfirmCreate,
@@ -39,6 +40,7 @@ from app.schemas.inventory import (
     InventorySummaryRead,
 )
 from app.services.inventory_bulk_operation import InventoryBulkOperationService
+from app.services.inventory_dashboard import InventoryDashboardService
 from app.services.inventory_export import InventoryExportService, XLSX_MEDIA_TYPE
 from app.services.inventory import InventoryService
 from app.services.inventory_import import InventoryImportService
@@ -106,6 +108,32 @@ def _prefer_current_parameter(current_value: str | None, legacy_value: str | Non
     if legacy_value is not None and legacy_value.strip():
         return legacy_value.strip()
     return None
+
+
+@router.get("/dashboard")
+def get_inventory_dashboard(
+    category: InventoryCategory | None = Query(default=None),
+    brand: str | None = Query(default=None),
+    supplier: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    dashboard = InventoryDashboardService(db).get_dashboard(
+        tenant.tenant_id,
+        category=category,
+        brand=brand,
+        supplier=supplier,
+        is_active=is_active,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return {
+        "data": InventoryDashboardRead.model_validate(dashboard).model_dump(mode="json"),
+        "meta": {},
+    }
 
 
 @router.post("/export")

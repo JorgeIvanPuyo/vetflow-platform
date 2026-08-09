@@ -758,3 +758,87 @@ class InventoryBulkOperationListItemRead(BaseModel):
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
     created_at: datetime
+
+
+InventoryDashboardAlertType = Literal[
+    "negative_stock",
+    "out_of_stock",
+    "low_stock",
+    "inactive_with_stock",
+    "missing_purchase_cost",
+    "missing_sale_price",
+    "missing_brand",
+    "missing_supplier",
+]
+InventoryDashboardAlertPriority = Literal["critical", "high", "medium", "info"]
+
+
+class InventoryDashboardAppliedFiltersRead(BaseModel):
+    category: InventoryCategory | None = None
+    brand: str | None = None
+    supplier: str | None = None
+    is_active: bool | None = None
+    date_from: date
+    date_to: date
+
+
+class InventoryDashboardIndicatorsRead(BaseModel):
+    total_products: int
+    active_products: int
+    inactive_products: int
+    in_stock_products: int
+    low_stock_products: int
+    out_of_stock_products: int
+    negative_stock_products: int
+
+
+class InventoryDashboardValuationRead(BaseModel):
+    estimated_cost_value_ars: Decimal
+    estimated_sale_value_ars: Decimal
+    includes_negative_stock: bool
+    disclaimer: str
+
+
+class InventoryDashboardMovementMetricsRead(BaseModel):
+    total_movements: int
+    entry_movements: int
+    exit_movements: int
+    adjustment_movements: int
+    reversal_movements: int
+    clinical_consumption_movements: int
+
+
+class InventoryDashboardAlertRead(BaseModel):
+    alert_type: InventoryDashboardAlertType
+    priority: InventoryDashboardAlertPriority
+    count: int
+    label: str
+
+
+class InventoryDashboardAttentionItemRead(BaseModel):
+    id: uuid.UUID
+    internal_code: str
+    name: str
+    category: InventoryCategory
+    current_stock: Decimal
+    minimum_stock: Decimal
+    sale_price_ars: Decimal | None = None
+    alerts: list[InventoryDashboardAlertType]
+    priority: InventoryDashboardAlertPriority
+
+
+class InventoryDashboardActivityRead(BaseModel):
+    recent_movements: list[InventoryMovementRead]
+    recent_imports: list[InventoryImportListItemRead]
+    recent_bulk_operations: list[InventoryBulkOperationListItemRead]
+
+
+class InventoryDashboardRead(BaseModel):
+    generated_at: datetime
+    filters: InventoryDashboardAppliedFiltersRead
+    indicators: InventoryDashboardIndicatorsRead
+    valuation: InventoryDashboardValuationRead
+    movement_metrics: InventoryDashboardMovementMetricsRead
+    alerts: list[InventoryDashboardAlertRead]
+    attention_items: list[InventoryDashboardAttentionItemRead]
+    activity: InventoryDashboardActivityRead
