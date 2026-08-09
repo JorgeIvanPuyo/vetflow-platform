@@ -1354,3 +1354,133 @@ export type ListUsersFilters = {
   is_active?: boolean;
   search?: string;
 };
+
+export type PurchaseStatus =
+  | "draft"
+  | "cancelled"
+  | "received"
+  | "partially_received"
+  | "returned";
+
+export type PurchaseDocumentType =
+  | "invoice"
+  | "receipt"
+  | "ticket"
+  | "delivery_note"
+  | "other";
+
+export type PurchaseItemInput = {
+  inventory_item_id: string;
+  quantity: string;
+  unit_price_without_tax_ars: string;
+  tax_rate_percentage: string;
+};
+
+export type PurchaseItem = PurchaseItemInput & {
+  id: string;
+  line_number: number;
+  description_snapshot: string;
+  internal_code_snapshot: string;
+  unit: string;
+  unit_price_with_tax_ars: string;
+  line_subtotal_ars: string;
+  line_tax_ars: string;
+  line_total_ars: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierSummary = {
+  id: string;
+  name: string;
+  tax_id: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
+export type Supplier = SupplierSummary & {
+  tenant_id: string;
+  address: string | null;
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+};
+
+export type SupplierWritePayload = {
+  name: string;
+  tax_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
+
+export type SupplierListFilters = {
+  search?: string;
+  is_active?: boolean;
+  page?: number;
+  page_size?: number;
+  sort_by?: "name" | "updated_at";
+  sort_direction?: "asc" | "desc";
+};
+
+export type PurchaseSummary = {
+  id: string;
+  supplier_id: string;
+  supplier_name: string;
+  supplier_tax_id: string | null;
+  purchase_date: string;
+  document_type: PurchaseDocumentType;
+  document_number: string | null;
+  currency: "ARS";
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+  status: PurchaseStatus;
+  item_count: number;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Purchase = Omit<PurchaseSummary, "item_count"> & {
+  tenant_id: string;
+  supplier: SupplierSummary | null;
+  notes: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  items: PurchaseItem[];
+};
+
+export type PurchaseWritePayload = {
+  supplier_id: string;
+  purchase_date: string;
+  document_type: PurchaseDocumentType;
+  document_number?: string | null;
+  notes?: string | null;
+  items: PurchaseItemInput[];
+};
+
+export type PurchaseListFilters = {
+  search?: string;
+  supplier?: string;
+  supplier_id?: string;
+  status?: "draft" | "cancelled";
+  document_type?: PurchaseDocumentType;
+  date_from?: string;
+  date_to?: string;
+  created_by_user_id?: string;
+  page?: number;
+  page_size?: number;
+  sort_by?: "purchase_date" | "created_at" | "total_ars" | "supplier_name";
+  sort_direction?: "asc" | "desc";
+};

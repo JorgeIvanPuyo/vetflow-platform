@@ -24,6 +24,7 @@ Define the initial API surface for Vetflow Platform so frontend and backend can 
 - clinical-history
 - clinic
 - inventory
+- purchases
 - search
 
 ## Authentication
@@ -444,6 +445,111 @@ Derived, non-persistent dashboard alerts are `negative_stock` (critical),
 by priority, most critical stock, name, and id. Activity returns up to 10 recent
 movements, 5 imports, and 5 bulk operations, with same-tenant user summaries
 when available. No export history is included because exports are not persisted.
+
+## Proveedores
+
+Proveedores es un catálogo tenant-owned usado por Compras. El servidor deriva
+`tenant_id` y `created_by_user_id` desde `TenantContext`; esos campos, al igual
+que `normalized_name`, no se aceptan desde el cliente.
+
+Endpoints:
+
+- `POST /api/v1/suppliers` crea un proveedor activo.
+- `GET /api/v1/suppliers` lista proveedores; por defecto devuelve sólo activos.
+- `GET /api/v1/suppliers/{supplier_id}` devuelve el detalle.
+- `PATCH /api/v1/suppliers/{supplier_id}` edita datos y permite activar o
+  inactivar con `is_active`. No existe eliminación física.
+
+Los campos editables son `name`, `tax_id`, `phone`, `email`, `address` y
+`notes`. El nombre se recorta, colapsa espacios y se compara mediante una copia
+interna `casefold`; no se eliminan acentos. Dentro de cada tenant son únicos el
+nombre normalizado y la identificación fiscal recortada. Se permiten múltiples
+`tax_id = null` y los mismos valores en tenants distintos. El email, cuando se
+envía, debe tener un formato válido; no se realiza validación fiscal específica.
+
+El listado acepta `search` sobre nombre, identificación fiscal o email,
+`is_active`, `page`, `page_size`, `sort_by` (`name` o `updated_at`) y
+`sort_direction`. Las referencias desconocidas o cross-tenant devuelven `404`.
+Los conflictos de nombre o identificación fiscal devuelven, respectivamente,
+`409 supplier_name_conflict` o `409 supplier_tax_id_conflict`.
+
+Se reutiliza el mismo límite operativo autenticado de Compras: quien puede
+gestionar Compras puede consultar y gestionar Proveedores. No se agregan roles
+ni permisos nuevos.
+
+## Compras
+
+Compras es un documento comercial tenant-owned independiente de los movimientos
+de inventario. El Slice 2.1 sólo permite crear y cancelar borradores. Crear,
+editar, listar, consultar o cancelar una compra nunca escribe
+`inventory_items.current_stock`, nunca actualiza el costo del producto y nunca
+crea un movimiento de inventario de tipo `purchase`.
+
+Endpoints:
+
+- `POST /api/v1/purchases` crea un `draft`.
+- `GET /api/v1/purchases` devuelve un listado resumido y paginado.
+- `GET /api/v1/purchases/{purchase_id}` devuelve cabecera, líneas, totales,
+  creador, fechas y datos de cancelación.
+- `PATCH /api/v1/purchases/{purchase_id}` edita un `draft`; cuando se envía
+  `items`, reemplaza atómicamente el conjunto completo de líneas.
+- `POST /api/v1/purchases/{purchase_id}/cancel` acepta
+  `{ "reason": "..." }`, conserva la compra y sus líneas, y la vuelve inmutable.
+
+Los estados persistibles son `draft`, `cancelled`, `received`,
+`partially_received` y `returned` para mantener extensible el modelo. Sólo
+`draft` y `cancelled` son alcanzables en el Slice 2.1; recepción, recepción
+parcial y devoluciones no están implementadas.
+
+El cliente crea y edita una compra con `supplier_id`; no puede enviar un nombre
+de proveedor libre. El proveedor debe pertenecer al mismo tenant y estar activo
+al crear la compra o al cambiar la selección. Un borrador puede conservar su
+proveedor cuando éste fue inactivado después de la creación. La cabecera
+persiste `supplier_name` y `supplier_tax_id` como snapshots, además de
+`purchase_date`, `document_type`, `document_number` opcional, moneda fija `ARS`,
+notas opcionales, totales calculados, estado, creador, fechas y trazabilidad de
+cancelación. Los tipos de comprobante iniciales son `invoice`, `receipt`,
+`ticket`, `delivery_note` y `other`. Renombrar, editar o inactivar el catálogo no
+reescribe esos snapshots. El detalle incluye además un resumen del proveedor
+actual para poder navegar al catálogo.
+
+La migración `0031_create_suppliers` agrupa compras previas por tenant y nombre
+normalizado. Si un grupo contiene identificaciones fiscales distintas, el nuevo
+proveedor queda sin `tax_id`; los valores originales permanecen en cada snapshot.
+
+Cada línea debe referenciar un producto único de inventario perteneciente al
+tenant autenticado. La línea persiste snapshots de nombre, código interno y
+unidad, además de cantidad decimal positiva, precio unitario sin IVA no
+negativo, porcentaje de IVA entre `0` y `100` (default `21`), precio unitario con
+IVA, subtotal, IVA y total de línea. Los cambios posteriores del catálogo no
+reescriben los snapshots.
+
+Los clientes envían únicamente `inventory_item_id`, `quantity`,
+`unit_price_without_tax_ars` y el `tax_rate_percentage` opcional por línea. El
+backend calcula todos los importes con `Decimal`, cuantización a dos decimales y
+`ROUND_HALF_UP`. Los payloads no pueden establecer tenant, usuarios, moneda,
+estado, snapshots, totales calculados, timestamps ni campos de cancelación.
+
+Los filtros del listado son `search` (coincidencia parcial del snapshot de
+proveedor o número de documento), `supplier_id`, `supplier` (compatibilidad
+textual exacta), `status`, `document_type`, `date_from`, `date_to`,
+`created_by_user_id`, `page`, `page_size`, `sort_by` y `sort_direction`. Los campos ordenables son
+`purchase_date`, `created_at`, `total_ars` y `supplier_name`; el orden default es
+`purchase_date DESC, id DESC`. Las filas resumidas contienen `item_count` pero
+no las líneas completas.
+Si se envían `supplier_id` y el filtro textual `supplier`, ambos se aplican de
+forma conjuntiva; el frontend usa exclusivamente `supplier_id` para el filtro
+exacto.
+
+Todas las rutas usan el mismo límite operativo autenticado de tenant que
+Inventario. El servidor deriva tenant y usuario desde `TenantContext`; el cliente
+no puede elegirlos. Las lecturas de compra, línea, producto, creador y cancelador
+se limitan a ese tenant. Los identificadores desconocidos o cross-tenant de
+compras, proveedores o productos devuelven `404` sin revelar datos ajenos. Un
+proveedor inactivo seleccionado para una compra devuelve `409 supplier_inactive`.
+Los campos o
+valores inválidos devuelven `422`; editar o cancelar una compra que no sea
+borrador devuelve `409 purchase_not_editable`.
 
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.

@@ -47,3 +47,5 @@ class Tenant(BaseModel):
         "InventoryMovement",
         back_populates="tenant",
     )
+    purchases: Mapped[list[Purchase]] = relationship("Purchase", back_populates="tenant")
+    suppliers: Mapped[list[Supplier]] = relationship("Supplier", back_populates="tenant")

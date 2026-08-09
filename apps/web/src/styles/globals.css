@@ -3671,6 +3671,459 @@ code {
   }
 }
 
+.screen-heading__actions,
+.supplier-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.purchase-supplier-picker {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.purchase-selected-supplier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface-soft);
+}
+
+.purchase-selected-supplier > span {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.purchase-quick-supplier {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background: var(--color-surface-soft);
+}
+
+.purchase-quick-supplier .primary-button {
+  justify-self: start;
+}
+
+.supplier-filters {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(150px, 220px) auto;
+  align-items: end;
+  gap: 1rem;
+}
+
+.supplier-table td:first-child a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.supplier-table td:first-child a:hover {
+  text-decoration: underline;
+}
+
+.supplier-status--active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.supplier-status--inactive {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.supplier-form-grid,
+.supplier-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.supplier-form-wide,
+.supplier-detail-wide {
+  grid-column: 1 / -1;
+}
+
+.supplier-detail-grid > div {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.supplier-detail-grid span {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.supplier-detail-grid p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .supplier-filters,
+  .supplier-form-grid,
+  .supplier-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .supplier-form-wide,
+  .supplier-detail-wide {
+    grid-column: auto;
+  }
+}
+
+/* Purchases */
+
+.purchases-page {
+  gap: 1.25rem;
+}
+
+.purchase-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  gap: 0.85rem;
+}
+
+.purchase-search,
+.purchase-product-search {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.purchase-search {
+  grid-column: span 2;
+}
+
+.purchase-table {
+  min-width: 1120px;
+}
+
+.purchase-wrap {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.purchase-wrap strong,
+.purchase-wrap small {
+  display: block;
+}
+
+.purchase-wrap small {
+  margin-top: 0.2rem;
+  color: var(--color-text-muted);
+}
+
+.purchase-status--draft {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.purchase-status--cancelled {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.purchase-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  text-align: center;
+}
+
+.purchase-empty-state h2,
+.purchase-empty-state p {
+  margin: 0;
+}
+
+.purchase-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.purchase-pagination span {
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.purchase-form-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.purchase-form-section .section-heading h2,
+.purchase-form-section .section-heading p {
+  margin: 0;
+}
+
+.purchase-form-section .section-heading p {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+}
+
+.purchase-header-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.purchase-notes-field {
+  grid-column: 1 / -1;
+}
+
+.purchase-product-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.65rem;
+}
+
+.purchase-product-results button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.purchase-product-results button:not(:disabled):hover,
+.purchase-product-results button:not(:disabled):focus-visible {
+  border-color: rgba(43, 138, 113, 0.45);
+  background: var(--color-primary-soft);
+}
+
+.purchase-product-results button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.purchase-product-results button > span {
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.purchase-product-results small {
+  color: var(--color-text-muted);
+}
+
+.purchase-lines {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.purchase-line {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(120px, 0.75fr)) auto auto;
+  align-items: end;
+  gap: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-soft);
+  padding: 0.85rem;
+}
+
+.purchase-line__product,
+.purchase-line__totals {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.purchase-line__product small,
+.purchase-line__totals span {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.purchase-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.purchase-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.purchase-summary span,
+.purchase-summary p {
+  color: var(--color-text-muted);
+}
+
+.purchase-summary strong {
+  overflow-wrap: anywhere;
+  font-size: 1.3rem;
+}
+
+.purchase-summary p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.purchase-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.purchase-detail-grid > div {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.purchase-detail-grid > div > span,
+.purchase-detail-grid small {
+  color: var(--color-text-muted);
+}
+
+.purchase-detail-notes {
+  grid-column: 1 / -1;
+}
+
+.purchase-detail-notes p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.purchase-traceability,
+.purchase-cancellation,
+.purchase-cancel-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.purchase-traceability h2,
+.purchase-cancellation h2,
+.purchase-cancel-form h2,
+.purchase-cancel-form p,
+.purchase-cancellation p {
+  margin: 0;
+}
+
+.purchase-traceability dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.purchase-traceability dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.purchase-traceability dt {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.purchase-traceability dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.purchase-cancellation {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.purchase-cancellation small,
+.purchase-cancel-form p {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.purchase-cancel-form .danger-button {
+  justify-self: start;
+}
+
+@media (max-width: 1000px) {
+  .purchase-header-grid,
+  .purchase-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchase-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .purchase-line__product {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .purchase-search,
+  .purchase-product-search,
+  .purchase-header-grid,
+  .purchase-detail-grid,
+  .purchase-summary,
+  .purchase-traceability dl,
+  .purchase-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .purchase-search,
+  .purchase-notes-field,
+  .purchase-detail-notes,
+  .purchase-line__product,
+  .purchase-summary p {
+    grid-column: auto;
+  }
+
+  .purchase-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .purchase-product-results button {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .purchase-product-results button > span:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+}
+
 .consultation-workflow__final-actions {
   display: grid;
   grid-template-columns: 1fr;
