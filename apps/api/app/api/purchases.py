@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.purchase import (
-    PurchaseActiveStatus,
     PurchaseCancel,
     PurchaseCreate,
     PurchaseDetailRead,
     PurchaseDocumentType,
+    PurchaseFunctionalStatus,
+    PurchaseReceive,
+    PurchaseReverseReceipt,
     PurchaseSortBy,
     PurchaseSummaryRead,
     PurchaseUpdate,
@@ -40,7 +42,7 @@ def list_purchases(
     search: str | None = Query(default=None, max_length=255),
     supplier: str | None = Query(default=None, max_length=255),
     supplier_id: uuid.UUID | None = Query(default=None),
-    status_filter: PurchaseActiveStatus | None = Query(default=None, alias="status"),
+    status_filter: PurchaseFunctionalStatus | None = Query(default=None, alias="status"),
     document_type: PurchaseDocumentType | None = Query(default=None),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
@@ -106,5 +108,36 @@ def cancel_purchase(
         purchase_id,
         payload,
         cancelled_by_user_id=tenant.user_id,
+    )
+    return {"data": PurchaseDetailRead.model_validate(purchase).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/{purchase_id}/receive")
+def receive_purchase(
+    purchase_id: uuid.UUID,
+    _: PurchaseReceive,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    purchase = PurchaseService(db).receive(
+        tenant.tenant_id,
+        purchase_id,
+        received_by_user_id=tenant.user_id,
+    )
+    return {"data": PurchaseDetailRead.model_validate(purchase).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/{purchase_id}/reverse-receipt")
+def reverse_purchase_receipt(
+    purchase_id: uuid.UUID,
+    payload: PurchaseReverseReceipt,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    purchase = PurchaseService(db).reverse_receipt(
+        tenant.tenant_id,
+        purchase_id,
+        reason=payload.reason,
+        reversed_by_user_id=tenant.user_id,
     )
     return {"data": PurchaseDetailRead.model_validate(purchase).model_dump(mode="json"), "meta": {}}

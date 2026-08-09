@@ -1360,7 +1360,8 @@ export type PurchaseStatus =
   | "cancelled"
   | "received"
   | "partially_received"
-  | "returned";
+  | "returned"
+  | "reversed";
 
 export type PurchaseDocumentType =
   | "invoice"
@@ -1386,6 +1387,8 @@ export type PurchaseItem = PurchaseItemInput & {
   line_subtotal_ars: string;
   line_tax_ars: string;
   line_total_ars: string;
+  previous_purchase_price_ars: string | null;
+  previous_purchase_tax_rate_percentage: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1458,6 +1461,18 @@ export type Purchase = Omit<PurchaseSummary, "item_count"> & {
   cancelled_by_user_name: string | null;
   cancelled_by_user_email: string | null;
   cancellation_reason: string | null;
+  received_at: string | null;
+  received_by_user_id: string | null;
+  received_by_user_name: string | null;
+  received_by_user_email: string | null;
+  inventory_operation_id: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name: string | null;
+  reversed_by_user_email: string | null;
+  reversal_reason: string | null;
+  reversal_operation_id: string | null;
+  reversal_warnings: string[];
   items: PurchaseItem[];
 };
 
@@ -1474,7 +1489,7 @@ export type PurchaseListFilters = {
   search?: string;
   supplier?: string;
   supplier_id?: string;
-  status?: "draft" | "cancelled";
+  status?: "draft" | "cancelled" | "received" | "reversed";
   document_type?: PurchaseDocumentType;
   date_from?: string;
   date_to?: string;

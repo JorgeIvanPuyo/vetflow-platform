@@ -68,7 +68,7 @@ export function SupplierFormScreen({ supplierId }: Props) {
 
   return (
     <form className="page-stack suppliers-page" onSubmit={handleSubmit}>
-      <section className="screen-heading list-page__header"><div><Link className="back-link" href={supplierId ? `/suppliers/${supplierId}` : "/suppliers"}><ArrowLeft size={18} /> {supplierId ? "Detalle" : "Proveedores"}</Link><h1>{supplierId ? "Editar proveedor" : "Nuevo proveedor"}</h1><p>El nombre y la identificación fiscal deben ser únicos dentro de la clínica.</p></div><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar proveedor"}</button></section>
+      <section className="screen-heading list-page__header"><div><Link className="back-link" href={supplierId ? `/suppliers/${supplierId}` : "/suppliers"}><ArrowLeft size={18} /> {supplierId ? "Detalle" : "Proveedores"}</Link><h1>{supplierId ? "Editar proveedor" : "Nuevo proveedor"}</h1><p>El nombre y la identificación fiscal deben ser únicos dentro de la clínica.</p></div></section>
       {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
       <section className="panel supplier-form-grid">
         <label className="field"><span>Nombre *</span><input required maxLength={255} value={form.name} onChange={(event) => setField("name", event.target.value)} /></label>
@@ -79,6 +79,10 @@ export function SupplierFormScreen({ supplierId }: Props) {
         <label className="field supplier-form-wide"><span>Dirección</span><textarea rows={3} maxLength={2000} value={form.address} onChange={(event) => setField("address", event.target.value)} /></label>
         <label className="field supplier-form-wide"><span>Notas</span><textarea rows={4} maxLength={4000} value={form.notes} onChange={(event) => setField("notes", event.target.value)} /></label>
       </section>
+      <div className="supplier-form-actions">
+        <Link className="secondary-button" href={supplierId ? `/suppliers/${supplierId}` : "/suppliers"}>Cancelar</Link>
+        <button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar proveedor"}</button>
+      </div>
     </form>
   );
 }

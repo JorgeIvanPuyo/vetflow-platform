@@ -31,6 +31,7 @@ export function labelPurchaseStatus(status: PurchaseStatus) {
     received: "Recibida",
     partially_received: "Recepción parcial",
     returned: "Devuelta",
+    reversed: "Recepción revertida",
   };
   return labels[status];
 }

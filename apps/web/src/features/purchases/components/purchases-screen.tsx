@@ -8,7 +8,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatPurchaseCurrency,
   formatPurchaseDate,
-  formatPurchaseUser,
   labelPurchaseDocumentType,
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
@@ -85,7 +84,7 @@ export function PurchasesScreen() {
         <div>
           <p className="eyebrow">Operaciones</p>
           <h1>Compras</h1>
-          <p>Registra documentos de compra en borrador sin modificar existencias.</p>
+          <p>Registra borradores y controla su recepción trazable en inventario.</p>
         </div>
         <div className="screen-heading__actions">
           <Link className="secondary-button" href="/suppliers"><Building2 size={18} /> Proveedores</Link>
@@ -118,6 +117,8 @@ export function PurchasesScreen() {
             <option value="">Todos</option>
             <option value="draft">Borrador</option>
             <option value="cancelled">Cancelada</option>
+            <option value="received">Recibida</option>
+            <option value="reversed">Recepción revertida</option>
           </select>
         </label>
         <label className="field">
@@ -183,15 +184,15 @@ export function PurchasesScreen() {
                         }
                       }}
                     >
-                      <td>{formatPurchaseDate(purchase.purchase_date)}</td>
-                      <td className="purchase-wrap"><strong>{purchase.supplier_name}</strong><small>{purchase.supplier_tax_id || "Sin identificación fiscal"}</small></td>
-                      <td className="purchase-wrap"><strong>{labelPurchaseDocumentType(purchase.document_type)}</strong><small>{purchase.document_number || "Sin número"}</small></td>
-                      <td>{purchase.item_count}</td>
-                      <td>{formatPurchaseCurrency(purchase.subtotal_ars)}</td>
-                      <td>{formatPurchaseCurrency(purchase.tax_total_ars)}</td>
-                      <td><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></td>
-                      <td><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span></td>
-                      <td className="purchase-wrap">{formatPurchaseUser(purchase.created_by_user_name, purchase.created_by_user_email)}</td>
+                      <td className="purchase-cell--date">{formatPurchaseDate(purchase.purchase_date)}</td>
+                      <td className="purchase-cell-text purchase-cell--supplier"><strong className="purchase-clamp-two" title={purchase.supplier_name}>{purchase.supplier_name}</strong><small className="purchase-ellipsis" title={purchase.supplier_tax_id || "Sin identificación fiscal"}>{purchase.supplier_tax_id || "Sin identificación fiscal"}</small></td>
+                      <td className="purchase-cell-text purchase-cell--document"><strong>{labelPurchaseDocumentType(purchase.document_type)}</strong><small className="purchase-ellipsis" title={purchase.document_number || "Sin número"}>{purchase.document_number || "Sin número"}</small></td>
+                      <td className="purchase-cell--number">{purchase.item_count}</td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars)}</td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars)}</td>
+                      <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></td>
+                      <td className="purchase-cell--status"><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span></td>
+                      <td className="purchase-cell-text purchase-cell--user"><strong className="purchase-clamp-two" title={purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}>{purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}</strong>{purchase.created_by_user_name && purchase.created_by_user_email ? <small className="purchase-ellipsis" title={purchase.created_by_user_email}>{purchase.created_by_user_email}</small> : null}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -216,7 +217,7 @@ function readFilters(queryString: string): PurchaseListFilters {
   return {
     search: params.get("search") || undefined,
     supplier_id: params.get("supplier_id") || undefined,
-    status: status === "draft" || status === "cancelled" ? status : undefined,
+    status: status === "draft" || status === "cancelled" || status === "received" || status === "reversed" ? status : undefined,
     document_type: ["invoice", "receipt", "ticket", "delivery_note", "other"].includes(documentType ?? "") ? documentType ?? undefined : undefined,
     date_from: params.get("date_from") || undefined,
     date_to: params.get("date_to") || undefined,

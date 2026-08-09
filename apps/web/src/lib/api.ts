@@ -216,7 +216,7 @@ async function fetchWithTransientRetry(
     } catch (error) {
       lastError = error;
 
-      if (attempt === REQUEST_RETRY_DELAYS_MS.length) {
+      if (!retryTransient || attempt === REQUEST_RETRY_DELAYS_MS.length) {
         break;
       }
     }

@@ -3,7 +3,8 @@
 import { ArrowLeft, Plus, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
@@ -34,9 +35,11 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
   const [supplierQuery, setSupplierQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState<SupplierSummary[]>([]);
   const [isSearchingSuppliers, setIsSearchingSuppliers] = useState(false);
+  const [isSupplierOpen, setIsSupplierOpen] = useState(false);
   const [showQuickSupplier, setShowQuickSupplier] = useState(false);
   const [quickSupplier, setQuickSupplier] = useState({ name: "", taxId: "", phone: "", email: "" });
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [quickSupplierErrorMessage, setQuickSupplierErrorMessage] = useState<string | null>(null);
   const [purchaseDate, setPurchaseDate] = useState(todayIso());
   const [documentType, setDocumentType] = useState<PurchaseDocumentType>("invoice");
   const [documentNumber, setDocumentNumber] = useState("");
@@ -49,6 +52,9 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const supplierRequestId = useRef(0);
+  const supplierComboboxRef = useRef<HTMLDivElement>(null);
+  const quickSupplierNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!purchaseId) return;
@@ -57,6 +63,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       .then(({ data }) => {
         if (!active) return;
         setSelectedSupplier(data.supplier);
+        setSupplierQuery(data.supplier?.name ?? data.supplier_name);
         setPurchaseDate(data.purchase_date);
         setDocumentType(data.document_type);
         setDocumentNumber(data.document_number ?? "");
@@ -68,6 +75,55 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       .finally(() => active && setIsLoading(false));
     return () => { active = false; };
   }, [purchaseId]);
+
+  useEffect(() => {
+    if (!isSupplierOpen || selectedSupplier) return;
+    const timeout = window.setTimeout(async () => {
+      const requestId = supplierRequestId.current + 1;
+      supplierRequestId.current = requestId;
+      setIsSearchingSuppliers(true);
+      try {
+        const response = await getSuppliers({
+          search: supplierQuery.trim() || undefined,
+          is_active: true,
+          page: 1,
+          page_size: 100,
+          sort_by: "name",
+          sort_direction: "asc",
+        });
+        if (supplierRequestId.current === requestId) setSupplierResults(response.data);
+      } catch (error) {
+        if (supplierRequestId.current === requestId) setErrorMessage(getApiErrorMessage(error));
+      } finally {
+        if (supplierRequestId.current === requestId) setIsSearchingSuppliers(false);
+      }
+    }, supplierQuery.trim() ? 180 : 0);
+    return () => window.clearTimeout(timeout);
+  }, [isSupplierOpen, selectedSupplier, supplierQuery]);
+
+  useEffect(() => {
+    if (!showQuickSupplier) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => quickSupplierNameRef.current?.focus());
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !isCreatingSupplier) setShowQuickSupplier(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isCreatingSupplier, showQuickSupplier]);
+
+  useEffect(() => {
+    if (!isSupplierOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!supplierComboboxRef.current?.contains(event.target as Node)) setIsSupplierOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [isSupplierOpen]);
 
   const estimate = useMemo(() => lines.reduce(
     (totals, line) => {
@@ -81,33 +137,13 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
     { subtotal: 0, tax: 0, total: 0 },
   ), [lines]);
 
-  async function searchSuppliers() {
-    setIsSearchingSuppliers(true);
-    setErrorMessage(null);
-    try {
-      const response = await getSuppliers({
-        search: supplierQuery.trim() || undefined,
-        is_active: true,
-        page: 1,
-        page_size: 12,
-        sort_by: "name",
-        sort_direction: "asc",
-      });
-      setSupplierResults(response.data);
-    } catch (error) {
-      setErrorMessage(getApiErrorMessage(error));
-    } finally {
-      setIsSearchingSuppliers(false);
-    }
-  }
-
   async function handleQuickSupplier() {
     if (!quickSupplier.name.trim()) {
-      setErrorMessage("Ingresa el nombre del proveedor.");
+      setQuickSupplierErrorMessage("Ingresa el nombre del proveedor.");
       return;
     }
     setIsCreatingSupplier(true);
-    setErrorMessage(null);
+    setQuickSupplierErrorMessage(null);
     try {
       const response = await createSupplier({
         name: quickSupplier.name.trim(),
@@ -117,11 +153,12 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       });
       setSelectedSupplier(response.data);
       setSupplierResults([]);
-      setSupplierQuery("");
+      setSupplierQuery(response.data.name);
+      setIsSupplierOpen(false);
       setQuickSupplier({ name: "", taxId: "", phone: "", email: "" });
       setShowQuickSupplier(false);
     } catch (error) {
-      setErrorMessage(getApiErrorMessage(error));
+      setQuickSupplierErrorMessage(getApiErrorMessage(error));
     } finally {
       setIsCreatingSupplier(false);
     }
@@ -229,9 +266,6 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
           <h1>{isEditing ? "Editar compra" : "Nueva compra"}</h1>
           <p>El borrador no cambia stock ni genera movimientos de inventario.</p>
         </div>
-        <button className="primary-button" type="submit" disabled={isSaving}>
-          {isSaving ? "Guardando..." : "Guardar borrador"}
-        </button>
       </section>
 
       {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
@@ -239,36 +273,56 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       <section className="panel purchase-form-section">
         <div className="section-heading"><h2>Cabecera</h2><p>Selecciona un proveedor del catálogo y completa el comprobante.</p></div>
         <div className="purchase-supplier-picker">
-          <div className="purchase-product-search">
-            <label className="field"><span>Buscar proveedor *</span><input value={supplierQuery} onChange={(event) => setSupplierQuery(event.target.value)} placeholder="Nombre o identificación fiscal" /></label>
-            <button className="secondary-button" type="button" disabled={isSearchingSuppliers} onClick={() => void searchSuppliers()}><Search size={17} /> {isSearchingSuppliers ? "Buscando..." : "Buscar"}</button>
-            <button className="secondary-button" type="button" onClick={() => setShowQuickSupplier((current) => !current)}><Plus size={17} /> Nuevo proveedor</button>
+          <div className="purchase-supplier-combobox" ref={supplierComboboxRef}>
+            <label className="field">
+              <span>Proveedor *</span>
+              <span className="purchase-supplier-combobox__control">
+                <input
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-controls="purchase-supplier-options"
+                  aria-expanded={isSupplierOpen}
+                  value={supplierQuery}
+                  onFocus={() => setIsSupplierOpen(true)}
+                  onKeyDown={(event) => { if (event.key === "Escape") setIsSupplierOpen(false); }}
+                  onChange={(event) => {
+                    setSupplierQuery(event.target.value);
+                    setSelectedSupplier(null);
+                    setIsSupplierOpen(true);
+                  }}
+                  placeholder="Escribe para filtrar proveedores activos"
+                />
+                {selectedSupplier ? <button className="icon-button" type="button" aria-label="Cambiar proveedor" onClick={() => { setSelectedSupplier(null); setSupplierQuery(""); setIsSupplierOpen(true); }}><X size={17} /></button> : null}
+              </span>
+            </label>
+            <button className="secondary-button" type="button" onClick={() => { setQuickSupplierErrorMessage(null); setShowQuickSupplier(true); }}><Plus size={17} /> Nuevo proveedor</button>
+            {isSupplierOpen && !selectedSupplier ? (
+              <div className="purchase-supplier-options" id="purchase-supplier-options" role="listbox" aria-label="Proveedores activos">
+                {isSearchingSuppliers ? <p>Buscando proveedores...</p> : null}
+                {!isSearchingSuppliers && supplierResults.length === 0 ? <p>No hay proveedores activos que coincidan.</p> : null}
+                {supplierResults.map((supplier) => (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    onClick={() => {
+                      setSelectedSupplier(supplier);
+                      setSupplierQuery(supplier.name);
+                      setSupplierResults([]);
+                      setIsSupplierOpen(false);
+                    }}
+                  >
+                    <span><strong>{supplier.name}</strong><small>{supplier.tax_id || "Sin identificación fiscal"}</small></span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           {selectedSupplier ? (
             <div className="purchase-selected-supplier">
               <span><small>Proveedor seleccionado</small><strong>{selectedSupplier.name}</strong><small>{selectedSupplier.tax_id || "Sin identificación fiscal"}{selectedSupplier.is_active ? "" : " · Inactivo (se conserva en esta compra)"}</small></span>
-              <button className="icon-button" type="button" aria-label="Quitar proveedor" onClick={() => setSelectedSupplier(null)}><X size={17} /></button>
-            </div>
-          ) : null}
-          {supplierResults.length > 0 ? (
-            <div className="purchase-product-results" aria-label="Resultados de proveedores">
-              {supplierResults.map((supplier) => (
-                <button key={supplier.id} type="button" onClick={() => { setSelectedSupplier(supplier); setSupplierResults([]); }}>
-                  <span><strong>{supplier.name}</strong><small>{supplier.tax_id || "Sin identificación fiscal"}</small></span><Plus size={17} />
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {showQuickSupplier ? (
-            <div className="purchase-quick-supplier">
-              <div className="section-heading"><h3>Alta rápida</h3><p>La compra y sus líneas permanecen intactas.</p></div>
-              <div className="purchase-header-grid">
-                <label className="field"><span>Nombre *</span><input maxLength={255} value={quickSupplier.name} onChange={(event) => setQuickSupplier((current) => ({ ...current, name: event.target.value }))} /></label>
-                <label className="field"><span>Identificación fiscal</span><input maxLength={80} value={quickSupplier.taxId} onChange={(event) => setQuickSupplier((current) => ({ ...current, taxId: event.target.value }))} /></label>
-                <label className="field"><span>Teléfono</span><input maxLength={50} value={quickSupplier.phone} onChange={(event) => setQuickSupplier((current) => ({ ...current, phone: event.target.value }))} /></label>
-                <label className="field"><span>Email</span><input type="email" maxLength={255} value={quickSupplier.email} onChange={(event) => setQuickSupplier((current) => ({ ...current, email: event.target.value }))} /></label>
-              </div>
-              <button className="primary-button" type="button" disabled={isCreatingSupplier} onClick={() => void handleQuickSupplier()}>{isCreatingSupplier ? "Creando..." : "Crear y seleccionar"}</button>
+              <span className="badge supplier-status--active">Seleccionado</span>
             </div>
           ) : null}
         </div>
@@ -302,16 +356,19 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
           <div className="purchase-lines">
             {lines.map((line, index) => {
               const subtotal = positiveNumber(line.quantity) * nonNegativeNumber(line.unitPrice);
-              const total = subtotal * (1 + nonNegativeNumber(line.taxRate) / 100);
+              const tax = subtotal * nonNegativeNumber(line.taxRate) / 100;
+              const total = subtotal + tax;
               return (
                 <article className="purchase-line" key={line.inventoryItemId}>
                   <div className="purchase-line__product"><strong>{line.name}</strong><small>{line.internalCode} · {line.unit}</small><small>Referencia: {formatPurchaseCurrency(line.referenceCost)}</small></div>
-                  <label className="field"><span>Cantidad</span><input min="0.01" step="0.01" type="number" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
-                  <label className="field"><span>Precio unitario sin IVA</span><input min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} /></label>
-                  <label className="field"><span>IVA</span><select value={line.taxMode} onChange={(event) => changeTaxMode(index, event.target.value as EditableLine["taxMode"])}><option value="21">21%</option><option value="0">Sin IVA</option><option value="other">Otro porcentaje</option></select></label>
-                  {line.taxMode === "other" ? <label className="field"><span>Porcentaje</span><input min="0" max="100" step="0.01" type="number" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: event.target.value })} /></label> : null}
-                  <div className="purchase-line__totals"><span>Subtotal {formatPurchaseCurrency(subtotal)}</span><strong>Total {formatPurchaseCurrency(total)}</strong></div>
-                  <button className="icon-button" type="button" aria-label={`Eliminar ${line.name}`} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><Trash2 size={17} /></button>
+                  <div className="purchase-line__fields">
+                    <label className="field"><span>Cantidad</span><input min="1" step="1" inputMode="numeric" type="number" value={line.quantity} onKeyDown={preventFractionalQuantityInput} onChange={(event) => updateLine(index, { quantity: event.target.value })} onBlur={() => { const value = Number(line.quantity); if (Number.isInteger(value) && value > 0) updateLine(index, { quantity: String(value) }); }} /></label>
+                    <label className="field"><span>Costo sin IVA</span><input min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} /></label>
+                    <label className="field"><span>IVA</span><select value={line.taxMode} onChange={(event) => changeTaxMode(index, event.target.value as EditableLine["taxMode"])}><option value="21">21%</option><option value="0">Sin IVA</option><option value="other">Otro porcentaje</option></select></label>
+                  </div>
+                  {line.taxMode === "other" ? <label className="field purchase-line__custom-tax"><span>IVA personalizado (%)</span><input min="0" max="100" step="0.01" type="number" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: event.target.value })} /></label> : null}
+                  <div className="purchase-line__totals"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(subtotal)}</strong></div><div><span>IVA</span><strong>{formatPurchaseCurrency(tax)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(total)}</strong></div></div>
+                  <button className="secondary-button purchase-line__remove" type="button" aria-label={`Eliminar ${line.name}`} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><Trash2 size={17} /> Eliminar línea</button>
                 </article>
               );
             })}
@@ -325,6 +382,29 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         <div><span>Total</span><strong>{formatPurchaseCurrency(estimate.total)}</strong></div>
         <p>Estimación visual. El backend recalcula y persiste los importes definitivos.</p>
       </section>
+
+      <div className="purchase-form-actions">
+        <Link className="secondary-button" href={purchaseId ? `/purchases/${purchaseId}` : "/purchases"}>Cancelar</Link>
+        <button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar borrador"}</button>
+      </div>
+
+      {showQuickSupplier ? createPortal(
+        <div className="purchase-modal-backdrop" role="presentation">
+          <section className="panel purchase-modal purchase-quick-supplier" role="dialog" aria-modal="true" aria-labelledby="quick-supplier-title">
+            <button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar alta rápida" disabled={isCreatingSupplier} onClick={() => setShowQuickSupplier(false)}><X size={18} /></button>
+            <div className="section-heading"><h2 id="quick-supplier-title">Nuevo proveedor</h2><p>Al guardarlo se seleccionará sin perder los datos ni las líneas de esta compra.</p></div>
+            <div className="purchase-header-grid">
+              <label className="field"><span>Nombre *</span><input ref={quickSupplierNameRef} maxLength={255} value={quickSupplier.name} onChange={(event) => setQuickSupplier((current) => ({ ...current, name: event.target.value }))} /></label>
+              <label className="field"><span>Identificación fiscal</span><input maxLength={80} value={quickSupplier.taxId} onChange={(event) => setQuickSupplier((current) => ({ ...current, taxId: event.target.value }))} /></label>
+              <label className="field"><span>Teléfono</span><input maxLength={50} value={quickSupplier.phone} onChange={(event) => setQuickSupplier((current) => ({ ...current, phone: event.target.value }))} /></label>
+              <label className="field"><span>Email</span><input type="email" maxLength={255} value={quickSupplier.email} onChange={(event) => setQuickSupplier((current) => ({ ...current, email: event.target.value }))} /></label>
+            </div>
+            {quickSupplierErrorMessage ? <div className="error-state" role="alert">{quickSupplierErrorMessage}</div> : null}
+            <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isCreatingSupplier} onClick={() => setShowQuickSupplier(false)}>Cancelar</button><button className="primary-button" type="button" disabled={isCreatingSupplier} onClick={() => void handleQuickSupplier()}>{isCreatingSupplier ? "Guardando..." : "Crear y seleccionar"}</button></div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
     </form>
   );
 }
@@ -350,12 +430,16 @@ function validateForm({ supplierId, purchaseDate, lines }: { supplierId?: string
   if (!purchaseDate) return "Ingresa la fecha de compra.";
   if (lines.length === 0) return "Agrega al menos un producto.";
   for (const line of lines) {
-    if (!(Number(line.quantity) > 0)) return `La cantidad de ${line.name} debe ser mayor que cero.`;
+    if (!Number.isInteger(Number(line.quantity)) || Number(line.quantity) <= 0) return "La cantidad debe ser un número entero mayor que cero.";
     if (!(Number(line.unitPrice) >= 0)) return `El precio de ${line.name} no puede ser negativo.`;
     const tax = Number(line.taxRate);
     if (!Number.isFinite(tax) || tax < 0 || tax > 100) return `El IVA de ${line.name} debe estar entre 0 y 100.`;
   }
   return null;
+}
+
+function preventFractionalQuantityInput(event: KeyboardEvent<HTMLInputElement>) {
+  if ([".", ",", "e", "E", "+", "-"].includes(event.key)) event.preventDefault();
 }
 
 function positiveNumber(value: string) {

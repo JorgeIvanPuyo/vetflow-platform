@@ -479,11 +479,9 @@ ni permisos nuevos.
 
 ## Compras
 
-Compras es un documento comercial tenant-owned independiente de los movimientos
-de inventario. El Slice 2.1 sólo permite crear y cancelar borradores. Crear,
-editar, listar, consultar o cancelar una compra nunca escribe
-`inventory_items.current_stock`, nunca actualiza el costo del producto y nunca
-crea un movimiento de inventario de tipo `purchase`.
+Compras es un documento comercial tenant-owned. Crear, editar, listar, consultar
+o cancelar un borrador no modifica inventario. La recepción total conecta la
+compra con Inventario en una única transacción trazable.
 
 Endpoints:
 
@@ -495,11 +493,15 @@ Endpoints:
   `items`, reemplaza atómicamente el conjunto completo de líneas.
 - `POST /api/v1/purchases/{purchase_id}/cancel` acepta
   `{ "reason": "..." }`, conserva la compra y sus líneas, y la vuelve inmutable.
+- `POST /api/v1/purchases/{purchase_id}/receive` acepta exclusivamente
+  `{ "confirm": true }` y realiza la recepción total.
+- `POST /api/v1/purchases/{purchase_id}/reverse-receipt` acepta exclusivamente
+  `{ "reason": "..." }` y revierte completamente una recepción válida.
 
-Los estados persistibles son `draft`, `cancelled`, `received`,
-`partially_received` y `returned` para mantener extensible el modelo. Sólo
-`draft` y `cancelled` son alcanzables en el Slice 2.1; recepción, recepción
-parcial y devoluciones no están implementadas.
+Los estados funcionales son `draft`, `cancelled`, `received` y `reversed`.
+`partially_received` y `returned` permanecen reservados en persistencia, pero no
+tienen flujos habilitados. Una compra recibida o revertida no vuelve a borrador
+y no puede editar proveedor, cabecera, cantidades, líneas ni costos.
 
 El cliente crea y edita una compra con `supplier_id`; no puede enviar un nombre
 de proveedor libre. El proveedor debe pertenecer al mismo tenant y estar activo
@@ -518,11 +520,18 @@ normalizado. Si un grupo contiene identificaciones fiscales distintas, el nuevo
 proveedor queda sin `tax_id`; los valores originales permanecen en cada snapshot.
 
 Cada línea debe referenciar un producto único de inventario perteneciente al
-tenant autenticado. La línea persiste snapshots de nombre, código interno y
-unidad, además de cantidad decimal positiva, precio unitario sin IVA no
-negativo, porcentaje de IVA entre `0` y `100` (default `21`), precio unitario con
-IVA, subtotal, IVA y total de línea. Los cambios posteriores del catálogo no
-reescriben los snapshots.
+tenant autenticado. La cantidad de Compra debe ser un entero positivo aunque se
+conserve el tipo `Numeric` existente en persistencia; `0`, negativos y valores
+fraccionarios se rechazan con `422`. La restricción
+`ck_purchase_items_quantity_integer` refuerza esta regla en PostgreSQL. La línea
+persiste snapshots de nombre, código interno y unidad, además de precio unitario
+sin IVA no negativo, porcentaje de IVA entre `0` y `100` (default `21`), precio
+unitario con IVA, subtotal, IVA y total de línea. Los cambios posteriores del
+catálogo no reescriben los snapshots.
+
+La migración `0033_purchase_item_integer_quantity` agrega exclusivamente esa
+restricción y mantiene el tipo numérico para evitar una conversión de columna
+innecesaria.
 
 Los clientes envían únicamente `inventory_item_id`, `quantity`,
 `unit_price_without_tax_ars` y el `tax_rate_percentage` opcional por línea. El
@@ -541,6 +550,44 @@ Si se envían `supplier_id` y el filtro textual `supplier`, ambos se aplican de
 forma conjuntiva; el frontend usa exclusivamente `supplier_id` para el filtro
 exacto.
 
+La recepción bloquea primero la compra y luego todos sus productos en orden de
+UUID ascendente. Cada línea genera un `InventoryMovement` con
+`movement_type = purchase`, cantidad positiva, `source_type = purchase`,
+`source_id = purchase.id`, usuario receptor y valores `stock_before` y
+`stock_after`. Todos comparten el `inventory_operation_id` guardado en la compra.
+Si falla cualquier línea, se revierten compra, movimientos, stock y costos. Una
+segunda recepción devuelve `409 purchase_not_receivable` sin duplicar stock.
+Como defensa para datos históricos, una recepción también rechaza con
+`409 purchase_quantity_must_be_integer` cualquier línea fraccionaria previa y
+no crea movimientos ni modifica stock.
+
+La política comercial es último costo recibido: al recibir se copian
+`unit_price_without_tax_ars` a `InventoryItem.purchase_price_ars` y
+`tax_rate_percentage` a `purchase_tax_rate_percentage`. La línea conserva el
+costo histórico y snapshots del costo/IVA de catálogo anteriores. No se cambia
+`sale_price_ars`, `profit_margin_percentage`, estado activo ni otros datos del
+producto. Un producto inactivado después de crear el borrador puede recibirse y
+no se reactiva automáticamente.
+
+La reversión bloquea compra, movimientos originales y productos en orden
+estable. Exige que todos los movimientos `purchase` de la operación existan,
+coincidan con las líneas y no estén revertidos. Crea movimientos compensatorios
+`reversal` con un nuevo `reversal_operation_id` y
+`reverses_movement_id` apuntando a cada original; nunca borra originales ni
+realiza reversión parcial. Si retirar una cantidad produciría stock negativo,
+toda la operación falla con `409 insufficient_stock_for_reversal`.
+
+Al revertir se restaura el costo/IVA anterior sólo cuando el catálogo todavía
+coincide exactamente con el costo aplicado por esa recepción. Si fue modificado
+posteriormente, el stock sí se revierte, el costo actual se conserva y el
+detalle devuelve una advertencia en `reversal_warnings`.
+
+El detalle incluye `received_at`, receptor, `inventory_operation_id`, snapshots
+previos por línea, fecha/usuario/motivo de reversión,
+`reversal_operation_id` y advertencias. El listado permite filtrar los cuatro
+estados funcionales. Los enlaces de trazabilidad usan
+`/inventory/movements?operation_id=<uuid>`.
+
 Todas las rutas usan el mismo límite operativo autenticado de tenant que
 Inventario. El servidor deriva tenant y usuario desde `TenantContext`; el cliente
 no puede elegirlos. Las lecturas de compra, línea, producto, creador y cancelador
@@ -550,6 +597,13 @@ proveedor inactivo seleccionado para una compra devuelve `409 supplier_inactive`
 Los campos o
 valores inválidos devuelven `422`; editar o cancelar una compra que no sea
 borrador devuelve `409 purchase_not_editable`.
+
+Receive y reverse reutilizan el mismo límite operativo autenticado de Compras;
+no se agregan roles. Los IDs de compra, línea, producto, movimiento y usuario se
+resuelven dentro del tenant autenticado. Una compra ajena devuelve `404` tanto
+al recibir como al revertir. Los movimientos `purchase` no pueden revertirse
+desde el endpoint genérico de Inventario; deben usar la reversión atómica de la
+compra.
 
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.

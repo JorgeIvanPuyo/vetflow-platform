@@ -52,6 +52,7 @@ type MovementQueryState = {
   sortDirection: InventorySortOrder;
   page: number;
   pageSize: number;
+  operationId: string;
 };
 
 const DEFAULT_PAGE = 1;
@@ -119,6 +120,7 @@ export function InventoryMovementsScreen() {
       date_from: queryState.dateFrom || undefined,
       date_to: queryState.dateTo || undefined,
       sort_direction: queryState.sortDirection,
+      operation_id: queryState.operationId || undefined,
     }),
     [queryState],
   );
@@ -231,6 +233,7 @@ export function InventoryMovementsScreen() {
         date_from: null,
         date_to: null,
         sort_direction: DEFAULT_SORT_DIRECTION,
+        operation_id: null,
         page_size: DEFAULT_PAGE_SIZE,
       },
       { resetPage: true },
@@ -243,7 +246,8 @@ export function InventoryMovementsScreen() {
       queryState.movementType !== "all" ||
       queryState.reversalStatus !== "all" ||
       queryState.dateFrom ||
-      queryState.dateTo,
+      queryState.dateTo ||
+      queryState.operationId,
   );
 
   return (
@@ -303,6 +307,14 @@ export function InventoryMovementsScreen() {
           ) : null}
         </div>
       </section>
+
+      {queryState.operationId ? (
+        <section className="panel inventory-operation-filter">
+          <span>Operación de inventario</span>
+          <strong>{queryState.operationId}</strong>
+          <button className="secondary-button" type="button" onClick={() => updateUrl({ operation_id: null })}>Quitar filtro</button>
+        </section>
+      ) : null}
 
       {state.errorMessage ? (
         <section className="error-state">
@@ -568,6 +580,7 @@ function readMovementQuery(queryString: string): MovementQueryState {
     ),
     page: readPositiveInt(searchParams.get("page"), DEFAULT_PAGE, 1, Number.MAX_SAFE_INTEGER),
     pageSize: readPositiveInt(searchParams.get("page_size"), DEFAULT_PAGE_SIZE, 1, 100),
+    operationId: readUuid(searchParams.get("operation_id")),
   };
 }
 
@@ -585,6 +598,10 @@ function readPositiveInt(value: string | null, fallback: number, min: number, ma
 
 function readIsoDate(value: string | null) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+function readUuid(value: string | null) {
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : "";
 }
 
 function getReversalStatusLabel(status: InventoryReversalStatus) {

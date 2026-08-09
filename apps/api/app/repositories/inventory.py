@@ -88,6 +88,24 @@ class InventoryRepository:
         )
         return self.db.scalar(statement)
 
+    def list_items_by_ids_for_update(
+        self,
+        tenant_id: uuid.UUID,
+        item_ids: list[uuid.UUID],
+    ) -> list[InventoryItem]:
+        if not item_ids:
+            return []
+        statement = (
+            select(InventoryItem)
+            .where(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.id.in_(item_ids),
+            )
+            .order_by(InventoryItem.id.asc())
+            .with_for_update()
+        )
+        return list(self.db.scalars(statement).all())
+
     def list_items_for_import_matching(
         self,
         tenant_id: uuid.UUID,
@@ -886,6 +904,48 @@ class InventoryRepository:
             )
         )
         return self.db.scalar(statement)
+
+    def list_purchase_movements_for_update(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        purchase_id: uuid.UUID,
+        operation_id: uuid.UUID,
+    ) -> list[InventoryMovement]:
+        statement = (
+            select(InventoryMovement)
+            .join(
+                InventoryItem,
+                (InventoryItem.id == InventoryMovement.inventory_item_id)
+                & (InventoryItem.tenant_id == tenant_id),
+            )
+            .where(
+                InventoryMovement.tenant_id == tenant_id,
+                InventoryMovement.movement_type == "purchase",
+                InventoryMovement.source_type == "purchase",
+                InventoryMovement.source_id == str(purchase_id),
+                InventoryMovement.operation_id == operation_id,
+            )
+            .order_by(
+                InventoryMovement.inventory_item_id.asc(),
+                InventoryMovement.id.asc(),
+            )
+            .with_for_update()
+        )
+        return list(self.db.scalars(statement).all())
+
+    def list_reversals_for_movements(
+        self,
+        tenant_id: uuid.UUID,
+        movement_ids: list[uuid.UUID],
+    ) -> list[InventoryMovement]:
+        if not movement_ids:
+            return []
+        statement = select(InventoryMovement).where(
+            InventoryMovement.tenant_id == tenant_id,
+            InventoryMovement.reverses_movement_id.in_(movement_ids),
+        )
+        return list(self.db.scalars(statement).all())
 
     def list_movements(
         self,

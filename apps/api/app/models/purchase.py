@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -28,6 +29,7 @@ PURCHASE_STATUSES = (
     "received",
     "partially_received",
     "returned",
+    "reversed",
 )
 PURCHASE_DOCUMENT_TYPES = ("invoice", "receipt", "ticket", "delivery_note", "other")
 
@@ -36,7 +38,7 @@ class Purchase(BaseModel):
     __tablename__ = "purchases"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft', 'cancelled', 'received', 'partially_received', 'returned')",
+            "status IN ('draft', 'cancelled', 'received', 'partially_received', 'returned', 'reversed')",
             name="ck_purchases_status",
         ),
         CheckConstraint("currency = 'ARS'", name="ck_purchases_currency"),
@@ -54,6 +56,11 @@ class Purchase(BaseModel):
         Index("ix_purchases_tenant_supplier_id", "tenant_id", "supplier_id"),
         Index("ix_purchases_tenant_document", "tenant_id", "document_number"),
         Index("ix_purchases_tenant_created_by", "tenant_id", "created_by_user_id"),
+        Index(
+            "ix_purchases_tenant_inventory_operation",
+            "tenant_id",
+            "inventory_operation_id",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -91,6 +98,24 @@ class Purchase(BaseModel):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    inventory_operation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reversed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    reversal_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reversal_operation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
+    reversal_cost_warning: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="purchases")
     supplier: Mapped[Supplier] = relationship("Supplier", back_populates="purchases")
@@ -99,6 +124,12 @@ class Purchase(BaseModel):
     )
     cancelled_by_user: Mapped[User | None] = relationship(
         "User", foreign_keys=[cancelled_by_user_id]
+    )
+    received_by_user: Mapped[User | None] = relationship(
+        "User", foreign_keys=[received_by_user_id]
+    )
+    reversed_by_user: Mapped[User | None] = relationship(
+        "User", foreign_keys=[reversed_by_user_id]
     )
     items: Mapped[list[PurchaseItem]] = relationship(
         "PurchaseItem",
@@ -131,12 +162,48 @@ class Purchase(BaseModel):
             return None
         return self.cancelled_by_user.email
 
+    @property
+    def received_by_user_name(self) -> str | None:
+        if self.received_by_user is None or self.received_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.received_by_user.full_name
+
+    @property
+    def received_by_user_email(self) -> str | None:
+        if self.received_by_user is None or self.received_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.received_by_user.email
+
+    @property
+    def reversed_by_user_name(self) -> str | None:
+        if self.reversed_by_user is None or self.reversed_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.reversed_by_user.full_name
+
+    @property
+    def reversed_by_user_email(self) -> str | None:
+        if self.reversed_by_user is None or self.reversed_by_user.tenant_id != self.tenant_id:
+            return None
+        return self.reversed_by_user.email
+
+    @property
+    def reversal_warnings(self) -> list[str]:
+        if not self.reversal_cost_warning:
+            return []
+        return [
+            "El stock se revirtió, pero se conservó un costo de catálogo modificado posteriormente."
+        ]
+
 
 class PurchaseItem(BaseModel):
     __tablename__ = "purchase_items"
     __table_args__ = (
         CheckConstraint("line_number > 0", name="ck_purchase_items_line_number_positive"),
         CheckConstraint("quantity > 0", name="ck_purchase_items_quantity_positive"),
+        CheckConstraint(
+            "quantity = trunc(quantity)",
+            name="ck_purchase_items_quantity_integer",
+        ),
         CheckConstraint(
             "unit_price_without_tax_ars >= 0",
             name="ck_purchase_items_unit_price_non_negative",
@@ -183,6 +250,12 @@ class PurchaseItem(BaseModel):
     line_subtotal_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     line_tax_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     line_total_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    previous_purchase_price_ars: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    previous_purchase_tax_rate_percentage: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
 
     purchase: Mapped[Purchase] = relationship("Purchase", back_populates="items")
     inventory_item: Mapped[InventoryItem] = relationship("InventoryItem")

@@ -176,6 +176,7 @@ def test_create_purchase_calculates_snapshots_traceability_and_does_not_touch_st
         {"items": []},
         {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "0", "unit_price_without_tax_ars": "1"}]},
         {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "-1", "unit_price_without_tax_ars": "1"}]},
+        {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "1.5", "unit_price_without_tax_ars": "1"}]},
         {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "1", "unit_price_without_tax_ars": "-1"}]},
         {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "1", "unit_price_without_tax_ars": "1", "tax_rate_percentage": "-1"}]},
         {"items": [{"inventory_item_id": "00000000-0000-0000-0000-000000000001", "quantity": "1", "unit_price_without_tax_ars": "1", "tax_rate_percentage": "101"}]},
@@ -235,7 +236,7 @@ def test_tax_default_zero_custom_and_rounding(client, tenant):
         items=[
             {"inventory_item_id": first["id"], "quantity": "3", "unit_price_without_tax_ars": "0.05"},
             {"inventory_item_id": second["id"], "quantity": "2", "unit_price_without_tax_ars": "100", "tax_rate_percentage": "0"},
-            {"inventory_item_id": third["id"], "quantity": "1.25", "unit_price_without_tax_ars": "80", "tax_rate_percentage": "10.5"},
+            {"inventory_item_id": third["id"], "quantity": "1", "unit_price_without_tax_ars": "100", "tax_rate_percentage": "10.5"},
         ],
     )
 
@@ -314,6 +315,64 @@ def test_update_draft_replaces_lines_recalculates_and_preserves_creator(
     assert updated["total_ars"] == "100.00"
     assert updated["updated_at"] >= purchase["updated_at"]
     assert db_session.scalar(select(func.count()).select_from(PurchaseItem)) == 1
+
+
+@pytest.mark.parametrize("quantity", ["1", "2", "250"])
+def test_purchase_accepts_positive_integer_quantities(client, tenant, quantity):
+    item = _create_inventory_item(client, tenant, name=f"Producto {quantity}")
+    supplier = _create_supplier(
+        client,
+        tenant,
+        name=f"Proveedor {quantity}",
+        tax_id=f"INTEGER-{quantity}",
+    )
+
+    response = client.post(
+        "/api/v1/purchases",
+        headers=_headers(tenant),
+        json=_payload(
+            item["id"],
+            supplier["id"],
+            items=[
+                {
+                    "inventory_item_id": item["id"],
+                    "quantity": quantity,
+                    "unit_price_without_tax_ars": "1",
+                    "tax_rate_percentage": "21",
+                }
+            ],
+        ),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["items"][0]["quantity"] == f"{quantity}.00"
+
+
+def test_update_draft_rejects_fractional_quantity(client, tenant):
+    item = _create_inventory_item(client, tenant)
+    purchase = _create_purchase(client, tenant, item["id"])
+
+    response = client.patch(
+        f"/api/v1/purchases/{purchase['id']}",
+        headers=_headers(tenant),
+        json={
+            "items": [
+                {
+                    "inventory_item_id": item["id"],
+                    "quantity": "1.5",
+                    "unit_price_without_tax_ars": "1000",
+                    "tax_rate_percentage": "21",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    detail = client.get(
+        f"/api/v1/purchases/{purchase['id']}", headers=_headers(tenant)
+    ).json()["data"]
+    assert detail["status"] == "draft"
+    assert detail["items"][0]["quantity"] == "10.00"
 
 
 def test_cancel_is_audited_immutable_and_keeps_lines_without_stock_effects(

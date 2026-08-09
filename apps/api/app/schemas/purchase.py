@@ -8,8 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 from app.schemas.supplier import SupplierSummaryRead
 
 
-PurchaseStatus = Literal["draft", "cancelled", "received", "partially_received", "returned"]
-PurchaseActiveStatus = Literal["draft", "cancelled"]
+PurchaseStatus = Literal[
+    "draft", "cancelled", "received", "partially_received", "returned", "reversed"
+]
+PurchaseFunctionalStatus = Literal["draft", "cancelled", "received", "reversed"]
 PurchaseDocumentType = Literal["invoice", "receipt", "ticket", "delivery_note", "other"]
 PurchaseSortBy = Literal["purchase_date", "created_at", "total_ars", "supplier_name"]
 SortDirection = Literal["asc", "desc"]
@@ -19,7 +21,7 @@ class PurchaseItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     inventory_item_id: uuid.UUID
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
     unit_price_without_tax_ars: Decimal = Field(ge=0)
     tax_rate_percentage: Decimal = Field(default=Decimal("21"), ge=0, le=100)
 
@@ -83,6 +85,26 @@ class PurchaseCancel(BaseModel):
         return value
 
 
+class PurchaseReceive(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm: Literal[True]
+
+
+class PurchaseReverseReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("String should have at least 1 character")
+        return value
+
+
 class PurchaseItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,6 +121,8 @@ class PurchaseItemRead(BaseModel):
     line_subtotal_ars: Decimal
     line_tax_ars: Decimal
     line_total_ars: Decimal
+    previous_purchase_price_ars: Decimal | None = None
+    previous_purchase_tax_rate_percentage: Decimal | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -160,6 +184,18 @@ class PurchaseDetailRead(BaseModel):
     cancelled_by_user_name: str | None = None
     cancelled_by_user_email: str | None = None
     cancellation_reason: str | None = None
+    received_at: datetime | None = None
+    received_by_user_id: uuid.UUID | None = None
+    received_by_user_name: str | None = None
+    received_by_user_email: str | None = None
+    inventory_operation_id: uuid.UUID | None = None
+    reversed_at: datetime | None = None
+    reversed_by_user_id: uuid.UUID | None = None
+    reversed_by_user_name: str | None = None
+    reversed_by_user_email: str | None = None
+    reversal_reason: str | None = None
+    reversal_operation_id: uuid.UUID | None = None
+    reversal_warnings: list[str] = Field(default_factory=list)
     items: list[PurchaseItemRead]
 
     @field_serializer("created_by_user_id")
@@ -171,5 +207,17 @@ class PurchaseDetailRead(BaseModel):
     @field_serializer("cancelled_by_user_id")
     def serialize_cancelled_by_user_id(self, value: uuid.UUID | None) -> uuid.UUID | None:
         if self.cancelled_by_user_name or self.cancelled_by_user_email:
+            return value
+        return None
+
+    @field_serializer("received_by_user_id")
+    def serialize_received_by_user_id(self, value: uuid.UUID | None) -> uuid.UUID | None:
+        if self.received_by_user_name or self.received_by_user_email:
+            return value
+        return None
+
+    @field_serializer("reversed_by_user_id")
+    def serialize_reversed_by_user_id(self, value: uuid.UUID | None) -> uuid.UUID | None:
+        if self.reversed_by_user_name or self.reversed_by_user_email:
             return value
         return None

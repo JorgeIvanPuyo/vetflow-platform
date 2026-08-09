@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.purchase import Purchase, PurchaseItem
+from app.repositories.inventory import InventoryRepository
 from app.repositories.purchase import PurchaseRepository
 from app.repositories.supplier import SupplierRepository
 from app.repositories.user import UserRepository
 from app.schemas.purchase import PurchaseCancel, PurchaseCreate, PurchaseUpdate
+from app.services.inventory import InventoryService
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -27,6 +29,8 @@ class PurchaseService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repository = PurchaseRepository(db)
+        self.inventory_repository = InventoryRepository(db)
+        self.inventory_service = InventoryService(db)
         self.supplier_repository = SupplierRepository(db)
         self.user_repository = UserRepository(db)
 
@@ -192,6 +196,203 @@ class PurchaseService:
         purchase.updated_at = now
         try:
             self.db.add(purchase)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self.get(tenant_id, purchase_id)
+
+    def receive(
+        self,
+        tenant_id: uuid.UUID,
+        purchase_id: uuid.UUID,
+        *,
+        received_by_user_id: uuid.UUID | None,
+    ) -> Purchase:
+        self._validate_optional_user(tenant_id, received_by_user_id)
+        try:
+            purchase = self.repository.get_by_id(tenant_id, purchase_id, for_update=True)
+            if purchase is None:
+                raise AppError(404, "purchase_not_found", "Compra no encontrada")
+            if purchase.status != "draft":
+                raise AppError(
+                    409,
+                    "purchase_not_receivable",
+                    "Sólo se puede recibir una compra en borrador",
+                )
+            if not purchase.items:
+                raise AppError(
+                    409,
+                    "purchase_items_required",
+                    "La compra requiere al menos una línea",
+                )
+            if any(
+                line.quantity != line.quantity.to_integral_value()
+                for line in purchase.items
+            ):
+                raise AppError(
+                    409,
+                    "purchase_quantity_must_be_integer",
+                    "Todas las cantidades de la compra deben ser números enteros mayores que cero",
+                )
+
+            lines_by_item_id = {line.inventory_item_id: line for line in purchase.items}
+            item_ids = sorted(lines_by_item_id)
+            locked_items = self.inventory_repository.list_items_by_ids_for_update(
+                tenant_id, item_ids
+            )
+            if len(locked_items) != len(item_ids):
+                raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
+
+            operation_id = uuid.uuid4()
+            for item in locked_items:
+                line = lines_by_item_id[item.id]
+                line.previous_purchase_price_ars = item.purchase_price_ars
+                line.previous_purchase_tax_rate_percentage = (
+                    item.purchase_tax_rate_percentage
+                )
+                self.inventory_service.register_purchase_movement(
+                    tenant_id,
+                    item=item,
+                    purchase_id=purchase.id,
+                    operation_id=operation_id,
+                    quantity=line.quantity,
+                    unit_cost_ars=line.unit_price_without_tax_ars,
+                    total_cost_ars=line.line_subtotal_ars,
+                    supplier=purchase.supplier_name,
+                    created_by_user_id=received_by_user_id,
+                )
+                self.inventory_repository.update_item(
+                    item,
+                    {
+                        "purchase_price_ars": line.unit_price_without_tax_ars,
+                        "purchase_tax_rate_percentage": line.tax_rate_percentage,
+                    },
+                )
+
+            now = datetime.now(UTC)
+            purchase.status = "received"
+            purchase.received_at = now
+            purchase.received_by_user_id = received_by_user_id
+            purchase.inventory_operation_id = operation_id
+            purchase.updated_at = now
+            self.repository.save(purchase)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return self.get(tenant_id, purchase_id)
+
+    def reverse_receipt(
+        self,
+        tenant_id: uuid.UUID,
+        purchase_id: uuid.UUID,
+        *,
+        reason: str,
+        reversed_by_user_id: uuid.UUID | None,
+    ) -> Purchase:
+        self._validate_optional_user(tenant_id, reversed_by_user_id)
+        try:
+            purchase = self.repository.get_by_id(tenant_id, purchase_id, for_update=True)
+            if purchase is None:
+                raise AppError(404, "purchase_not_found", "Compra no encontrada")
+            if purchase.status != "received":
+                raise AppError(
+                    409,
+                    "purchase_receipt_not_reversible",
+                    "Sólo se puede revertir una compra recibida",
+                )
+            if purchase.inventory_operation_id is None:
+                raise AppError(
+                    409,
+                    "purchase_receipt_movements_inconsistent",
+                    "La recepción no tiene una operación de inventario válida",
+                )
+
+            originals = self.inventory_repository.list_purchase_movements_for_update(
+                tenant_id,
+                purchase_id=purchase.id,
+                operation_id=purchase.inventory_operation_id,
+            )
+            lines_by_item_id = {line.inventory_item_id: line for line in purchase.items}
+            originals_by_item_id = {
+                movement.inventory_item_id: movement for movement in originals
+            }
+            if (
+                len(originals) != len(purchase.items)
+                or len(originals_by_item_id) != len(lines_by_item_id)
+                or set(originals_by_item_id) != set(lines_by_item_id)
+                or any(
+                    originals_by_item_id[item_id].quantity != line.quantity
+                    for item_id, line in lines_by_item_id.items()
+                )
+            ):
+                raise AppError(
+                    409,
+                    "purchase_receipt_movements_inconsistent",
+                    "Los movimientos de la recepción están incompletos o son inconsistentes",
+                )
+            if self.inventory_repository.list_reversals_for_movements(
+                tenant_id, [movement.id for movement in originals]
+            ):
+                raise AppError(
+                    409,
+                    "purchase_receipt_already_reversed",
+                    "La recepción ya contiene movimientos revertidos",
+                )
+
+            locked_items = self.inventory_repository.list_items_by_ids_for_update(
+                tenant_id, sorted(lines_by_item_id)
+            )
+            if len(locked_items) != len(lines_by_item_id):
+                raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
+            for item in locked_items:
+                if item.current_stock < originals_by_item_id[item.id].quantity:
+                    raise AppError(
+                        409,
+                        "insufficient_stock_for_reversal",
+                        "El stock actual no permite revertir la recepción completa",
+                    )
+
+            reversal_operation_id = uuid.uuid4()
+            cost_warning = False
+            for item in locked_items:
+                line = lines_by_item_id[item.id]
+                original = originals_by_item_id[item.id]
+                self.inventory_service.register_purchase_reversal_movement(
+                    tenant_id,
+                    item=item,
+                    purchase_id=purchase.id,
+                    original=original,
+                    operation_id=reversal_operation_id,
+                    reason=reason,
+                    created_by_user_id=reversed_by_user_id,
+                )
+                if (
+                    item.purchase_price_ars == line.unit_price_without_tax_ars
+                    and item.purchase_tax_rate_percentage == line.tax_rate_percentage
+                ):
+                    self.inventory_repository.update_item(
+                        item,
+                        {
+                            "purchase_price_ars": line.previous_purchase_price_ars,
+                            "purchase_tax_rate_percentage": (
+                                line.previous_purchase_tax_rate_percentage
+                            ),
+                        },
+                    )
+                else:
+                    cost_warning = True
+
+            now = datetime.now(UTC)
+            purchase.status = "reversed"
+            purchase.reversed_at = now
+            purchase.reversed_by_user_id = reversed_by_user_id
+            purchase.reversal_reason = reason
+            purchase.reversal_operation_id = reversal_operation_id
+            purchase.reversal_cost_warning = cost_warning
+            purchase.updated_at = now
+            self.repository.save(purchase)
             self.db.commit()
         except Exception:
             self.db.rollback()

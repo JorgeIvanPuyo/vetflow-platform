@@ -50,3 +50,19 @@ export function cancelPurchase(purchaseId: string, reason: string) {
     { retryTransient: false },
   );
 }
+
+export function receivePurchase(purchaseId: string) {
+  return api.post<ApiItemResponse<Purchase>>(
+    `/api/v1/purchases/${purchaseId}/receive`,
+    { confirm: true },
+    { retryTransient: false },
+  );
+}
+
+export function reversePurchaseReceipt(purchaseId: string, reason: string) {
+  return api.post<ApiItemResponse<Purchase>>(
+    `/api/v1/purchases/${purchaseId}/reverse-receipt`,
+    { reason },
+    { retryTransient: false },
+  );
+}

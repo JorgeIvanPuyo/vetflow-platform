@@ -52,6 +52,12 @@ class PurchaseRepository:
                 selectinload(
                     Purchase.cancelled_by_user.and_(User.tenant_id == tenant_id)
                 ),
+                selectinload(
+                    Purchase.received_by_user.and_(User.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Purchase.reversed_by_user.and_(User.tenant_id == tenant_id)
+                ),
                 selectinload(Purchase.supplier.and_(Supplier.tenant_id == tenant_id)),
             )
         )
@@ -143,3 +149,8 @@ class PurchaseRepository:
         purchase.items.extend(items)
         self.db.add(purchase)
         self.db.flush()
+
+    def save(self, purchase: Purchase) -> Purchase:
+        self.db.add(purchase)
+        self.db.flush()
+        return purchase

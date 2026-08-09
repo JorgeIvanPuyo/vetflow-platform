@@ -317,6 +317,12 @@ class InventoryService:
                 "reversal_not_allowed",
                 "Reversal movements cannot be reversed",
             )
+        if original.movement_type == "purchase" and original.source_type == "purchase":
+            raise AppError(
+                409,
+                "purchase_movement_requires_purchase_reversal",
+                "Purchase movements must be reversed from the purchase receipt",
+            )
         if original.reversed_by_movement_id is not None:
             raise AppError(
                 409,
@@ -413,6 +419,66 @@ class InventoryService:
             commit=commit,
         )
 
+    def register_purchase_movement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item: InventoryItem,
+        purchase_id: uuid.UUID,
+        operation_id: uuid.UUID,
+        quantity: Decimal,
+        unit_cost_ars: Decimal,
+        total_cost_ars: Decimal,
+        supplier: str,
+        created_by_user_id: uuid.UUID | None,
+    ) -> InventoryMovement:
+        return self._create_stock_movement(
+            tenant_id,
+            item.id,
+            movement_type="purchase",
+            quantity=quantity,
+            reason="purchase_receipt",
+            unit_cost_ars=unit_cost_ars,
+            total_cost_ars=total_cost_ars,
+            supplier=supplier,
+            notes=f"Recepción de compra {purchase_id}",
+            source_type="purchase",
+            source_id=str(purchase_id),
+            operation_id=operation_id,
+            created_by_user_id=created_by_user_id,
+            locked_item=item,
+            commit=False,
+        )
+
+    def register_purchase_reversal_movement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item: InventoryItem,
+        purchase_id: uuid.UUID,
+        original: InventoryMovement,
+        operation_id: uuid.UUID,
+        reason: str,
+        created_by_user_id: uuid.UUID | None,
+    ) -> InventoryMovement:
+        return self._create_stock_movement(
+            tenant_id,
+            item.id,
+            movement_type="reversal",
+            quantity=original.quantity,
+            reason="purchase_receipt_reversal",
+            notes=reason,
+            source_type="purchase_reversal",
+            source_id=str(purchase_id),
+            operation_id=operation_id,
+            reverses_movement_id=original.id,
+            created_by_user_id=created_by_user_id,
+            reverse_of=original,
+            unit_override=original.unit,
+            locked_item=item,
+            commit=False,
+        )
+
     def get_movement(self, tenant_id: uuid.UUID, movement_id: uuid.UUID) -> InventoryMovement:
         movement = self.inventory_repository.get_movement_by_id(tenant_id, movement_id)
         if movement is None:
@@ -422,6 +488,8 @@ class InventoryService:
     def get_movement_reversal_status(self, movement: InventoryMovement) -> tuple[bool, str | None]:
         if movement.movement_type == "reversal":
             return False, "reversal_movements_cannot_be_reversed"
+        if movement.movement_type == "purchase" and movement.source_type == "purchase":
+            return False, "purchase_movement_requires_purchase_reversal"
         if movement.reversed_by_movement_id is not None:
             return False, "movement_already_reversed"
         if movement.movement_type in MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES:
@@ -511,6 +579,7 @@ class InventoryService:
         reverses_movement_id: uuid.UUID | None = None,
         reverse_of: InventoryMovement | None = None,
         unit_override: str | None = None,
+        locked_item: InventoryItem | None = None,
         commit: bool = True,
     ) -> InventoryMovement:
         if movement_type not in ALLOWED_MOVEMENT_TYPES:
@@ -518,7 +587,11 @@ class InventoryService:
         if quantity <= ZERO:
             raise AppError(422, "invalid_quantity", "Movement quantity must be greater than zero")
 
-        item = self.inventory_repository.get_item_by_id_for_update(tenant_id, item_id)
+        item = locked_item or self.inventory_repository.get_item_by_id_for_update(
+            tenant_id, item_id
+        )
+        if item is not None and (item.id != item_id or item.tenant_id != tenant_id):
+            item = None
         if item is None:
             raise AppError(404, "inventory_item_not_found", "Inventory item not found")
 
