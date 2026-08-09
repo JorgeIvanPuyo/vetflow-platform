@@ -7,6 +7,7 @@ import {
   Package,
   PawPrint,
   Settings,
+  ShoppingBag,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventory/dashboard", label: "Inventario", icon: Package },
+  { href: "/sales", label: "Ventas", icon: ShoppingBag },
   {
     href: "/accounting",
     label: "Contabilidad",

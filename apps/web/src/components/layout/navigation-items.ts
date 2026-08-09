@@ -6,6 +6,7 @@ import {
   Package,
   PawPrint,
   ShoppingCart,
+  ShoppingBag,
   Settings,
   ShieldCheck,
   Users,
@@ -27,6 +28,7 @@ export const navigationItems: NavigationItem[] = [
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventory/dashboard", label: "Inventario", icon: Package },
   { href: "/purchases/dashboard", label: "Compras", icon: ShoppingCart },
+  { href: "/sales", label: "Ventas", icon: ShoppingBag },
   {
     href: "/accounting",
     label: "Contabilidad",

@@ -18,6 +18,7 @@ from app.models.purchase_return import (
     PurchaseReturnAttachment,
     PurchaseReturnItem,
 )
+from app.models.sale import Sale, SaleItem
 from app.models.supplier import Supplier
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -46,5 +47,7 @@ __all__ = [
     "PurchaseReturn",
     "PurchaseReturnItem",
     "PurchaseReturnAttachment",
+    "Sale",
+    "SaleItem",
     "Supplier",
 ]

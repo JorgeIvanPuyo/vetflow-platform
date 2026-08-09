@@ -1697,3 +1697,100 @@ export type PurchaseDashboard = {
   top_suppliers: PurchaseDashboardTopSupplier[];
   recent_purchases: PurchaseDashboardRecentPurchase[];
 };
+
+export type SaleStatus = "draft" | "cancelled";
+export type SaleLineType = "product" | "service";
+
+export type SaleProductItemInput = {
+  line_type: "product";
+  inventory_item_id: string;
+  quantity: string;
+  unit_price_ars?: string | null;
+  discount_percentage: string;
+};
+
+export type SaleServiceItemInput = {
+  line_type: "service";
+  description: string;
+  quantity: string;
+  unit_price_ars: string;
+  discount_percentage: string;
+};
+
+export type SaleItemInput = SaleProductItemInput | SaleServiceItemInput;
+
+export type SaleItem = {
+  id: string;
+  line_type: SaleLineType;
+  inventory_item_id: string | null;
+  service_id: string | null;
+  description_snapshot: string;
+  internal_code_snapshot: string | null;
+  unit_snapshot: string;
+  quantity: string;
+  unit_price_ars: string;
+  discount_percentage: string;
+  line_subtotal_ars: string;
+  line_discount_ars: string;
+  line_total_ars: string;
+  line_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SaleSummary = {
+  id: string;
+  owner_id: string | null;
+  patient_id: string | null;
+  owner_name_snapshot: string | null;
+  patient_name_snapshot: string | null;
+  sale_date: string;
+  currency: "ARS";
+  subtotal_ars: string;
+  discount_total_ars: string;
+  total_ars: string;
+  status: SaleStatus;
+  item_count: number;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Sale = Omit<SaleSummary, "item_count"> & {
+  tenant_id: string;
+  owner_document_snapshot: string | null;
+  owner_email_snapshot: string | null;
+  patient_species_snapshot: string | null;
+  notes: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  items: SaleItem[];
+};
+
+export type SaleWritePayload = {
+  owner_id: string | null;
+  patient_id: string | null;
+  sale_date: string;
+  notes?: string | null;
+  items: SaleItemInput[];
+};
+
+export type SaleListFilters = {
+  search?: string;
+  owner_id?: string;
+  patient_id?: string;
+  status?: SaleStatus;
+  line_type?: SaleLineType;
+  date_from?: string;
+  date_to?: string;
+  created_by_user_id?: string;
+  page?: number;
+  page_size?: number;
+  sort_by?: "sale_date" | "created_at" | "total_ars" | "status";
+  sort_direction?: "asc" | "desc";
+};

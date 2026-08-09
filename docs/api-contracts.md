@@ -760,3 +760,60 @@ cantidades inválidas usan `422`.
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.
+
+## Ventas — Fundación
+
+`Sale` es un documento comercial tenant-owned que nace en estado `draft`. En
+esta fase también existe `cancelled`; los estados futuros `confirmed`,
+`invoiced` y `reversed` están reservados en persistencia pero ningún endpoint
+los habilita todavía. Un borrador es editable y cancelarlo conserva cabecera y
+líneas sin eliminación física.
+
+Una venta puede referenciar un `Owner` y un `Patient` del tenant autenticado, o
+no tener ninguno para representar una venta de mostrador. Un paciente requiere
+propietario y debe pertenecer al propietario seleccionado. Se conservan
+snapshots de nombre, documento y email del propietario, y nombre y especie del
+paciente; cambios posteriores en esos registros no alteran la historia de la
+venta.
+
+`SaleItem` admite `product` y `service`. Una línea de producto referencia un
+`InventoryItem` activo del mismo tenant y conserva nombre, código y unidad. El
+precio inicial puede tomarse de `sale_price_ars`, que ya representa el precio
+final al cliente, y puede ajustarse en el borrador. No se agrega IVA de compra
+ni se calculan impuestos fiscales. Como no existe un catálogo formal de
+prestaciones, las líneas de servicio son manuales y estructuradas, con
+descripción, cantidad y precio; `service_id` queda nulo.
+
+Las cantidades son enteros positivos. El descuento es exclusivamente por línea
+y admite valores entre 0 y 100. El servidor calcula con `Decimal` y redondeo
+monetario `ROUND_HALF_UP`:
+
+- `line_subtotal = quantity * unit_price_ars`;
+- `line_discount = line_subtotal * discount_percentage / 100`;
+- `line_total = line_subtotal - line_discount`;
+- los totales de Sale son las sumas de las líneas.
+
+El cliente no puede enviar tenant, estado, actor, snapshots, subtotales,
+descuentos calculados, totales, timestamps, operación de inventario ni datos
+fiscales.
+
+- `POST /api/v1/sales` crea un borrador con al menos una línea.
+- `GET /api/v1/sales` lista sin cargar líneas completas, con paginación,
+  búsqueda, owner, patient, estado, tipo de línea, fechas, creador y orden.
+- `GET /api/v1/sales/filter-options` devuelve usuarios activos del tenant para
+  el filtro de creador.
+- `GET /api/v1/sales/{sale_id}` devuelve snapshots, líneas, descuentos,
+  totales, actor y cancelación.
+- `PATCH /api/v1/sales/{sale_id}` edita exclusivamente un borrador y reemplaza
+  líneas completas cuando se envían.
+- `POST /api/v1/sales/{sale_id}/cancel` exige motivo y registra usuario y fecha.
+
+El actor se deriva de `TenantContext`; no existe selector libre de vendedor o
+veterinario. Todas las lecturas, búsquedas, conteos, subconsultas y relaciones
+validan `tenant_id`. Owner, patient, producto, usuario o Sale de otra clínica se
+comportan como inexistentes y devuelven `404` sin revelar datos. Se reutilizan
+los permisos operativos existentes y no se agregan roles.
+
+Crear, editar, consultar o cancelar un borrador no modifica stock y no crea
+`InventoryMovement`. Este slice no implementa confirmación, facturación,
+comprobantes, ARCA, pagos, caja, devoluciones ni dashboard de ventas.

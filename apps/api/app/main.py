@@ -21,6 +21,7 @@ from app.api.purchases import router as purchases_router
 from app.api.purchase_returns import router as purchase_returns_router
 from app.api.suppliers import router as suppliers_router
 from app.api.search import router as search_router
+from app.api.sales import router as sales_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 
@@ -59,6 +60,7 @@ api_v1_router.include_router(clinic_router)
 api_v1_router.include_router(inventory_router)
 api_v1_router.include_router(purchases_router)
 api_v1_router.include_router(purchase_returns_router)
+api_v1_router.include_router(sales_router)
 api_v1_router.include_router(suppliers_router)
 api_v1_router.include_router(ai_router)
 
