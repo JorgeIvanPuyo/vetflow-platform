@@ -65,7 +65,7 @@ class PurchaseAttachmentService:
                 "El estado actual de la compra no permite adjuntar un comprobante",
             )
 
-        safe_filename, content_type, canonical_extension = self._validate_file(
+        safe_filename, content_type, canonical_extension = self.validate_document_file(
             filename=filename,
             declared_content_type=declared_content_type,
             content=content,
@@ -210,14 +210,15 @@ class PurchaseAttachmentService:
         ):
             raise AppError(404, "user_not_found", "Usuario no encontrado")
 
-    def _validate_file(
-        self,
+    @classmethod
+    def validate_document_file(
+        cls,
         *,
         filename: str | None,
         declared_content_type: str | None,
         content: bytes,
     ) -> tuple[str, str, str]:
-        safe_filename = self._sanitize_filename(filename)
+        safe_filename = cls._sanitize_filename(filename)
         extension = Path(safe_filename).suffix.lower()
         expected_content_type = CONTENT_TYPES_BY_EXTENSION.get(extension)
         if expected_content_type is None:
@@ -247,7 +248,7 @@ class PurchaseAttachmentService:
                 "purchase_attachment_too_large",
                 "El comprobante supera el máximo de 10 MB",
             )
-        if not self._matches_magic(expected_content_type, content):
+        if not cls._matches_magic(expected_content_type, content):
             raise AppError(
                 422,
                 "purchase_attachment_signature_mismatch",

@@ -626,6 +626,13 @@ cuenta todas las compras del período filtrado y se acompaña de `draft_count`,
 `received_count`, `reversed_count` y `cancelled_count`. Todos los importes se
 calculan en SQL con `Decimal` y se serializan con dos decimales.
 
+Las devoluciones confirmadas del período agregan
+`returned_total_ars` y `confirmed_return_count`.
+`net_received_total_ars = received_total_ars - returned_total_ars`; el total
+recibido existente conserva su semántica bruta. Los filtros de proveedor y
+creador se aplican a la devolución, mientras el tipo documental corresponde a
+la compra original.
+
 `attachment_pending_count` y `attachment_attached_count` consideran compras no
 canceladas, incluidas las revertidas, y determinan el estado mediante existencia
 de un `PurchaseAttachment` activo del mismo tenant. `attention` contiene hasta
@@ -637,8 +644,9 @@ compras recibidas sin número documental. No se persisten alertas.
 total registrado y total recibido, ordena primero por total recibido y luego por
 total registrado, y limita a cinco. `recent_purchases` devuelve hasta ocho filas
 compactas con snapshot de proveedor, documento, total, estado, comprobante y
-creador. El dashboard ejecuta cuatro consultas acotadas —resumen, alertas, top y
-recientes— sin cargar líneas ni todas las compras y sin N+1.
+creador. El ranking continúa mostrando totales brutos recibidos; no resta
+devoluciones. El dashboard ejecuta cinco consultas acotadas —resumen, alertas,
+top, recientes y devoluciones— sin cargar líneas ni todas las compras y sin N+1.
 
 Todas las consultas principales, joins de usuarios y subqueries de comprobantes
 incluyen `tenant_id` explícito. Los UUID de proveedor o creador ajenos producen
@@ -680,6 +688,74 @@ Las rutas reutilizan autenticación y permisos de Compras. Compra, metadata,
 usuario, filtro y descarga se resuelven por `tenant_id`; un ID cross-tenant
 devuelve `404`. La comprobación por firma es una defensa básica y este slice no
 incluye antivirus, OCR ni análisis avanzado del contenido.
+
+### Devoluciones a proveedor
+
+Una devolución comercial conserva la compra original en estado `received` y
+crea un documento tenant-owned separado: `PurchaseReturn`, con líneas
+`PurchaseReturnItem`. No reutiliza `reverse-receipt`: esa acción deshace una
+recepción operativamente incorrecta y cambia la compra a `reversed`; una
+devolución representa mercadería realmente recibida que luego vuelve al
+proveedor.
+
+Los estados son `draft`, `confirmed` y `cancelled`. El borrador es editable, no
+afecta stock y puede cancelarse sin borrarse. Una devolución confirmada es
+inmutable y no tiene reversión automática. La compra expone el estado derivado
+`return_status = none|partial|full`, el total y cantidad de devoluciones
+confirmadas, sus devoluciones asociadas y `can_register_return`.
+
+Cada línea referencia una línea de compra y conserva snapshots de producto,
+unidad, costo e IVA históricos. La cantidad debe ser un entero positivo. La
+cantidad disponible es la cantidad comprada menos la suma de devoluciones
+`confirmed`; borradores y canceladas no consumen saldo. El servidor rechaza
+líneas ajenas a la compra, cantidades acumuladas superiores a lo recibido y
+compras que no estén `received`. El frontend no envía precios ni impuestos.
+Subtotal, IVA y total se recalculan con los valores históricos de
+`PurchaseItem`.
+
+- `POST /api/v1/purchases/{purchase_id}/returns` crea un borrador.
+- `GET /api/v1/purchase-returns` lista con `search`, `supplier_id`,
+  `purchase_id`, `status`, fechas, creador, estado documental, paginación y
+  orden.
+- `GET /api/v1/purchase-returns/{return_id}` devuelve compra, proveedor,
+  líneas, totales, documento, comprobante, usuarios e IDs de operación.
+- `PATCH /api/v1/purchase-returns/{return_id}` reemplaza datos y líneas de un
+  borrador.
+- `POST /api/v1/purchase-returns/{return_id}/cancel` cancela un borrador con
+  motivo.
+- `POST /api/v1/purchase-returns/{return_id}/confirm` confirma las líneas
+  persistidas; no acepta cantidades nuevas.
+- `POST|GET /api/v1/purchase-returns/{return_id}/attachment` carga/reemplaza y
+  consulta el comprobante privado.
+
+Confirmar bloquea primero devolución y compra, recalcula el saldo retornable,
+bloquea productos ordenados por ID, valida stock y crea en una única transacción
+movimientos `purchase_return`. Todos comparten
+`operation_id = inventory_operation_id`, usan
+`source_type = purchase_return`, `source_id = return.id`, usuario confirmador y
+registran `stock_before`/`stock_after`. Stock insuficiente produce
+`409 purchase_return_insufficient_stock` y rollback total; nunca hay salida
+parcial automática. La confirmación no cambia costo de compra, IVA del catálogo,
+precio de venta ni margen. Estos movimientos tampoco admiten el endpoint
+genérico de reversión.
+
+Una recepción con al menos una devolución confirmada ya no admite
+`reverse-receipt`: ambos flujos representan hechos distintos y combinarlos
+produciría una doble salida de stock. La API responde
+`409 purchase_receipt_has_confirmed_returns`.
+
+El comprobante de devolución reutiliza el servicio privado de storage de
+Compras con metadata paralela, estado pendiente/adjunto, PDF/JPEG/PNG, límite de
+10 MB, hash, reemplazo e historial. Adjuntar nunca afecta stock. Los endpoints
+reutilizan autenticación y permisos de Compras: quien ve Compras puede consultar
+devoluciones y las capacidades de gestión/recepción cubren crear y confirmar;
+no se introducen roles nuevos.
+
+Todas las lecturas, relaciones, sumas, bloqueos, usuarios, archivos y
+movimientos filtran explícitamente por `tenant_id`. Compra, línea, proveedor,
+producto, usuario o devolución cross-tenant se comportan como inexistentes y
+devuelven `404`. Errores de estado o mutabilidad usan `409`; payloads o
+cantidades inválidas usan `422`.
 
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.

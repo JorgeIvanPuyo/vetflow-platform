@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.purchase import Purchase
+from app.models.purchase_return import PurchaseReturn
 from app.models.user import User
 from app.repositories.purchase import (
     active_purchase_attachment_exists,
@@ -84,6 +85,47 @@ class PurchaseDashboardRepository:
             .filter(non_cancelled, has_attachment)
             .label("attachment_attached_count"),
         ).where(*filters)
+        return dict(self.db.execute(statement).mappings().one())
+
+    def get_return_summary(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        date_from: date,
+        date_to: date,
+        supplier_id: uuid.UUID | None,
+        created_by_user_id: uuid.UUID | None,
+        document_type: str | None,
+    ) -> dict:
+        filters = [
+            PurchaseReturn.tenant_id == tenant_id,
+            PurchaseReturn.status == "confirmed",
+            PurchaseReturn.return_date >= date_from,
+            PurchaseReturn.return_date <= date_to,
+            Purchase.tenant_id == tenant_id,
+        ]
+        if supplier_id:
+            filters.append(PurchaseReturn.supplier_id == supplier_id)
+        if created_by_user_id:
+            filters.append(
+                PurchaseReturn.created_by_user_id == created_by_user_id
+            )
+        if document_type:
+            filters.append(Purchase.document_type == document_type)
+        statement = (
+            select(
+                func.coalesce(func.sum(PurchaseReturn.total_ars), 0).label(
+                    "returned_total_ars"
+                ),
+                func.count(PurchaseReturn.id).label("confirmed_return_count"),
+            )
+            .join(
+                Purchase,
+                (Purchase.id == PurchaseReturn.purchase_id)
+                & (Purchase.tenant_id == tenant_id),
+            )
+            .where(*filters)
+        )
         return dict(self.db.execute(statement).mappings().one())
 
     def list_attention(

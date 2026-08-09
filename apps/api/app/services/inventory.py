@@ -55,6 +55,7 @@ MOVEMENT_DECREASE_TYPES = {
     "sale",
     "clinical_consumption",
     "supplier_return",
+    "purchase_return",
     "adjustment_out",
     "expiration",
     "loss",
@@ -323,6 +324,15 @@ class InventoryService:
                 "purchase_movement_requires_purchase_reversal",
                 "Purchase movements must be reversed from the purchase receipt",
             )
+        if (
+            original.movement_type == "purchase_return"
+            and original.source_type == "purchase_return"
+        ):
+            raise AppError(
+                409,
+                "purchase_return_movement_not_reversible",
+                "Confirmed purchase returns cannot be reversed automatically",
+            )
         if original.reversed_by_movement_id is not None:
             raise AppError(
                 409,
@@ -479,6 +489,37 @@ class InventoryService:
             commit=False,
         )
 
+    def register_purchase_return_movement(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        item: InventoryItem,
+        purchase_return_id: uuid.UUID,
+        quantity: Decimal,
+        unit_cost_ars: Decimal,
+        total_cost_ars: Decimal,
+        supplier: str,
+        operation_id: uuid.UUID,
+        created_by_user_id: uuid.UUID | None,
+    ) -> InventoryMovement:
+        return self._create_stock_movement(
+            tenant_id,
+            item.id,
+            movement_type="purchase_return",
+            quantity=quantity,
+            reason="purchase_return",
+            unit_cost_ars=unit_cost_ars,
+            total_cost_ars=total_cost_ars,
+            supplier=supplier,
+            notes=f"Devolución a proveedor {purchase_return_id}",
+            source_type="purchase_return",
+            source_id=str(purchase_return_id),
+            operation_id=operation_id,
+            created_by_user_id=created_by_user_id,
+            locked_item=item,
+            commit=False,
+        )
+
     def get_movement(self, tenant_id: uuid.UUID, movement_id: uuid.UUID) -> InventoryMovement:
         movement = self.inventory_repository.get_movement_by_id(tenant_id, movement_id)
         if movement is None:
@@ -490,6 +531,11 @@ class InventoryService:
             return False, "reversal_movements_cannot_be_reversed"
         if movement.movement_type == "purchase" and movement.source_type == "purchase":
             return False, "purchase_movement_requires_purchase_reversal"
+        if (
+            movement.movement_type == "purchase_return"
+            and movement.source_type == "purchase_return"
+        ):
+            return False, "purchase_return_movement_not_reversible"
         if movement.reversed_by_movement_id is not None:
             return False, "movement_already_reversed"
         if movement.movement_type in MOVEMENT_HISTORICAL_UNKNOWN_DIRECTION_TYPES:

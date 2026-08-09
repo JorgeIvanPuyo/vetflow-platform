@@ -39,6 +39,9 @@ class PurchaseDashboardSummaryRead(BaseModel):
     received_total_ars: Decimal
     registered_tax_total_ars: Decimal
     received_tax_total_ars: Decimal
+    returned_total_ars: Decimal
+    net_received_total_ars: Decimal
+    confirmed_return_count: int
     purchase_count: int
     draft_count: int
     received_count: int

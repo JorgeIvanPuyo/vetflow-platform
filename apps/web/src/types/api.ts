@@ -1371,6 +1371,9 @@ export type PurchaseDocumentType =
   | "other";
 
 export type PurchaseAttachmentStatus = "pending" | "attached";
+export type PurchaseReturnStatus = "draft" | "confirmed" | "cancelled";
+export type PurchaseReturnAggregationStatus = "none" | "partial" | "full";
+export type PurchaseReturnDocumentType = "credit_note" | "return_delivery_note" | "other";
 
 export type PurchaseCreatorOption = {
   id: string;
@@ -1417,6 +1420,8 @@ export type PurchaseItem = PurchaseItemInput & {
   line_total_ars: string;
   previous_purchase_price_ars: string | null;
   previous_purchase_tax_rate_percentage: string | null;
+  confirmed_returned_quantity: string;
+  returnable_quantity: string;
   created_at: string;
   updated_at: string;
 };
@@ -1474,6 +1479,7 @@ export type PurchaseSummary = {
   status: PurchaseStatus;
   item_count: number;
   attachment_status: PurchaseAttachmentStatus;
+  return_status: PurchaseReturnAggregationStatus;
   created_by_user_id: string | null;
   created_by_user_name: string | null;
   created_by_user_email: string | null;
@@ -1504,7 +1510,88 @@ export type Purchase = Omit<PurchaseSummary, "item_count"> & {
   reversal_warnings: string[];
   attachment: PurchaseAttachment | null;
   attachment_history: PurchaseAttachment[];
+  returned_total_ars: string;
+  confirmed_return_count: number;
+  can_register_return: boolean;
+  returns: PurchaseReturnSummary[];
   items: PurchaseItem[];
+};
+
+export type PurchaseReturnItemInput = { purchase_item_id: string; quantity: string };
+
+export type PurchaseReturnItem = PurchaseReturnItemInput & {
+  id: string;
+  inventory_item_id: string;
+  line_number: number;
+  description_snapshot: string;
+  internal_code_snapshot: string;
+  unit: string;
+  unit_price_without_tax_ars: string;
+  tax_rate_percentage: string;
+  line_subtotal_ars: string;
+  line_tax_ars: string;
+  line_total_ars: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PurchaseReturnSummary = {
+  id: string;
+  purchase_id: string;
+  supplier_id: string;
+  supplier_name: string;
+  return_date: string;
+  status: PurchaseReturnStatus;
+  reason: string;
+  document_type: PurchaseReturnDocumentType | null;
+  document_number: string | null;
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+  item_count: number;
+  attachment_status: PurchaseAttachmentStatus;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PurchaseReturn = Omit<PurchaseReturnSummary, "item_count"> & {
+  tenant_id: string;
+  supplier_tax_id: string | null;
+  currency: "ARS";
+  inventory_operation_id: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
+  confirmed_by_user_name: string | null;
+  confirmed_by_user_email: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  attachment: PurchaseAttachment | null;
+  attachment_history: PurchaseAttachment[];
+  purchase: {
+    id: string;
+    purchase_date: string;
+    supplier_id: string;
+    supplier_name: string;
+    document_type: PurchaseDocumentType;
+    document_number: string | null;
+    total_ars: string;
+    status: PurchaseStatus;
+  };
+  items: PurchaseReturnItem[];
+};
+
+export type PurchaseReturnWritePayload = {
+  return_date: string;
+  reason: string;
+  document_type?: PurchaseReturnDocumentType | null;
+  document_number?: string | null;
+  items: PurchaseReturnItemInput[];
 };
 
 export type PurchaseWritePayload = {
@@ -1593,6 +1680,9 @@ export type PurchaseDashboard = {
   summary: {
     registered_total_ars: string;
     received_total_ars: string;
+    returned_total_ars: string;
+    net_received_total_ars: string;
+    confirmed_return_count: number;
     registered_tax_total_ars: string;
     received_tax_total_ars: string;
     purchase_count: number;

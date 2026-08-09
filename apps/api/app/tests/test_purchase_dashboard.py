@@ -153,6 +153,9 @@ def test_summary_uses_documented_status_and_attachment_semantics(
         "received_total_ars": "242.00",
         "registered_tax_total_ars": "63.00",
         "received_tax_total_ars": "42.00",
+        "returned_total_ars": "0.00",
+        "net_received_total_ars": "242.00",
+        "confirmed_return_count": 0,
         "purchase_count": 4,
         "draft_count": 1,
         "received_count": 1,
@@ -394,7 +397,7 @@ def test_dashboard_service_uses_fixed_four_select_queries(db_session, tenant):
     finally:
         event.remove(db_session.bind, "before_cursor_execute", count_selects)
 
-    assert query_count == 4
+    assert query_count == 5
 
 
 def test_advanced_list_summary_covers_all_filtered_rows_not_only_page(

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ClipboardList,
   FileWarning,
+  PackageMinus,
   Plus,
   ReceiptText,
   RefreshCw,
@@ -166,6 +167,9 @@ export function PurchaseDashboardScreen() {
         <section className="purchase-dashboard-metrics" aria-label="Métricas de compras">
           <DashboardMetric href={listHref()} label="Total registrado" value={formatPurchaseCurrency(data.summary.registered_total_ars)} icon={<ReceiptText size={19} />} />
           <DashboardMetric href={listHref({ status: "received" })} label="Total recibido" value={formatPurchaseCurrency(data.summary.received_total_ars)} icon={<CheckCircle2 size={19} />} />
+          <DashboardMetric label="Total devuelto" value={formatPurchaseCurrency(data.summary.returned_total_ars)} tone="info" icon={<PackageMinus size={19} />} />
+          <DashboardMetric label="Neto recibido" value={formatPurchaseCurrency(data.summary.net_received_total_ars)} icon={<ShoppingCart size={19} />} />
+          <DashboardMetric label="Devoluciones confirmadas" value={data.summary.confirmed_return_count} icon={<PackageMinus size={19} />} />
           <DashboardMetric label="IVA registrado" value={formatPurchaseCurrency(data.summary.registered_tax_total_ars)} icon={<ReceiptText size={19} />} />
           <DashboardMetric href={listHref({ status: "draft" })} label="Borradores" value={data.summary.draft_count} icon={<ClipboardList size={19} />} />
           <DashboardMetric href={listHref({ status: "received" })} label="Recibidas" value={data.summary.received_count} icon={<CheckCircle2 size={19} />} />

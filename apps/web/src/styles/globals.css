@@ -4801,6 +4801,104 @@ a.purchase-dashboard-metric:focus-visible {
   justify-self: start;
 }
 
+.purchase-return-quantity {
+  width: 7rem;
+  max-width: 100%;
+}
+
+.purchase-cell--status {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+}
+
+.purchase-return-status--draft,
+.purchase-return-indicator--partial {
+  background: var(--color-warning-soft);
+  color: #7c5200;
+}
+
+.purchase-return-status--confirmed,
+.purchase-return-indicator--full {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.purchase-return-status--cancelled {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.purchase-return-indicator {
+  white-space: normal;
+  line-height: 1.15;
+}
+
+.purchase-returns-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.purchase-returns-panel h2,
+.purchase-returns-panel p {
+  margin: 0;
+}
+
+.purchase-return-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.purchase-return-overview > div {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-input);
+  background: var(--color-surface-soft);
+}
+
+.purchase-return-overview span {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.purchase-return-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.purchase-return-list > a {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  color: inherit;
+  text-decoration: none;
+}
+
+.purchase-return-list > a:hover,
+.purchase-return-list > a:focus-visible {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.purchase-return-list > a > span {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.purchase-return-list small {
+  color: var(--color-text-muted);
+}
+
 @media (max-width: 1000px) {
   .purchase-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4862,6 +4960,14 @@ a.purchase-dashboard-metric:focus-visible {
   .purchase-line__fields,
   .purchase-line__totals {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .purchase-return-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .purchase-return-list > a {
+    display: grid;
   }
 
   .purchase-attachment-metadata {

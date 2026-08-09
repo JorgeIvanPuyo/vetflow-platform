@@ -146,8 +146,9 @@ class PurchaseService:
                 "created_by_user_email": purchase.created_by_user_email,
                 "created_at": purchase.created_at,
                 "updated_at": purchase.updated_at,
+                "return_status": return_status,
             }
-            for purchase, item_count, has_attachment in rows
+            for purchase, item_count, has_attachment, return_status in rows
         ]
         total = int(summary["purchase_count"] or 0)
         list_summary = PurchaseListSummaryRead(
@@ -326,6 +327,12 @@ class PurchaseService:
                     409,
                     "purchase_receipt_not_reversible",
                     "Sólo se puede revertir una compra recibida",
+                )
+            if purchase.confirmed_return_count > 0:
+                raise AppError(
+                    409,
+                    "purchase_receipt_has_confirmed_returns",
+                    "No se puede revertir una recepción con devoluciones confirmadas",
                 )
             if purchase.inventory_operation_id is None:
                 raise AppError(

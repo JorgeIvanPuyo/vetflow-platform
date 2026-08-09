@@ -281,7 +281,7 @@ export function PurchasesScreen() {
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars)}</td>
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars)}</td>
                       <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></td>
-                      <td className="purchase-cell--status"><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span></td>
+                      <td className="purchase-cell--status"><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span>{purchase.return_status !== "none" ? <small className={`badge purchase-return-indicator purchase-return-indicator--${purchase.return_status}`}>{purchase.return_status === "full" ? "Devolución total" : "Devolución parcial"}</small> : null}</td>
                       <td className="purchase-cell-text purchase-cell--user"><strong className="purchase-clamp-two" title={purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}>{purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}</strong>{purchase.created_by_user_name && purchase.created_by_user_email ? <small className="purchase-ellipsis" title={purchase.created_by_user_email}>{purchase.created_by_user_email}</small> : null}</td>
                     </tr>
                   ))}

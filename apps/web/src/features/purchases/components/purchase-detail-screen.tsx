@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Ban, CheckCircle2, Download, ExternalLink, Eye, FileUp, Pencil, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, Download, ExternalLink, Eye, FileUp, PackageMinus, Pencil, RotateCcw, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -195,7 +195,8 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
         {purchase ? <div className="screen-heading__actions">
           {purchase.status === "draft" ? <><Link className="secondary-button" href={`/purchases/${purchase.id}/edit`}><Pencil size={17} /> Editar</Link><button className="primary-button" type="button" onClick={() => { setErrorMessage(null); setReceiveErrorMessage(null); setShowReceiveConfirmation(true); }}><CheckCircle2 size={17} /> Recibir compra</button></> : null}
           {purchase.inventory_operation_id ? <Link className="secondary-button" href={`/inventory/movements?operation_id=${purchase.inventory_operation_id}`}><ExternalLink size={17} /> Ver movimientos</Link> : null}
-          {purchase.status === "received" ? <button className="danger-button" type="button" onClick={() => setShowReverseConfirmation(true)}><RotateCcw size={17} /> Revertir recepción</button> : null}
+          {purchase.status === "received" && purchase.can_register_return ? <Link className="primary-button" href={`/purchases/${purchase.id}/returns/new`}><PackageMinus size={17} /> Registrar devolución</Link> : null}
+          {purchase.status === "received" && purchase.confirmed_return_count === 0 ? <button className="danger-button" type="button" onClick={() => setShowReverseConfirmation(true)}><RotateCcw size={17} /> Revertir recepción</button> : null}
         </div> : null}
       </section>
 
@@ -264,6 +265,12 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
             <div><span>Subtotal</span><strong>{formatPurchaseCurrency(purchase.subtotal_ars)}</strong></div>
             <div><span>IVA</span><strong>{formatPurchaseCurrency(purchase.tax_total_ars)}</strong></div>
             <div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></div>
+          </section>
+
+          <section className="panel purchase-returns-panel">
+            <div className="section-heading-inline"><div><h2>Devoluciones</h2><p>{labelReturnAggregation(purchase.return_status)}</p></div>{purchase.status === "received" && purchase.can_register_return ? <Link className="secondary-button" href={`/purchases/${purchase.id}/returns/new`}><PackageMinus size={17} /> Registrar devolución</Link> : null}</div>
+            <div className="purchase-return-overview"><div><span>Total confirmado devuelto</span><strong>{formatPurchaseCurrency(purchase.returned_total_ars)}</strong></div><div><span>Devoluciones confirmadas</span><strong>{purchase.confirmed_return_count}</strong></div><div><span>Estado derivado</span><strong>{labelReturnAggregation(purchase.return_status)}</strong></div></div>
+            {purchase.returns.length === 0 ? <p>No hay devoluciones registradas para esta compra.</p> : <div className="purchase-return-list">{purchase.returns.map((item) => <Link href={`/purchase-returns/${item.id}`} key={item.id}><span><strong>{formatPurchaseDate(item.return_date)}</strong><small>{item.reason}</small></span><span><span className={`badge purchase-return-status purchase-return-status--${item.status}`}>{item.status === "draft" ? "Borrador" : item.status === "confirmed" ? "Confirmada" : "Cancelada"}</span><strong>{formatPurchaseCurrency(item.total_ars)}</strong></span></Link>)}</div>}
           </section>
 
           <section className="panel purchase-traceability">
@@ -394,6 +401,12 @@ function labelAttachmentType(contentType: string) {
   if (contentType === "application/pdf") return "PDF";
   if (contentType === "image/jpeg") return "JPEG";
   return "PNG";
+}
+
+function labelReturnAggregation(status: Purchase["return_status"]) {
+  if (status === "partial") return "Devolución parcial";
+  if (status === "full") return "Devolución total";
+  return "Sin devoluciones";
 }
 
 function getPurchaseReceiveErrorMessage(error: unknown) {

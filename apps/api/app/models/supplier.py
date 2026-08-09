@@ -39,6 +39,9 @@ class Supplier(BaseModel):
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="suppliers")
     created_by_user: Mapped[User | None] = relationship("User")
     purchases: Mapped[list[Purchase]] = relationship("Purchase", back_populates="supplier")
+    purchase_returns: Mapped[list[PurchaseReturn]] = relationship(
+        "PurchaseReturn", back_populates="supplier"
+    )
 
     @property
     def created_by_user_name(self) -> str | None:

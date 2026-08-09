@@ -47,6 +47,9 @@ class PurchaseDashboardService:
             "document_type": document_type,
         }
         summary = self.repository.get_summary(tenant_id, **repository_filters)
+        return_summary = self.repository.get_return_summary(
+            tenant_id, **repository_filters
+        )
         attention_rows = self.repository.list_attention(
             tenant_id,
             **repository_filters,
@@ -82,6 +85,16 @@ class PurchaseDashboardService:
                 ),
                 "received_tax_total_ars": self._money(
                     summary["received_tax_total_ars"]
+                ),
+                "returned_total_ars": self._money(
+                    return_summary["returned_total_ars"]
+                ),
+                "net_received_total_ars": self._money(
+                    Decimal(summary["received_total_ars"] or 0)
+                    - Decimal(return_summary["returned_total_ars"] or 0)
+                ),
+                "confirmed_return_count": int(
+                    return_summary["confirmed_return_count"] or 0
                 ),
                 "purchase_count": int(summary["purchase_count"] or 0),
                 "draft_count": int(summary["draft_count"] or 0),

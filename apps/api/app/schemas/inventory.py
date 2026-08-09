@@ -51,6 +51,7 @@ InventoryMovementType = Literal[
     "clinical_consumption",
     "customer_return",
     "supplier_return",
+    "purchase_return",
     "adjustment_in",
     "adjustment_out",
     "expiration",

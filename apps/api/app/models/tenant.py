@@ -48,4 +48,7 @@ class Tenant(BaseModel):
         back_populates="tenant",
     )
     purchases: Mapped[list[Purchase]] = relationship("Purchase", back_populates="tenant")
+    purchase_returns: Mapped[list[PurchaseReturn]] = relationship(
+        "PurchaseReturn", back_populates="tenant"
+    )
     suppliers: Mapped[list[Supplier]] = relationship("Supplier", back_populates="tenant")

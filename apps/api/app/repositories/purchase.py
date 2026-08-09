@@ -3,12 +3,17 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import asc, desc, exists, func, or_, select
+from sqlalchemy import asc, case, desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
 from app.models.purchase import Purchase, PurchaseItem
 from app.models.purchase_attachment import PurchaseAttachment
+from app.models.purchase_return import (
+    PurchaseReturn,
+    PurchaseReturnAttachment,
+    PurchaseReturnItem,
+)
 from app.models.supplier import Supplier
 from app.models.user import User
 
@@ -124,6 +129,23 @@ class PurchaseRepository:
                 ).selectinload(
                     PurchaseAttachment.replaced_by_user.and_(User.tenant_id == tenant_id)
                 ),
+                selectinload(
+                    Purchase.returns.and_(PurchaseReturn.tenant_id == tenant_id)
+                ).selectinload(
+                    PurchaseReturn.items.and_(PurchaseReturnItem.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Purchase.returns.and_(PurchaseReturn.tenant_id == tenant_id)
+                ).selectinload(
+                    PurchaseReturn.created_by_user.and_(User.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Purchase.returns.and_(PurchaseReturn.tenant_id == tenant_id)
+                ).selectinload(
+                    PurchaseReturn.attachments.and_(
+                        PurchaseReturnAttachment.tenant_id == tenant_id
+                    )
+                ),
             )
         )
         if for_update:
@@ -147,7 +169,7 @@ class PurchaseRepository:
         page_size: int,
         sort_by: str,
         sort_direction: str,
-    ) -> tuple[list[tuple[Purchase, int, bool]], dict]:
+    ) -> tuple[list[tuple[Purchase, int, bool, str]], dict]:
         item_count = (
             select(func.count(PurchaseItem.id))
             .where(
@@ -158,6 +180,39 @@ class PurchaseRepository:
             .scalar_subquery()
         )
         has_attachment = active_purchase_attachment_exists(tenant_id)
+        purchased_quantity = (
+            select(func.coalesce(func.sum(PurchaseItem.quantity), 0))
+            .where(
+                PurchaseItem.purchase_id == Purchase.id,
+                PurchaseItem.tenant_id == tenant_id,
+            )
+            .correlate(Purchase)
+            .scalar_subquery()
+        )
+        confirmed_returned_quantity = (
+            select(func.coalesce(func.sum(PurchaseReturnItem.quantity), 0))
+            .join(
+                PurchaseReturn,
+                (PurchaseReturn.id == PurchaseReturnItem.purchase_return_id)
+                & (PurchaseReturn.tenant_id == tenant_id),
+            )
+            .where(
+                PurchaseReturnItem.tenant_id == tenant_id,
+                PurchaseReturn.purchase_id == Purchase.id,
+                PurchaseReturn.status == "confirmed",
+            )
+            .correlate(Purchase)
+            .scalar_subquery()
+        )
+        return_status = case(
+            (confirmed_returned_quantity <= 0, "none"),
+            (
+                (purchased_quantity > 0)
+                & (confirmed_returned_quantity >= purchased_quantity),
+                "full",
+            ),
+            else_="partial",
+        )
         filters = build_purchase_filters(
             tenant_id,
             search=search,
@@ -175,6 +230,7 @@ class PurchaseRepository:
                 Purchase,
                 item_count.label("item_count"),
                 has_attachment.label("has_attachment"),
+                return_status.label("return_status"),
             )
             .where(*filters)
             .options(
@@ -202,7 +258,9 @@ class PurchaseRepository:
         statement = statement.offset((page - 1) * page_size).limit(page_size)
         rows = self.db.execute(statement).all()
         summary = dict(self.db.execute(summary_statement).mappings().one())
-        return [(row[0], int(row[1] or 0), bool(row[2])) for row in rows], summary
+        return [
+            (row[0], int(row[1] or 0), bool(row[2]), str(row[3])) for row in rows
+        ], summary
 
     def list_creator_options(self, tenant_id: uuid.UUID) -> list[dict]:
         statement = (

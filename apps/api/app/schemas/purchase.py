@@ -6,6 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.schemas.supplier import SupplierSummaryRead
+from app.schemas.purchase_return import (
+    PurchaseReturnAggregationStatus,
+    PurchaseReturnSummaryRead,
+)
 
 
 PurchaseStatus = Literal[
@@ -126,6 +130,8 @@ class PurchaseItemRead(BaseModel):
     line_total_ars: Decimal
     previous_purchase_price_ars: Decimal | None = None
     previous_purchase_tax_rate_percentage: Decimal | None = None
+    confirmed_returned_quantity: Decimal = Decimal("0")
+    returnable_quantity: Decimal = Decimal("0")
     created_at: datetime
     updated_at: datetime
 
@@ -180,6 +186,7 @@ class PurchaseSummaryRead(BaseModel):
     status: PurchaseStatus
     item_count: int
     attachment_status: PurchaseAttachmentStatus
+    return_status: PurchaseReturnAggregationStatus = "none"
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
@@ -250,6 +257,11 @@ class PurchaseDetailRead(BaseModel):
     attachment_status: PurchaseAttachmentStatus
     attachment: PurchaseAttachmentRead | None = None
     attachment_history: list[PurchaseAttachmentRead] = Field(default_factory=list)
+    returned_total_ars: Decimal = Decimal("0")
+    confirmed_return_count: int = 0
+    return_status: PurchaseReturnAggregationStatus = "none"
+    can_register_return: bool = False
+    returns: list[PurchaseReturnSummaryRead] = Field(default_factory=list)
     items: list[PurchaseItemRead]
 
     @field_serializer("created_by_user_id")

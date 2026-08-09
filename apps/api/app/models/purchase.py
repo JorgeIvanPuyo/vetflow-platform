@@ -143,6 +143,11 @@ class Purchase(BaseModel):
         cascade="all, delete-orphan",
         order_by="desc(PurchaseAttachment.uploaded_at)",
     )
+    returns: Mapped[list[PurchaseReturn]] = relationship(
+        "PurchaseReturn",
+        back_populates="purchase",
+        order_by="desc(PurchaseReturn.return_date), desc(PurchaseReturn.created_at)",
+    )
 
     @property
     def attachment(self) -> PurchaseAttachment | None:
@@ -212,6 +217,45 @@ class Purchase(BaseModel):
             "El stock se revirtió, pero se conservó un costo de catálogo modificado posteriormente."
         ]
 
+    @property
+    def confirmed_returns(self) -> list[PurchaseReturn]:
+        return [item for item in self.returns if item.status == "confirmed"]
+
+    @property
+    def confirmed_return_count(self) -> int:
+        return len(self.confirmed_returns)
+
+    @property
+    def returned_total_ars(self) -> Decimal:
+        return sum(
+            (item.total_ars for item in self.confirmed_returns), Decimal("0")
+        )
+
+    @property
+    def return_status(self) -> str:
+        purchased_quantity = sum(
+            (item.quantity for item in self.items), Decimal("0")
+        )
+        returned_quantity = sum(
+            (
+                item.quantity
+                for purchase_return in self.confirmed_returns
+                for item in purchase_return.items
+            ),
+            Decimal("0"),
+        )
+        if returned_quantity <= 0:
+            return "none"
+        if purchased_quantity > 0 and returned_quantity >= purchased_quantity:
+            return "full"
+        return "partial"
+
+    @property
+    def can_register_return(self) -> bool:
+        return self.status == "received" and any(
+            item.returnable_quantity > 0 for item in self.items
+        )
+
 
 class PurchaseItem(BaseModel):
     __tablename__ = "purchase_items"
@@ -277,3 +321,25 @@ class PurchaseItem(BaseModel):
 
     purchase: Mapped[Purchase] = relationship("Purchase", back_populates="items")
     inventory_item: Mapped[InventoryItem] = relationship("InventoryItem")
+    return_items: Mapped[list[PurchaseReturnItem]] = relationship(
+        "PurchaseReturnItem", back_populates="purchase_item"
+    )
+
+    @property
+    def confirmed_returned_quantity(self) -> Decimal:
+        if not self.purchase:
+            return Decimal("0")
+        return sum(
+            (
+                return_item.quantity
+                for purchase_return in self.purchase.returns
+                if purchase_return.status == "confirmed"
+                for return_item in purchase_return.items
+                if return_item.purchase_item_id == self.id
+            ),
+            Decimal("0"),
+        )
+
+    @property
+    def returnable_quantity(self) -> Decimal:
+        return max(self.quantity - self.confirmed_returned_quantity, Decimal("0"))

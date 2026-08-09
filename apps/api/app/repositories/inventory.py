@@ -567,6 +567,7 @@ class InventoryRepository:
                     "sale",
                     "clinical_consumption",
                     "supplier_return",
+                    "purchase_return",
                     "adjustment_out",
                     "expiration",
                     "loss",
