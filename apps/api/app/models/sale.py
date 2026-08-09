@@ -60,6 +60,21 @@ class Sale(BaseModel):
     confirmed_by_user: Mapped[User | None] = relationship("User", foreign_keys=[confirmed_by_user_id])
     reversed_by_user: Mapped[User | None] = relationship("User", foreign_keys=[reversed_by_user_id])
     items: Mapped[list[SaleItem]] = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan", order_by="SaleItem.line_order")
+    fiscal_documents: Mapped[list[SaleFiscalDocument]] = relationship(
+        "SaleFiscalDocument",
+        back_populates="sale",
+        order_by="desc(SaleFiscalDocument.created_at)",
+    )
+
+    @property
+    def fiscal_document(self) -> SaleFiscalDocument | None:
+        return next((document for document in self.fiscal_documents if document.is_active), None)
+
+    @property
+    def fiscal_status(self) -> str | None:
+        if self.fiscal_document is not None:
+            return "requires_attention" if self.status == "reversed" else "documented"
+        return "pending" if self.status == "confirmed" else None
 
     @staticmethod
     def _user_value(user, tenant_id: uuid.UUID, field: str):

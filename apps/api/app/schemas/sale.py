@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
+
 
 SaleStatus = Literal["draft", "confirmed", "cancelled", "reversed"]
 SaleLineType = Literal["product", "service"]
@@ -139,6 +141,7 @@ class SaleSummaryRead(BaseModel):
     discount_total_ars: Decimal
     total_ars: Decimal
     status: SaleStatus
+    fiscal_status: FiscalStatus | None = None
     item_count: int
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
@@ -169,6 +172,8 @@ class SaleDetailRead(BaseModel):
     total_ars: Decimal
     notes: str | None = None
     status: SaleStatus
+    fiscal_status: FiscalStatus | None = None
+    fiscal_document: SaleFiscalDocumentRead | None = None
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None

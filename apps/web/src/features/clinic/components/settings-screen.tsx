@@ -6,12 +6,14 @@ import {
   Image as ImageIcon,
   Mail,
   MapPin,
+  ReceiptText,
   Trash2,
   Upload,
   Users,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
@@ -336,6 +338,36 @@ export function SettingsScreen() {
 
       {!state.isLoading && state.profile ? (
         <div className="settings-section-list">
+          <section className="panel settings-section-card">
+            <button
+              aria-expanded={Boolean(expandedSettingsSections.salesBilling)}
+              className="settings-section-card__header"
+              type="button"
+              onClick={() => toggleSettingsSection("salesBilling")}
+            >
+              <span className="settings-section-card__icon" aria-hidden="true">
+                <ReceiptText size={20} />
+              </span>
+              <span className="settings-section-card__copy">
+                <strong>Ventas y facturación</strong>
+                <small>Emisores y configuración de comprobantes manuales.</small>
+              </span>
+              <ChevronDown aria-hidden="true" size={16} />
+            </button>
+
+            {expandedSettingsSections.salesBilling ? (
+              <div className="settings-section-card__content">
+                <Link className="settings-navigation-row" href="/settings/sales/fiscal-issuers">
+                  <span>
+                    <strong>Emisores fiscales</strong>
+                    <small>Configura quién puede emitir comprobantes y qué tipos tiene habilitados.</small>
+                  </span>
+                  <span aria-hidden="true">→</span>
+                </Link>
+              </div>
+            ) : null}
+          </section>
+
           <section className="panel settings-section-card">
             <button
               aria-expanded={Boolean(expandedSettingsSections.profile)}

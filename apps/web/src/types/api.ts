@@ -1700,6 +1700,70 @@ export type PurchaseDashboard = {
 
 export type SaleStatus = "draft" | "confirmed" | "cancelled" | "reversed";
 export type SaleLineType = "product" | "service";
+export type FiscalDocumentType = "receipt_c" | "invoice_c";
+export type SaleFiscalStatus = "pending" | "documented" | "requires_attention";
+
+export type FiscalIssuer = {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  display_name: string;
+  tax_id: string;
+  is_active: boolean;
+  can_issue_service_receipt_c: boolean;
+  can_issue_product_invoice_c: boolean;
+  service_document_type: FiscalDocumentType | null;
+  service_document_code: string | null;
+  product_document_type: FiscalDocumentType | null;
+  product_document_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FiscalIssuerWritePayload = Omit<
+  FiscalIssuer,
+  "id" | "user_name" | "user_email" | "created_at" | "updated_at"
+>;
+
+export type SaleFiscalDocumentFileVersion = {
+  id: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_at: string;
+  replaced_at: string;
+  replaced_by_user_id: string | null;
+  replaced_by_user_name: string | null;
+  replaced_by_user_email: string | null;
+};
+
+export type SaleFiscalDocument = {
+  id: string;
+  fiscal_issuer_id: string;
+  issuer_user_id_snapshot: string;
+  issuer_name_snapshot: string;
+  issuer_tax_id_snapshot: string;
+  document_type: FiscalDocumentType;
+  document_code: string;
+  document_number: string;
+  issue_date: string;
+  total_ars_snapshot: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_user_name: string | null;
+  uploaded_by_user_email: string | null;
+  uploaded_at: string;
+  is_active: boolean;
+  file_history: SaleFiscalDocumentFileVersion[];
+  created_at: string;
+  updated_at: string;
+};
 
 export type SaleProductItemInput = {
   line_type: "product";
@@ -1750,6 +1814,7 @@ export type SaleSummary = {
   discount_total_ars: string;
   total_ars: string;
   status: SaleStatus;
+  fiscal_status: SaleFiscalStatus | null;
   item_count: number;
   created_by_user_id: string | null;
   created_by_user_name: string | null;
@@ -1780,6 +1845,7 @@ export type Sale = Omit<SaleSummary, "item_count"> & {
   reversed_by_user_email: string | null;
   reversal_reason: string | null;
   reversal_operation_id: string | null;
+  fiscal_document: SaleFiscalDocument | null;
   items: SaleItem[];
 };
 
@@ -1800,6 +1866,7 @@ export type SaleListFilters = {
   date_from?: string;
   date_to?: string;
   created_by_user_id?: string;
+  fiscal_status?: SaleFiscalStatus;
   page?: number;
   page_size?: number;
   sort_by?: "sale_date" | "created_at" | "total_ars" | "status";

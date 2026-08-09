@@ -857,5 +857,66 @@ Crear, editar, consultar o cancelar un borrador no modifica stock y no crea
 `InventoryMovement`. Confirmar y revertir son transacciones únicas. Sale,
 SaleItem, InventoryItem, InventoryMovement y actores se resuelven dentro del
 tenant autenticado; IDs cross-tenant devuelven `404` sin revelar existencia.
-No se implementan todavía facturación, comprobantes, ARCA, pagos, caja,
-devoluciones comerciales, notas de crédito ni dashboard de ventas.
+No se implementan todavía ARCA, CAE, certificados, pagos, caja, cuentas por
+cobrar, devoluciones comerciales, notas de crédito ni dashboard de ventas.
+
+### Facturación manual y comprobantes de Venta
+
+Esta etapa registra comprobantes emitidos fuera de Vetflow. `Sale.status`
+permanece independiente del estado fiscal derivado: una confirmada sin documento
+es `pending`, una confirmada documentada es `documented`, y una revertida que ya
+tenía documento es `requires_attention`. Borradores, canceladas y revertidas sin
+documento no tienen estado fiscal. Revertir nunca elimina el comprobante ni genera
+automáticamente una nota de crédito.
+
+`FiscalIssuer` es tenant-owned y vincula como máximo una configuración por
+usuario y clínica. Conserva nombre fiscal, identificación tributaria, estado y
+capacidades separadas para servicios y productos, cada una con tipo
+`receipt_c|invoice_c` y código configurable. El usuario debe existir en el mismo
+tenant y un emisor inactivo no puede seleccionarse para un documento nuevo.
+
+- `POST /api/v1/fiscal-issuers` crea la configuración.
+- `GET /api/v1/fiscal-issuers` lista las configuraciones del tenant;
+  `active_only=true` limita a activas.
+- `GET /api/v1/fiscal-issuers/{issuer_id}` consulta una configuración.
+- `PATCH /api/v1/fiscal-issuers/{issuer_id}` corrige capacidades o cambia
+  su estado sin alterar snapshots históricos.
+
+`SaleFiscalDocument` es tenant-owned, admite como máximo un documento activo por
+venta y captura snapshots del usuario, nombre e identificación del emisor, tipo,
+código, número, fecha, total de la venta, archivo y actor que lo cargó. El total
+siempre se deriva de `Sale.total_ars`. La combinación tenant, emisor, tipo y
+número es única. El número se recorta y no puede quedar vacío.
+
+Una venta sólo de servicios exige la capacidad de servicios; una sólo de
+productos exige la de productos. Una venta mixta únicamente puede documentarse
+si el emisor tiene ambas capacidades configuradas con exactamente el mismo tipo
+y código. Sólo una venta `confirmed` admite el alta inicial. Un documento ya
+existente puede corregirse o reemplazar su archivo después de una reversión, sin
+perder el documento que requiere atención.
+
+- `POST /api/v1/sales/{sale_id}/fiscal-document` recibe multipart con
+  `fiscal_issuer_id`, `document_type`, `document_code`, `document_number`,
+  `issue_date` y `file` obligatorio.
+- `GET /api/v1/sales/{sale_id}/fiscal-document` devuelve metadata, snapshots,
+  actor e historial de archivos, nunca bucket ni clave privada.
+- `PATCH /api/v1/sales/{sale_id}/fiscal-document` recibe los mismos campos como
+  opcionales; un nuevo archivo conserva la versión anterior.
+- `GET /api/v1/sales/{sale_id}/fiscal-document/file` transmite el archivo en
+  modo privado `inline`; `download=true` usa descarga.
+- `GET /api/v1/sales` admite `fiscal_status=pending|documented|requires_attention`.
+
+Los archivos reutilizan la validación de comprobantes de Compras: PDF, JPEG o
+PNG de hasta 10 MB, coherencia entre extensión y MIME, firma básica, nombre
+sanitizado y SHA-256. Las claves incluyen tenant y venta. Un reemplazo crea una
+fila histórica y no borra el objeto previo; si la persistencia falla después del
+upload, se intenta eliminar el objeto nuevo y el documento anterior permanece
+intacto. Metadata y descarga requieren autenticación y validan tenant, prefijo
+de storage e integridad del hash.
+
+El emisor fiscal y el actor operativo son conceptos separados: configurar a una
+persona como emisor no cambia `created_by_user_id`, `confirmed_by_user_id` ni
+`reversed_by_user_id`; cargar o reemplazar registra al usuario autenticado. Toda
+consulta, relación, filtro, unicidad lógica y acceso a archivo incluye
+`tenant_id`; recursos y usuarios cross-tenant devuelven `404`. Se reutilizan los
+permisos operativos actuales y no se agregan roles.

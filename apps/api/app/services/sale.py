@@ -290,7 +290,8 @@ class SaleService:
                 "owner_name_snapshot": sale.owner_name_snapshot, "patient_name_snapshot": sale.patient_name_snapshot,
                 "sale_date": sale.sale_date, "currency": sale.currency, "subtotal_ars": sale.subtotal_ars,
                 "discount_total_ars": sale.discount_total_ars, "total_ars": sale.total_ars,
-                "status": sale.status, "item_count": item_count,
+                "status": sale.status, "fiscal_status": sale.fiscal_status,
+                "item_count": item_count,
                 "created_by_user_id": sale.created_by_user_id, "created_by_user_name": sale.created_by_user_name,
                 "created_by_user_email": sale.created_by_user_email, "created_at": sale.created_at, "updated_at": sale.updated_at,
             }

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
 from app.models.sale import Sale, SaleItem
+from app.models.sale_fiscal import SaleFiscalDocument, SaleFiscalDocumentFileVersion
 from app.models.user import User
 
 
@@ -42,6 +43,27 @@ class SaleRepository:
                 selectinload(Sale.cancelled_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.confirmed_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.reversed_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(
+                    Sale.fiscal_documents.and_(
+                        SaleFiscalDocument.tenant_id == tenant_id,
+                        SaleFiscalDocument.is_active.is_(True),
+                    )
+                ).options(
+                    selectinload(
+                        SaleFiscalDocument.uploaded_by_user.and_(
+                            User.tenant_id == tenant_id
+                        )
+                    ),
+                    selectinload(
+                        SaleFiscalDocument.file_history.and_(
+                            SaleFiscalDocumentFileVersion.tenant_id == tenant_id
+                        )
+                    ).selectinload(
+                        SaleFiscalDocumentFileVersion.replaced_by_user.and_(
+                            User.tenant_id == tenant_id
+                        )
+                    ),
+                ),
             )
         )
         if for_update:
@@ -65,6 +87,7 @@ class SaleRepository:
         date_from: date | None,
         date_to: date | None,
         created_by_user_id: uuid.UUID | None,
+        fiscal_status: str | None,
         page: int,
         page_size: int,
         sort_by: str,
@@ -90,13 +113,35 @@ class SaleRepository:
         if created_by_user_id:
             filters.append(Sale.created_by_user_id == created_by_user_id)
 
+        active_document = exists(
+            select(SaleFiscalDocument.id).where(
+                SaleFiscalDocument.tenant_id == tenant_id,
+                SaleFiscalDocument.sale_id == Sale.id,
+                SaleFiscalDocument.is_active.is_(True),
+            )
+        )
+        if fiscal_status == "pending":
+            filters.extend((Sale.status == "confirmed", ~active_document))
+        elif fiscal_status == "documented":
+            filters.extend((Sale.status == "confirmed", active_document))
+        elif fiscal_status == "requires_attention":
+            filters.extend((Sale.status == "reversed", active_document))
+
         item_count = select(func.count(SaleItem.id)).where(SaleItem.tenant_id == tenant_id, SaleItem.sale_id == Sale.id).correlate(Sale).scalar_subquery()
         sort_columns = {"sale_date": Sale.sale_date, "created_at": Sale.created_at, "total_ars": Sale.total_ars, "status": Sale.status}
         order = asc if sort_direction == "asc" else desc
         statement = (
             select(Sale, item_count.label("item_count"))
             .where(*filters)
-            .options(selectinload(Sale.created_by_user.and_(User.tenant_id == tenant_id)))
+            .options(
+                selectinload(Sale.created_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(
+                    Sale.fiscal_documents.and_(
+                        SaleFiscalDocument.tenant_id == tenant_id,
+                        SaleFiscalDocument.is_active.is_(True),
+                    )
+                ),
+            )
             .order_by(order(sort_columns[sort_by]), order(Sale.id))
             .offset((page - 1) * page_size)
             .limit(page_size)

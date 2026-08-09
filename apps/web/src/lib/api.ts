@@ -305,6 +305,13 @@ export const api = {
   patch<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, "PATCH", { body });
   },
+  patchFormData<T>(path: string, body: FormData): Promise<T> {
+    return request<T>(path, "PATCH", {
+      body,
+      isMultipart: true,
+      retryTransient: false,
+    });
+  },
   delete<T>(path: string): Promise<T> {
     return request<T>(path, "DELETE");
   },

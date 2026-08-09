@@ -19,6 +19,11 @@ from app.models.purchase_return import (
     PurchaseReturnItem,
 )
 from app.models.sale import Sale, SaleItem
+from app.models.sale_fiscal import (
+    FiscalIssuer,
+    SaleFiscalDocument,
+    SaleFiscalDocumentFileVersion,
+)
 from app.models.supplier import Supplier
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -49,5 +54,8 @@ __all__ = [
     "PurchaseReturnAttachment",
     "Sale",
     "SaleItem",
+    "FiscalIssuer",
+    "SaleFiscalDocument",
+    "SaleFiscalDocumentFileVersion",
     "Supplier",
 ]
