@@ -13,7 +13,9 @@ PurchaseStatus = Literal[
 ]
 PurchaseFunctionalStatus = Literal["draft", "cancelled", "received", "reversed"]
 PurchaseDocumentType = Literal["invoice", "receipt", "ticket", "delivery_note", "other"]
-PurchaseSortBy = Literal["purchase_date", "created_at", "total_ars", "supplier_name"]
+PurchaseSortBy = Literal[
+    "purchase_date", "created_at", "total_ars", "supplier_name", "status"
+]
 SortDirection = Literal["asc", "desc"]
 PurchaseAttachmentStatus = Literal["pending", "attached"]
 
@@ -189,6 +191,20 @@ class PurchaseSummaryRead(BaseModel):
         if self.created_by_user_name or self.created_by_user_email:
             return value
         return None
+
+
+class PurchaseListSummaryRead(BaseModel):
+    purchase_count: int
+    subtotal_ars: Decimal
+    tax_total_ars: Decimal
+    total_ars: Decimal
+
+
+class PurchaseCreatorOptionRead(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
+    is_active: bool
 
 
 class PurchaseDetailRead(BaseModel):

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Plus, Search, ShoppingCart } from "lucide-react";
+import { Building2, ChevronDown, LayoutDashboard, Plus, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -12,9 +12,17 @@ import {
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
-import { getPurchases } from "@/services/purchases";
+import { getPurchaseFilterOptions, getPurchases } from "@/services/purchases";
 import { getSuppliers } from "@/services/suppliers";
-import type { PurchaseDocumentType, PurchaseListFilters, PurchaseSummary, SupplierSummary } from "@/types/api";
+import type { PurchaseCreatorOption, PurchaseDocumentType, PurchaseListFilters, PurchaseListSummary, PurchaseSummary, SupplierSummary } from "@/types/api";
+
+
+const EMPTY_SUMMARY: PurchaseListSummary = {
+  purchase_count: 0,
+  subtotal_ars: "0.00",
+  tax_total_ars: "0.00",
+  total_ars: "0.00",
+};
 
 
 export function PurchasesScreen() {
@@ -26,9 +34,12 @@ export function PurchasesScreen() {
   const [searchValue, setSearchValue] = useState(filters.search ?? "");
   const [items, setItems] = useState<PurchaseSummary[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
-  const [meta, setMeta] = useState({ page: 1, page_size: 20, total: 0, total_pages: 0 });
+  const [creators, setCreators] = useState<PurchaseCreatorOption[]>([]);
+  const [meta, setMeta] = useState({ page: 1, page_size: 20, total: 0, total_pages: 0, summary: EMPTY_SUMMARY });
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const activeAdvancedFilterCount = countAdvancedFilters(filters);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
   useEffect(() => setSearchValue(filters.search ?? ""), [filters.search]);
 
@@ -54,9 +65,13 @@ export function PurchasesScreen() {
     Promise.all([
       getSuppliers({ is_active: true, page_size: 100, sort_by: "name", sort_direction: "asc" }),
       getSuppliers({ is_active: false, page_size: 100, sort_by: "name", sort_direction: "asc" }),
+      getPurchaseFilterOptions(),
     ])
-      .then(([active, inactive]) => setSuppliers([...active.data, ...inactive.data].sort((left, right) => left.name.localeCompare(right.name))))
-      .catch(() => setSuppliers([]));
+      .then(([active, inactive, options]) => {
+        setSuppliers([...active.data, ...inactive.data].sort((left, right) => left.name.localeCompare(right.name)));
+        setCreators(options.data.creators);
+      })
+      .catch(() => { setSuppliers([]); setCreators([]); });
   }, []);
 
   function updateFilters(updates: Record<string, string | number | null>) {
@@ -74,8 +89,14 @@ export function PurchasesScreen() {
     updateFilters({ search: searchValue.trim() || null });
   }
 
+  function clearFilters() {
+    setSearchValue("");
+    setIsFilterPanelOpen(false);
+    router.push(pathname, { scroll: false });
+  }
+
   const hasFilters = Boolean(
-    filters.search || filters.supplier_id || filters.status || filters.document_type || filters.attachment_status || filters.date_from || filters.date_to,
+    filters.search || filters.supplier_id || filters.status || filters.document_type || filters.attachment_status || filters.date_from || filters.date_to || filters.created_by_user_id,
   );
 
   return (
@@ -87,12 +108,20 @@ export function PurchasesScreen() {
           <p>Registra borradores y controla su recepción trazable en inventario.</p>
         </div>
         <div className="screen-heading__actions">
+          <Link className="secondary-button" href="/purchases/dashboard"><LayoutDashboard size={18} /> Dashboard</Link>
           <Link className="secondary-button" href="/suppliers"><Building2 size={18} /> Proveedores</Link>
           <Link className="primary-button" href="/purchases/new"><Plus size={18} /> Nueva compra</Link>
         </div>
       </section>
 
-      <section className="panel purchase-filters" aria-label="Filtros de compras">
+      <nav className="purchase-quick-filters" aria-label="Filtros rápidos de compras">
+        <button type="button" aria-pressed={!filters.status && !filters.attachment_status} onClick={() => updateFilters({ status: null, attachment_status: null })}>Todos</button>
+        <button type="button" aria-pressed={filters.status === "draft"} onClick={() => updateFilters({ status: "draft", attachment_status: null })}>Borradores</button>
+        <button type="button" aria-pressed={filters.status === "received"} onClick={() => updateFilters({ status: "received", attachment_status: null })}>Recibidas</button>
+        <button type="button" aria-pressed={filters.attachment_status === "pending"} onClick={() => updateFilters({ status: null, attachment_status: "pending" })}>Pendientes comprobante</button>
+      </nav>
+
+      <section className="panel purchase-filter-toolbar" aria-label="Búsqueda y filtros de compras">
         <form className="purchase-search" onSubmit={handleSearch}>
           <label className="field">
             <span>Buscar</span>
@@ -104,57 +133,110 @@ export function PurchasesScreen() {
           </label>
           <button className="secondary-button" type="submit"><Search size={17} /> Buscar</button>
         </form>
-        <label className="field">
-          <span>Proveedor</span>
-          <select value={filters.supplier_id ?? ""} onChange={(event) => updateFilters({ supplier_id: event.target.value || null })}>
-            <option value="">Todos</option>
-            {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}{supplier.is_active ? "" : " (inactivo)"}</option>)}
-          </select>
-        </label>
-        <label className="field">
-          <span>Estado</span>
-          <select value={filters.status ?? ""} onChange={(event) => updateFilters({ status: event.target.value || null })}>
-            <option value="">Todos</option>
-            <option value="draft">Borrador</option>
-            <option value="cancelled">Cancelada</option>
-            <option value="received">Recibida</option>
-            <option value="reversed">Recepción revertida</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Comprobante</span>
-          <select value={filters.document_type ?? ""} onChange={(event) => updateFilters({ document_type: event.target.value || null })}>
-            <option value="">Todos</option>
-            <option value="invoice">Factura</option>
-            <option value="receipt">Recibo</option>
-            <option value="ticket">Ticket</option>
-            <option value="delivery_note">Remito</option>
-            <option value="other">Otro</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Archivo</span>
-          <select value={filters.attachment_status ?? ""} onChange={(event) => updateFilters({ attachment_status: event.target.value || null })}>
-            <option value="">Todos</option>
-            <option value="attached">Cargado</option>
-            <option value="pending">Pendiente</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Desde</span>
-          <input type="date" value={filters.date_from ?? ""} onChange={(event) => updateFilters({ date_from: event.target.value || null })} />
-        </label>
-        <label className="field">
-          <span>Hasta</span>
-          <input type="date" value={filters.date_to ?? ""} onChange={(event) => updateFilters({ date_to: event.target.value || null })} />
-        </label>
-        {hasFilters ? (
-          <button className="secondary-button" type="button" onClick={() => router.push(pathname)}>Limpiar filtros</button>
-        ) : null}
+        <button
+          aria-controls="purchase-advanced-filters"
+          aria-expanded={isFilterPanelOpen}
+          className="secondary-button purchase-filters-toggle"
+          type="button"
+          onClick={() => setIsFilterPanelOpen((current) => !current)}
+        >
+          <SlidersHorizontal aria-hidden="true" size={17} />
+          Filtros{activeAdvancedFilterCount > 0 ? ` (${activeAdvancedFilterCount})` : ""}
+          <ChevronDown aria-hidden="true" size={16} />
+        </button>
       </section>
+
+      {isFilterPanelOpen ? (
+        <section id="purchase-advanced-filters" className="panel purchase-filters" aria-label="Filtros avanzados de compras">
+          <label className="field">
+            <span>Proveedor</span>
+            <select value={filters.supplier_id ?? ""} onChange={(event) => updateFilters({ supplier_id: event.target.value || null })}>
+              <option value="">Todos</option>
+              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}{supplier.is_active ? "" : " (inactivo)"}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Estado</span>
+            <select value={filters.status ?? ""} onChange={(event) => updateFilters({ status: event.target.value || null })}>
+              <option value="">Todos</option>
+              <option value="draft">Borrador</option>
+              <option value="cancelled">Cancelada</option>
+              <option value="received">Recibida</option>
+              <option value="reversed">Recepción revertida</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Comprobante</span>
+            <select value={filters.attachment_status ?? ""} onChange={(event) => updateFilters({ attachment_status: event.target.value || null })}>
+              <option value="">Todos</option>
+              <option value="attached">Cargado</option>
+              <option value="pending">Pendiente</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Tipo de documento</span>
+            <select value={filters.document_type ?? ""} onChange={(event) => updateFilters({ document_type: event.target.value || null })}>
+              <option value="">Todos</option>
+              <option value="invoice">Factura</option>
+              <option value="receipt">Recibo</option>
+              <option value="ticket">Ticket</option>
+              <option value="delivery_note">Remito</option>
+              <option value="other">Otro</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Desde</span>
+            <input type="date" value={filters.date_from ?? ""} onChange={(event) => updateFilters({ date_from: event.target.value || null })} />
+          </label>
+          <label className="field">
+            <span>Hasta</span>
+            <input type="date" value={filters.date_to ?? ""} onChange={(event) => updateFilters({ date_to: event.target.value || null })} />
+          </label>
+          <label className="field">
+            <span>Creador</span>
+            <select value={filters.created_by_user_id ?? ""} onChange={(event) => updateFilters({ created_by_user_id: event.target.value || null })}>
+              <option value="">Todos</option>
+              {creators.map((creator) => <option key={creator.id} value={creator.id}>{creator.full_name}{creator.is_active ? "" : " (inactivo)"}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Ordenar por</span>
+            <select value={filters.sort_by ?? "purchase_date"} onChange={(event) => updateFilters({ sort_by: event.target.value })}>
+              <option value="purchase_date">Fecha de compra</option>
+              <option value="created_at">Fecha de registro</option>
+              <option value="total_ars">Total</option>
+              <option value="supplier_name">Proveedor</option>
+              <option value="status">Estado</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Dirección</span>
+            <select value={filters.sort_direction ?? "desc"} onChange={(event) => updateFilters({ sort_direction: event.target.value })}>
+              <option value="desc">Descendente</option>
+              <option value="asc">Ascendente</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Por página</span>
+            <select value={filters.page_size ?? 20} onChange={(event) => updateFilters({ page_size: Number(event.target.value) })}>
+              <option value="10">10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option>
+            </select>
+          </label>
+          {hasFilters ? <button className="secondary-button purchase-filters__clear" type="button" onClick={clearFilters}>Limpiar filtros</button> : null}
+        </section>
+      ) : null}
 
       {errorMessage ? <section className="error-state">{errorMessage}</section> : null}
       {isLoading ? <div className="loading-card" aria-label="Cargando compras" /> : null}
+
+      {!isLoading && !errorMessage ? (
+        <section className="purchase-list-summary" aria-label="Resumen de compras filtradas">
+          <div><span>Compras</span><strong>{meta.summary.purchase_count}</strong></div>
+          <div><span>Subtotal</span><strong>{formatPurchaseCurrency(meta.summary.subtotal_ars)}</strong></div>
+          <div><span>IVA</span><strong>{formatPurchaseCurrency(meta.summary.tax_total_ars)}</strong></div>
+          <div><span>Total</span><strong>{formatPurchaseCurrency(meta.summary.total_ars)}</strong></div>
+        </section>
+      ) : null}
 
       {!isLoading && !errorMessage && items.length === 0 ? (
         <section className="empty-state purchase-empty-state">
@@ -223,6 +305,9 @@ function readFilters(queryString: string): PurchaseListFilters {
   const status = params.get("status");
   const documentType = params.get("document_type") as PurchaseDocumentType | null;
   const attachmentStatus = params.get("attachment_status");
+  const sortBy = params.get("sort_by");
+  const sortDirection = params.get("sort_direction");
+  const pageSize = Number(params.get("page_size"));
   return {
     search: params.get("search") || undefined,
     supplier_id: params.get("supplier_id") || undefined,
@@ -231,9 +316,21 @@ function readFilters(queryString: string): PurchaseListFilters {
     attachment_status: attachmentStatus === "pending" || attachmentStatus === "attached" ? attachmentStatus : undefined,
     date_from: params.get("date_from") || undefined,
     date_to: params.get("date_to") || undefined,
+    created_by_user_id: params.get("created_by_user_id") || undefined,
     page: Math.max(1, Number(params.get("page")) || 1),
-    page_size: 20,
-    sort_by: "purchase_date",
-    sort_direction: "desc",
+    page_size: [10, 20, 50, 100].includes(pageSize) ? pageSize : 20,
+    sort_by: ["purchase_date", "created_at", "total_ars", "supplier_name", "status"].includes(sortBy ?? "") ? sortBy as PurchaseListFilters["sort_by"] : "purchase_date",
+    sort_direction: sortDirection === "asc" ? "asc" : "desc",
   };
+}
+
+function countAdvancedFilters(filters: PurchaseListFilters) {
+  return [
+    Boolean(filters.supplier_id),
+    Boolean(filters.status),
+    Boolean(filters.attachment_status),
+    Boolean(filters.document_type),
+    Boolean(filters.date_from || filters.date_to),
+    Boolean(filters.created_by_user_id),
+  ].filter(Boolean).length;
 }

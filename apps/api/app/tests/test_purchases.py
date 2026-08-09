@@ -505,7 +505,18 @@ def test_list_purchases_filters_paginates_searches_and_omits_full_lines(client, 
     assert [row["id"] for row in search.json()["data"]] == [second["id"]]
     assert [row["id"] for row in supplier.json()["data"]] == [first["id"]]
     assert [row["id"] for row in filtered.json()["data"]] == [second["id"]]
-    assert paged.json()["meta"] == {"page": 1, "page_size": 1, "total": 2, "total_pages": 2}
+    assert paged.json()["meta"] == {
+        "page": 1,
+        "page_size": 1,
+        "total": 2,
+        "total_pages": 2,
+        "summary": {
+            "purchase_count": 2,
+            "subtotal_ars": "20000.00",
+            "tax_total_ars": "4200.00",
+            "total_ars": "24200.00",
+        },
+    }
     assert paged.json()["data"][0]["item_count"] == 1
     assert "items" not in paged.json()["data"][0]
 

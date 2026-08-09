@@ -24,6 +24,9 @@ export function AppSidebar() {
     if (href === "/inventory/dashboard") {
       return pathname.startsWith("/inventory") || pathname.startsWith("/inventario");
     }
+    if (href === "/purchases/dashboard") {
+      return pathname.startsWith("/purchases") || pathname.startsWith("/suppliers");
+    }
 
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }

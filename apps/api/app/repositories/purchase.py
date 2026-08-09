@@ -13,6 +13,60 @@ from app.models.supplier import Supplier
 from app.models.user import User
 
 
+def active_purchase_attachment_exists(tenant_id: uuid.UUID):
+    return exists(
+        select(PurchaseAttachment.id).where(
+            PurchaseAttachment.tenant_id == tenant_id,
+            PurchaseAttachment.purchase_id == Purchase.id,
+            PurchaseAttachment.is_active.is_(True),
+        )
+    )
+
+
+def build_purchase_filters(
+    tenant_id: uuid.UUID,
+    *,
+    search: str | None = None,
+    supplier: str | None = None,
+    supplier_id: uuid.UUID | None = None,
+    status: str | None = None,
+    document_type: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    created_by_user_id: uuid.UUID | None = None,
+    attachment_status: str | None = None,
+) -> list:
+    filters = [Purchase.tenant_id == tenant_id]
+    if search:
+        pattern = f"%{search}%"
+        filters.append(
+            or_(
+                Purchase.supplier_name.ilike(pattern),
+                Purchase.document_number.ilike(pattern),
+            )
+        )
+    if supplier:
+        filters.append(func.lower(Purchase.supplier_name) == supplier.lower())
+    if supplier_id:
+        filters.append(Purchase.supplier_id == supplier_id)
+    if status:
+        filters.append(Purchase.status == status)
+    if document_type:
+        filters.append(Purchase.document_type == document_type)
+    if date_from:
+        filters.append(Purchase.purchase_date >= date_from)
+    if date_to:
+        filters.append(Purchase.purchase_date <= date_to)
+    if created_by_user_id:
+        filters.append(Purchase.created_by_user_id == created_by_user_id)
+    has_attachment = active_purchase_attachment_exists(tenant_id)
+    if attachment_status == "attached":
+        filters.append(has_attachment)
+    elif attachment_status == "pending":
+        filters.append(~has_attachment)
+    return filters
+
+
 class PurchaseRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -93,7 +147,7 @@ class PurchaseRepository:
         page_size: int,
         sort_by: str,
         sort_direction: str,
-    ) -> tuple[list[tuple[Purchase, int, bool]], int]:
+    ) -> tuple[list[tuple[Purchase, int, bool]], dict]:
         item_count = (
             select(func.count(PurchaseItem.id))
             .where(
@@ -103,12 +157,18 @@ class PurchaseRepository:
             .correlate(Purchase)
             .scalar_subquery()
         )
-        has_attachment = exists(
-            select(PurchaseAttachment.id).where(
-                PurchaseAttachment.tenant_id == tenant_id,
-                PurchaseAttachment.purchase_id == Purchase.id,
-                PurchaseAttachment.is_active.is_(True),
-            )
+        has_attachment = active_purchase_attachment_exists(tenant_id)
+        filters = build_purchase_filters(
+            tenant_id,
+            search=search,
+            supplier=supplier,
+            supplier_id=supplier_id,
+            status=status,
+            document_type=document_type,
+            date_from=date_from,
+            date_to=date_to,
+            created_by_user_id=created_by_user_id,
+            attachment_status=attachment_status,
         )
         statement = (
             select(
@@ -116,59 +176,47 @@ class PurchaseRepository:
                 item_count.label("item_count"),
                 has_attachment.label("has_attachment"),
             )
-            .where(Purchase.tenant_id == tenant_id)
+            .where(*filters)
             .options(
                 selectinload(
                     Purchase.created_by_user.and_(User.tenant_id == tenant_id)
                 )
             )
         )
-        count_statement = select(func.count(Purchase.id)).where(Purchase.tenant_id == tenant_id)
-
-        filters = []
-        if search:
-            pattern = f"%{search}%"
-            filters.append(
-                or_(
-                    Purchase.supplier_name.ilike(pattern),
-                    Purchase.document_number.ilike(pattern),
-                )
-            )
-        if supplier:
-            filters.append(func.lower(Purchase.supplier_name) == supplier.lower())
-        if supplier_id:
-            filters.append(Purchase.supplier_id == supplier_id)
-        if status:
-            filters.append(Purchase.status == status)
-        if document_type:
-            filters.append(Purchase.document_type == document_type)
-        if date_from:
-            filters.append(Purchase.purchase_date >= date_from)
-        if date_to:
-            filters.append(Purchase.purchase_date <= date_to)
-        if created_by_user_id:
-            filters.append(Purchase.created_by_user_id == created_by_user_id)
-        if attachment_status == "attached":
-            filters.append(has_attachment)
-        elif attachment_status == "pending":
-            filters.append(~has_attachment)
-        if filters:
-            statement = statement.where(*filters)
-            count_statement = count_statement.where(*filters)
+        summary_statement = select(
+            func.count(Purchase.id).label("purchase_count"),
+            func.coalesce(func.sum(Purchase.subtotal_ars), 0).label("subtotal_ars"),
+            func.coalesce(func.sum(Purchase.tax_total_ars), 0).label("tax_total_ars"),
+            func.coalesce(func.sum(Purchase.total_ars), 0).label("total_ars"),
+        ).where(*filters)
 
         sort_columns = {
             "purchase_date": Purchase.purchase_date,
             "created_at": Purchase.created_at,
             "total_ars": Purchase.total_ars,
             "supplier_name": func.lower(Purchase.supplier_name),
+            "status": Purchase.status,
         }
         order = asc if sort_direction == "asc" else desc
         statement = statement.order_by(order(sort_columns[sort_by]), order(Purchase.id))
         statement = statement.offset((page - 1) * page_size).limit(page_size)
         rows = self.db.execute(statement).all()
-        return [(row[0], int(row[1] or 0), bool(row[2])) for row in rows], int(
-            self.db.scalar(count_statement) or 0
+        summary = dict(self.db.execute(summary_statement).mappings().one())
+        return [(row[0], int(row[1] or 0), bool(row[2])) for row in rows], summary
+
+    def list_creator_options(self, tenant_id: uuid.UUID) -> list[dict]:
+        statement = (
+            select(User.id, User.full_name, User.email, User.is_active)
+            .join(
+                Purchase,
+                (Purchase.created_by_user_id == User.id)
+                & (Purchase.tenant_id == tenant_id),
+            )
+            .where(User.tenant_id == tenant_id)
+            .distinct()
+            .order_by(func.lower(User.full_name).asc(), User.id.asc())
         )
+        return [dict(row) for row in self.db.execute(statement).mappings().all()]
 
     def replace_items(self, purchase: Purchase, items: list[PurchaseItem]) -> None:
         purchase.items.clear()

@@ -542,10 +542,14 @@ estado, snapshots, totales calculados, timestamps ni campos de cancelación.
 Los filtros del listado son `search` (coincidencia parcial del snapshot de
 proveedor o número de documento), `supplier_id`, `supplier` (compatibilidad
 textual exacta), `status`, `document_type`, `date_from`, `date_to`,
-`created_by_user_id`, `page`, `page_size`, `sort_by` y `sort_direction`. Los campos ordenables son
-`purchase_date`, `created_at`, `total_ars` y `supplier_name`; el orden default es
+`created_by_user_id`, `attachment_status`, `page`, `page_size`, `sort_by` y
+`sort_direction`. Los campos ordenables son `purchase_date`, `created_at`,
+`total_ars`, `supplier_name` y `status`; el orden default es
 `purchase_date DESC, id DESC`. Las filas resumidas contienen `item_count` pero
-no las líneas completas.
+no las líneas completas. `meta.summary` agrega `purchase_count`, `subtotal_ars`,
+`tax_total_ars` y `total_ars` sobre todo el conjunto filtrado, con independencia
+de la página solicitada. `GET /api/v1/purchases/filter-options` devuelve los
+creadores distintos que tienen compras dentro del tenant para poblar filtros.
 Si se envían `supplier_id` y el filtro textual `supplier`, ambos se aplican de
 forma conjuntiva; el frontend usa exclusivamente `supplier_id` para el filtro
 exacto.
@@ -604,6 +608,41 @@ resuelven dentro del tenant autenticado. Una compra ajena devuelve `404` tanto
 al recibir como al revertir. Los movimientos `purchase` no pueden revertirse
 desde el endpoint genérico de Inventario; deben usar la reversión atómica de la
 compra.
+
+### Dashboard operativo de Compras
+
+`GET /api/v1/purchases/dashboard` devuelve el dashboard tenant-scoped. Acepta
+`date_from`, `date_to`, `supplier_id`, `created_by_user_id` y `document_type`.
+Sin fechas usa el mes calendario actual; con un solo límite completa el tramo
+correspondiente dentro de ese mes. Un rango con `date_from > date_to` devuelve
+`422`. El período y las métricas económicas se basan en `purchase_date`; las
+compras recientes se ordenan por `created_at DESC, id DESC`. Los filtros se
+aplican también a alertas, principales proveedores y actividad reciente.
+
+`summary.registered_total_ars` y `registered_tax_total_ars` suman compras
+`draft` y `received`; `received_total_ars` y `received_tax_total_ars` suman sólo
+`received`. Ambos pares excluyen `cancelled` y `reversed`. `purchase_count`
+cuenta todas las compras del período filtrado y se acompaña de `draft_count`,
+`received_count`, `reversed_count` y `cancelled_count`. Todos los importes se
+calculan en SQL con `Decimal` y se serializan con dos decimales.
+
+`attachment_pending_count` y `attachment_attached_count` consideran compras no
+canceladas, incluidas las revertidas, y determinan el estado mediante existencia
+de un `PurchaseAttachment` activo del mismo tenant. `attention` contiene hasta
+15 condiciones derivadas: borradores de más de siete días, borradores o compras
+recibidas sin comprobante (priorizando estas últimas), recepciones revertidas y
+compras recibidas sin número documental. No se persisten alertas.
+
+`top_suppliers` agrupa en PostgreSQL por snapshot de proveedor, expone cantidad,
+total registrado y total recibido, ordena primero por total recibido y luego por
+total registrado, y limita a cinco. `recent_purchases` devuelve hasta ocho filas
+compactas con snapshot de proveedor, documento, total, estado, comprobante y
+creador. El dashboard ejecuta cuatro consultas acotadas —resumen, alertas, top y
+recientes— sin cargar líneas ni todas las compras y sin N+1.
+
+Todas las consultas principales, joins de usuarios y subqueries de comprobantes
+incluyen `tenant_id` explícito. Los UUID de proveedor o creador ajenos producen
+un resultado vacío, sin revelar ni agregar datos de otro tenant.
 
 ### Comprobante digital de Compra
 

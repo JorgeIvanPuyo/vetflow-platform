@@ -1372,6 +1372,13 @@ export type PurchaseDocumentType =
 
 export type PurchaseAttachmentStatus = "pending" | "attached";
 
+export type PurchaseCreatorOption = {
+  id: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+};
+
 export type PurchaseAttachment = {
   id: string;
   original_filename: string;
@@ -1521,6 +1528,82 @@ export type PurchaseListFilters = {
   attachment_status?: PurchaseAttachmentStatus;
   page?: number;
   page_size?: number;
-  sort_by?: "purchase_date" | "created_at" | "total_ars" | "supplier_name";
+  sort_by?: "purchase_date" | "created_at" | "total_ars" | "supplier_name" | "status";
   sort_direction?: "asc" | "desc";
+};
+
+export type PurchaseListSummary = {
+  purchase_count: number;
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+};
+
+export type PurchaseDashboardFilters = {
+  date_from?: string;
+  date_to?: string;
+  supplier_id?: string;
+  created_by_user_id?: string;
+  document_type?: PurchaseDocumentType;
+};
+
+export type PurchaseDashboardAttention = {
+  id: string;
+  purchase_date: string;
+  supplier_name: string;
+  document_number: string | null;
+  total_ars: string;
+  status: PurchaseStatus;
+  attachment_status: PurchaseAttachmentStatus;
+  alerts: Array<"old_draft" | "attachment_pending" | "reversed_receipt" | "document_number_missing">;
+  priority: "high" | "medium" | "info";
+};
+
+export type PurchaseDashboardTopSupplier = {
+  supplier_id: string;
+  supplier_name: string;
+  purchase_count: number;
+  registered_total_ars: string;
+  received_total_ars: string;
+};
+
+export type PurchaseDashboardRecentPurchase = {
+  id: string;
+  purchase_date: string;
+  supplier_name: string;
+  document_type: PurchaseDocumentType;
+  document_number: string | null;
+  total_ars: string;
+  status: PurchaseStatus;
+  attachment_status: PurchaseAttachmentStatus;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+};
+
+export type PurchaseDashboard = {
+  generated_at: string;
+  period: { date_from: string; date_to: string };
+  filters: {
+    supplier_id: string | null;
+    created_by_user_id: string | null;
+    document_type: PurchaseDocumentType | null;
+  };
+  summary: {
+    registered_total_ars: string;
+    received_total_ars: string;
+    registered_tax_total_ars: string;
+    received_tax_total_ars: string;
+    purchase_count: number;
+    draft_count: number;
+    received_count: number;
+    reversed_count: number;
+    cancelled_count: number;
+    attachment_pending_count: number;
+    attachment_attached_count: number;
+  };
+  attention: PurchaseDashboardAttention[];
+  top_suppliers: PurchaseDashboardTopSupplier[];
+  recent_purchases: PurchaseDashboardRecentPurchase[];
 };

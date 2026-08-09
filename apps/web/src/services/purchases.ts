@@ -3,7 +3,11 @@ import type {
   ApiItemResponse,
   Purchase,
   PurchaseAttachment,
+  PurchaseCreatorOption,
+  PurchaseDashboard,
+  PurchaseDashboardFilters,
   PurchaseListFilters,
+  PurchaseListSummary,
   PurchaseSummary,
   PurchaseWritePayload,
 } from "@/types/api";
@@ -16,6 +20,7 @@ export type PurchaseListResponse = {
     page_size: number;
     total: number;
     total_pages: number;
+    summary: PurchaseListSummary;
   };
 };
 
@@ -84,4 +89,22 @@ export function getPurchaseAttachment(purchaseId: string, download = false) {
   return api.getBlob(
     `/api/v1/purchases/${purchaseId}/attachment${download ? "?download=true" : ""}`,
   );
+}
+
+export function getPurchaseDashboard(filters: PurchaseDashboardFilters = {}) {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const query = params.toString();
+  return api.get<ApiItemResponse<PurchaseDashboard>>(
+    `/api/v1/purchases/dashboard${query ? `?${query}` : ""}`,
+  );
+}
+
+export function getPurchaseFilterOptions() {
+  return api.get<{
+    data: { creators: PurchaseCreatorOption[] };
+    meta: Record<string, never>;
+  }>("/api/v1/purchases/filter-options");
 }

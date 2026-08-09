@@ -11,6 +11,7 @@ from app.schemas.purchase import (
     PurchaseCancel,
     PurchaseAttachmentRead,
     PurchaseAttachmentStatus,
+    PurchaseCreatorOptionRead,
     PurchaseCreate,
     PurchaseDetailRead,
     PurchaseDocumentType,
@@ -22,6 +23,7 @@ from app.schemas.purchase import (
     PurchaseUpdate,
     SortDirection,
 )
+from app.schemas.purchase_dashboard import PurchaseDashboardRead
 from app.services.purchase import PurchaseService
 from app.services.purchase_attachment import (
     MAX_PURCHASE_ATTACHMENT_SIZE_BYTES,
@@ -31,6 +33,7 @@ from app.services.storage import (
     ObjectStorageService,
     get_purchase_attachment_storage_service,
 )
+from app.services.purchase_dashboard import PurchaseDashboardService
 
 
 router = APIRouter(prefix="/purchases", tags=["purchases"])
@@ -85,6 +88,47 @@ def list_purchases(
     return {
         "data": [PurchaseSummaryRead.model_validate(item).model_dump(mode="json") for item in purchases],
         "meta": meta,
+    }
+
+
+@router.get("/dashboard")
+def get_purchase_dashboard(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    supplier_id: uuid.UUID | None = Query(default=None),
+    created_by_user_id: uuid.UUID | None = Query(default=None),
+    document_type: PurchaseDocumentType | None = Query(default=None),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    dashboard = PurchaseDashboardService(db).get_dashboard(
+        tenant.tenant_id,
+        date_from=date_from,
+        date_to=date_to,
+        supplier_id=supplier_id,
+        created_by_user_id=created_by_user_id,
+        document_type=document_type,
+    )
+    return {
+        "data": PurchaseDashboardRead.model_validate(dashboard).model_dump(mode="json"),
+        "meta": {},
+    }
+
+
+@router.get("/filter-options")
+def get_purchase_filter_options(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    creators = PurchaseService(db).list_creator_options(tenant.tenant_id)
+    return {
+        "data": {
+            "creators": [
+                PurchaseCreatorOptionRead.model_validate(creator).model_dump(mode="json")
+                for creator in creators
+            ]
+        },
+        "meta": {},
     }
 
 

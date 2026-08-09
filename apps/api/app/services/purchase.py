@@ -13,7 +13,12 @@ from app.repositories.inventory import InventoryRepository
 from app.repositories.purchase import PurchaseRepository
 from app.repositories.supplier import SupplierRepository
 from app.repositories.user import UserRepository
-from app.schemas.purchase import PurchaseCancel, PurchaseCreate, PurchaseUpdate
+from app.schemas.purchase import (
+    PurchaseCancel,
+    PurchaseCreate,
+    PurchaseListSummaryRead,
+    PurchaseUpdate,
+)
 from app.services.inventory import InventoryService
 
 
@@ -21,7 +26,13 @@ MONEY_QUANTUM = Decimal("0.01")
 QUANTITY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
 ZERO = Decimal("0.00")
-ALLOWED_SORT_BY = {"purchase_date", "created_at", "total_ars", "supplier_name"}
+ALLOWED_SORT_BY = {
+    "purchase_date",
+    "created_at",
+    "total_ars",
+    "supplier_name",
+    "status",
+}
 ALLOWED_SORT_DIRECTIONS = {"asc", "desc"}
 
 
@@ -98,7 +109,7 @@ class PurchaseService:
             raise AppError(422, "validation_error", "Invalid sort_direction value")
         if date_from and date_to and date_from > date_to:
             raise AppError(422, "validation_error", "date_from must be before date_to")
-        rows, total = self.repository.list(
+        rows, summary = self.repository.list(
             tenant_id,
             search=self._normalize_filter(search),
             supplier=self._normalize_filter(supplier),
@@ -138,12 +149,23 @@ class PurchaseService:
             }
             for purchase, item_count, has_attachment in rows
         ]
+        total = int(summary["purchase_count"] or 0)
+        list_summary = PurchaseListSummaryRead(
+            purchase_count=total,
+            subtotal_ars=self._money(Decimal(summary["subtotal_ars"] or 0)),
+            tax_total_ars=self._money(Decimal(summary["tax_total_ars"] or 0)),
+            total_ars=self._money(Decimal(summary["total_ars"] or 0)),
+        ).model_dump(mode="json")
         return data, {
             "page": page,
             "page_size": page_size,
             "total": total,
             "total_pages": ceil(total / page_size) if total else 0,
+            "summary": list_summary,
         }
+
+    def list_creator_options(self, tenant_id: uuid.UUID) -> list[dict]:
+        return self.repository.list_creator_options(tenant_id)
 
     def update(
         self,

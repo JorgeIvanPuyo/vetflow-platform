@@ -26,7 +26,7 @@ export const navigationItems: NavigationItem[] = [
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventory/dashboard", label: "Inventario", icon: Package },
-  { href: "/purchases", label: "Compras", icon: ShoppingCart },
+  { href: "/purchases/dashboard", label: "Compras", icon: ShoppingCart },
   {
     href: "/accounting",
     label: "Contabilidad",
