@@ -15,6 +15,7 @@ PurchaseFunctionalStatus = Literal["draft", "cancelled", "received", "reversed"]
 PurchaseDocumentType = Literal["invoice", "receipt", "ticket", "delivery_note", "other"]
 PurchaseSortBy = Literal["purchase_date", "created_at", "total_ars", "supplier_name"]
 SortDirection = Literal["asc", "desc"]
+PurchaseAttachmentStatus = Literal["pending", "attached"]
 
 
 class PurchaseItemInput(BaseModel):
@@ -127,6 +128,39 @@ class PurchaseItemRead(BaseModel):
     updated_at: datetime
 
 
+class PurchaseAttachmentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    original_filename: str
+    content_type: Literal["application/pdf", "image/jpeg", "image/png"]
+    size_bytes: int
+    sha256: str
+    uploaded_by_user_id: uuid.UUID | None = None
+    uploaded_by_user_name: str | None = None
+    uploaded_by_user_email: str | None = None
+    uploaded_at: datetime
+    is_active: bool
+    replaced_at: datetime | None = None
+    replaced_by_user_id: uuid.UUID | None = None
+    replaced_by_user_name: str | None = None
+    replaced_by_user_email: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("uploaded_by_user_id")
+    def serialize_uploaded_by_user_id(self, value: uuid.UUID | None) -> uuid.UUID | None:
+        if self.uploaded_by_user_name or self.uploaded_by_user_email:
+            return value
+        return None
+
+    @field_serializer("replaced_by_user_id")
+    def serialize_replaced_by_user_id(self, value: uuid.UUID | None) -> uuid.UUID | None:
+        if self.replaced_by_user_name or self.replaced_by_user_email:
+            return value
+        return None
+
+
 class PurchaseSummaryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -143,6 +177,7 @@ class PurchaseSummaryRead(BaseModel):
     total_ars: Decimal
     status: PurchaseStatus
     item_count: int
+    attachment_status: PurchaseAttachmentStatus
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
@@ -196,6 +231,9 @@ class PurchaseDetailRead(BaseModel):
     reversal_reason: str | None = None
     reversal_operation_id: uuid.UUID | None = None
     reversal_warnings: list[str] = Field(default_factory=list)
+    attachment_status: PurchaseAttachmentStatus
+    attachment: PurchaseAttachmentRead | None = None
+    attachment_history: list[PurchaseAttachmentRead] = Field(default_factory=list)
     items: list[PurchaseItemRead]
 
     @field_serializer("created_by_user_id")

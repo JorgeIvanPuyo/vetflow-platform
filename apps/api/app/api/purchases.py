@@ -1,13 +1,16 @@
 import uuid
 from datetime import date
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.purchase import (
     PurchaseCancel,
+    PurchaseAttachmentRead,
+    PurchaseAttachmentStatus,
     PurchaseCreate,
     PurchaseDetailRead,
     PurchaseDocumentType,
@@ -20,6 +23,14 @@ from app.schemas.purchase import (
     SortDirection,
 )
 from app.services.purchase import PurchaseService
+from app.services.purchase_attachment import (
+    MAX_PURCHASE_ATTACHMENT_SIZE_BYTES,
+    PurchaseAttachmentService,
+)
+from app.services.storage import (
+    ObjectStorageService,
+    get_purchase_attachment_storage_service,
+)
 
 
 router = APIRouter(prefix="/purchases", tags=["purchases"])
@@ -47,6 +58,7 @@ def list_purchases(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     created_by_user_id: uuid.UUID | None = Query(default=None),
+    attachment_status: PurchaseAttachmentStatus | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort_by: PurchaseSortBy = Query(default="purchase_date"),
@@ -64,6 +76,7 @@ def list_purchases(
         date_from=date_from,
         date_to=date_to,
         created_by_user_id=created_by_user_id,
+        attachment_status=attachment_status,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
@@ -141,3 +154,54 @@ def reverse_purchase_receipt(
         reversed_by_user_id=tenant.user_id,
     )
     return {"data": PurchaseDetailRead.model_validate(purchase).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/{purchase_id}/attachment")
+async def attach_purchase_document(
+    purchase_id: uuid.UUID,
+    file: UploadFile = File(...),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
+) -> dict:
+    content = await file.read(MAX_PURCHASE_ATTACHMENT_SIZE_BYTES + 1)
+    attachment, idempotent = PurchaseAttachmentService(db, storage).attach(
+        tenant.tenant_id,
+        purchase_id,
+        filename=file.filename,
+        declared_content_type=file.content_type,
+        content=content,
+        uploaded_by_user_id=tenant.user_id,
+    )
+    return {
+        "data": PurchaseAttachmentRead.model_validate(attachment).model_dump(mode="json"),
+        "meta": {"attachment_status": "attached", "idempotent": idempotent},
+    }
+
+
+@router.get("/{purchase_id}/attachment")
+def download_purchase_document(
+    purchase_id: uuid.UUID,
+    download: bool = Query(default=False),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
+) -> Response:
+    attachment, content = PurchaseAttachmentService(db, storage).download(
+        tenant.tenant_id, purchase_id
+    )
+    disposition = "attachment" if download else "inline"
+    encoded_filename = quote(attachment.original_filename, safe="")
+    return Response(
+        content=content,
+        media_type=attachment.content_type,
+        headers={
+            "Content-Disposition": (
+                f"{disposition}; filename=\"document\"; "
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
+            "Content-Length": str(len(content)),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+        },
+    )

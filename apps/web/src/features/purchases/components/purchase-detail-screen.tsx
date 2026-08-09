@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeft, Ban, CheckCircle2, ExternalLink, Pencil, RotateCcw, X } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, Download, ExternalLink, Eye, FileUp, Pencil, RotateCcw, X } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,13 +15,14 @@ import {
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
-import { cancelPurchase, getPurchase, receivePurchase, reversePurchaseReceipt } from "@/services/purchases";
+import { cancelPurchase, getPurchase, getPurchaseAttachment, receivePurchase, reversePurchaseReceipt, uploadPurchaseAttachment } from "@/services/purchases";
 import type { Purchase } from "@/types/api";
 
 
 type Props = { purchaseId: string };
 
 export function PurchaseDetailScreen({ purchaseId }: Props) {
+  const searchParams = useSearchParams();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [reason, setReason] = useState("");
   const [isCancelling, setIsCancelling] = useState(false);
@@ -31,6 +33,10 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
   const [isReversing, setIsReversing] = useState(false);
   const [receiveErrorMessage, setReceiveErrorMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showAttachmentDialog, setShowAttachmentDialog] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentErrorMessage, setAttachmentErrorMessage] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
@@ -46,22 +52,67 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!showReceiveConfirmation && !showReverseConfirmation) return;
+    if (!showReceiveConfirmation && !showReverseConfirmation && !showAttachmentDialog) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.requestAnimationFrame(() => dialogRef.current?.focus());
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isReceiving || isReversing) return;
+      if (event.key !== "Escape" || isReceiving || isReversing || isUploadingAttachment) return;
       setShowReceiveConfirmation(false);
       setShowReverseConfirmation(false);
       setReceiveErrorMessage(null);
+      setShowAttachmentDialog(false);
+      setAttachmentErrorMessage(null);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isReceiving, isReversing, showReceiveConfirmation, showReverseConfirmation]);
+  }, [isReceiving, isReversing, isUploadingAttachment, showAttachmentDialog, showReceiveConfirmation, showReverseConfirmation]);
+
+  async function handleOpenAttachment(download: boolean) {
+    setAttachmentErrorMessage(null);
+    try {
+      const response = await getPurchaseAttachment(purchaseId, download);
+      const objectUrl = URL.createObjectURL(response.blob);
+      if (download) {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = response.filename ?? purchase?.attachment?.original_filename ?? "comprobante";
+        anchor.click();
+      } else {
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      setAttachmentErrorMessage(getPurchaseAttachmentErrorMessage(error));
+    }
+  }
+
+  async function handleUploadAttachment() {
+    if (!attachmentFile) {
+      setAttachmentErrorMessage("Selecciona un archivo PDF, JPEG o PNG.");
+      return;
+    }
+    const validationMessage = await validateAttachmentFile(attachmentFile);
+    if (validationMessage) {
+      setAttachmentErrorMessage(validationMessage);
+      return;
+    }
+    setIsUploadingAttachment(true);
+    setAttachmentErrorMessage(null);
+    try {
+      await uploadPurchaseAttachment(purchaseId, attachmentFile);
+      await load();
+      setAttachmentFile(null);
+      setShowAttachmentDialog(false);
+    } catch (error) {
+      setAttachmentErrorMessage(getPurchaseAttachmentErrorMessage(error));
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  }
 
   async function handleCancel() {
     if (!reason.trim()) {
@@ -149,6 +200,11 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
       </section>
 
       {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
+      {searchParams.get("attachment_upload") === "failed" ? (
+        <section className="error-state" role="alert">
+          Compra guardada, pero no se pudo subir el comprobante. La compra permanece guardada y puedes intentarlo nuevamente aquí sin crear otra compra.
+        </section>
+      ) : null}
 
       {purchase ? (
         <>
@@ -163,6 +219,25 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
             <div><span>Fecha</span><strong>{formatPurchaseDate(purchase.purchase_date)}</strong><small>Moneda {purchase.currency}</small></div>
             <div><span>Estado</span><strong><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span></strong><small>Actualizada {formatPurchaseDateTime(purchase.updated_at)}</small></div>
             <div className="purchase-detail-notes"><span>Notas</span><p>{purchase.notes || "Sin notas"}</p></div>
+          </section>
+
+          <section className="panel purchase-attachment-panel">
+            <div className="section-heading">
+              <h2>Comprobante</h2>
+              <p>{purchase.attachment_status === "attached" ? "Comprobante cargado" : "Comprobante pendiente"}</p>
+            </div>
+            {purchase.attachment ? (
+              <div className="purchase-attachment-metadata">
+                <div><strong>{purchase.attachment.original_filename}</strong><small>{formatAttachmentSize(purchase.attachment.size_bytes)} · {labelAttachmentType(purchase.attachment.content_type)}</small></div>
+                <div><span>Cargado por</span><strong>{formatPurchaseUser(purchase.attachment.uploaded_by_user_name, purchase.attachment.uploaded_by_user_email)}</strong><small>{formatPurchaseDateTime(purchase.attachment.uploaded_at)}</small></div>
+              </div>
+            ) : <p>No hay un archivo activo para esta compra.</p>}
+            {attachmentErrorMessage && !showAttachmentDialog ? <div className="error-state" role="alert">{attachmentErrorMessage}</div> : null}
+            <div className="purchase-attachment-actions">
+              {purchase.attachment ? <><button className="secondary-button" type="button" onClick={() => void handleOpenAttachment(false)}><Eye size={17} /> Ver</button><button className="secondary-button" type="button" onClick={() => void handleOpenAttachment(true)}><Download size={17} /> Descargar</button></> : null}
+              <button className="primary-button" type="button" onClick={() => { setAttachmentErrorMessage(null); setShowAttachmentDialog(true); }}><FileUp size={17} /> {purchase.attachment ? "Reemplazar" : "Adjuntar"}</button>
+            </div>
+            {purchase.attachment_history.length > 0 ? <details className="purchase-attachment-history"><summary>Historial de reemplazos ({purchase.attachment_history.length})</summary>{purchase.attachment_history.map((item) => <div key={item.id}><strong>{item.original_filename}</strong><small>{formatPurchaseDateTime(item.uploaded_at)} · reemplazado {formatPurchaseDateTime(item.replaced_at)}</small></div>)}</details> : null}
           </section>
 
           <section className="inventory-table-card" aria-label="Líneas de compra">
@@ -270,8 +345,55 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
         </div>,
         document.body,
       ) : null}
+
+      {purchase && showAttachmentDialog ? createPortal(
+        <div className="purchase-modal-backdrop" role="presentation">
+          <section ref={dialogRef} tabIndex={-1} className="panel purchase-modal" role="dialog" aria-modal="true" aria-labelledby="attachment-title">
+            <button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar carga de comprobante" disabled={isUploadingAttachment} onClick={() => setShowAttachmentDialog(false)}><X size={18} /></button>
+            <div className="section-heading"><h2 id="attachment-title">{purchase.attachment ? "Reemplazar comprobante" : "Agregar comprobante"}</h2><p>PDF, JPEG o PNG de hasta 10 MB. El reemplazo conserva el historial y no modifica la compra ni el stock.</p></div>
+            <label className="purchase-attachment-picker">
+              <FileUp size={22} />
+              <span>{attachmentFile?.name ?? "Seleccionar archivo"}</span>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => { setAttachmentFile(event.target.files?.[0] ?? null); setAttachmentErrorMessage(null); }} />
+            </label>
+            {attachmentFile ? <small>{formatAttachmentSize(attachmentFile.size)}</small> : null}
+            {attachmentErrorMessage ? <div className="error-state" role="alert">{attachmentErrorMessage}</div> : null}
+            <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isUploadingAttachment} onClick={() => setShowAttachmentDialog(false)}>Cancelar</button><button className="primary-button" type="button" disabled={isUploadingAttachment || !attachmentFile} onClick={() => void handleUploadAttachment()}><FileUp size={17} /> {isUploadingAttachment ? "Cargando..." : purchase.attachment ? "Confirmar reemplazo" : "Subir comprobante"}</button></div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
+}
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const MIME_BY_EXTENSION: Record<string, string> = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png" };
+
+async function validateAttachmentFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const expectedMime = MIME_BY_EXTENSION[extension];
+  if (!expectedMime) return "El comprobante debe ser PDF, JPEG o PNG.";
+  if (file.type.toLowerCase() !== expectedMime) return "La extensión y el tipo del archivo no coinciden.";
+  if (file.size === 0) return "El comprobante no puede estar vacío.";
+  if (file.size > MAX_ATTACHMENT_BYTES) return "El comprobante supera el máximo de 10 MB.";
+  const signature = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  const valid = expectedMime === "application/pdf"
+    ? signature[0] === 0x25 && signature[1] === 0x50 && signature[2] === 0x44 && signature[3] === 0x46 && signature[4] === 0x2d
+    : expectedMime === "image/jpeg"
+      ? signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff
+      : signature.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => signature[index] === byte);
+  return valid ? null : "El contenido del archivo no corresponde al formato seleccionado.";
+}
+
+function formatAttachmentSize(size: number) {
+  return size >= 1024 * 1024 ? `${(size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
+}
+
+function labelAttachmentType(contentType: string) {
+  if (contentType === "application/pdf") return "PDF";
+  if (contentType === "image/jpeg") return "JPEG";
+  return "PNG";
 }
 
 function getPurchaseReceiveErrorMessage(error: unknown) {
@@ -281,4 +403,18 @@ function getPurchaseReceiveErrorMessage(error: unknown) {
     if (error.status > 0 && error.message) return error.message;
   }
   return "No se pudo recibir la compra. Intenta nuevamente.";
+}
+
+function getPurchaseAttachmentErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "Tu sesión expiró. Vuelve a iniciar sesión.";
+    if (error.status === 403) return "No tienes permiso para acceder al comprobante.";
+    if (error.code === "purchase_not_found") return "La compra no existe o no está disponible para tu clínica.";
+    if (error.code === "purchase_attachment_not_found") return "La compra todavía no tiene un comprobante.";
+    if (["storage_not_configured", "purchase_attachment_upload_failed", "purchase_attachment_download_failed"].includes(error.code)) {
+      return "El almacenamiento de comprobantes no está disponible temporalmente. La compra permanece sin cambios.";
+    }
+    if (error.status > 0 && error.message) return error.message;
+  }
+  return "No se pudo procesar el comprobante. La compra permanece guardada y puedes intentarlo nuevamente.";
 }

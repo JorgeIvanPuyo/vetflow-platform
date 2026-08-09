@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import type {
   ApiItemResponse,
   Purchase,
+  PurchaseAttachment,
   PurchaseListFilters,
   PurchaseSummary,
   PurchaseWritePayload,
@@ -64,5 +65,23 @@ export function reversePurchaseReceipt(purchaseId: string, reason: string) {
     `/api/v1/purchases/${purchaseId}/reverse-receipt`,
     { reason },
     { retryTransient: false },
+  );
+}
+
+export function uploadPurchaseAttachment(purchaseId: string, file: File) {
+  const formData = new FormData();
+  formData.set("file", file);
+  return api.postFormData<
+    ApiItemResponse<PurchaseAttachment> & {
+      meta: { attachment_status: "attached"; idempotent: boolean };
+    }
+  >(`/api/v1/purchases/${purchaseId}/attachment`, formData, {
+    retryTransient: false,
+  });
+}
+
+export function getPurchaseAttachment(purchaseId: string, download = false) {
+  return api.getBlob(
+    `/api/v1/purchases/${purchaseId}/attachment${download ? "?download=true" : ""}`,
   );
 }

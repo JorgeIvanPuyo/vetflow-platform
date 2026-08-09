@@ -137,6 +137,24 @@ class Purchase(BaseModel):
         cascade="all, delete-orphan",
         order_by="PurchaseItem.line_number",
     )
+    attachments: Mapped[list[PurchaseAttachment]] = relationship(
+        "PurchaseAttachment",
+        back_populates="purchase",
+        cascade="all, delete-orphan",
+        order_by="desc(PurchaseAttachment.uploaded_at)",
+    )
+
+    @property
+    def attachment(self) -> PurchaseAttachment | None:
+        return next((attachment for attachment in self.attachments if attachment.is_active), None)
+
+    @property
+    def attachment_status(self) -> str:
+        return "attached" if self.attachment is not None else "pending"
+
+    @property
+    def attachment_history(self) -> list[PurchaseAttachment]:
+        return [attachment for attachment in self.attachments if not attachment.is_active]
 
     @property
     def created_by_user_name(self) -> str | None:

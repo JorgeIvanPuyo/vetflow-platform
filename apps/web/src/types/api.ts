@@ -1370,6 +1370,27 @@ export type PurchaseDocumentType =
   | "delivery_note"
   | "other";
 
+export type PurchaseAttachmentStatus = "pending" | "attached";
+
+export type PurchaseAttachment = {
+  id: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_user_name: string | null;
+  uploaded_by_user_email: string | null;
+  uploaded_at: string;
+  is_active: boolean;
+  replaced_at: string | null;
+  replaced_by_user_id: string | null;
+  replaced_by_user_name: string | null;
+  replaced_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PurchaseItemInput = {
   inventory_item_id: string;
   quantity: string;
@@ -1445,6 +1466,7 @@ export type PurchaseSummary = {
   total_ars: string;
   status: PurchaseStatus;
   item_count: number;
+  attachment_status: PurchaseAttachmentStatus;
   created_by_user_id: string | null;
   created_by_user_name: string | null;
   created_by_user_email: string | null;
@@ -1473,6 +1495,8 @@ export type Purchase = Omit<PurchaseSummary, "item_count"> & {
   reversal_reason: string | null;
   reversal_operation_id: string | null;
   reversal_warnings: string[];
+  attachment: PurchaseAttachment | null;
+  attachment_history: PurchaseAttachment[];
   items: PurchaseItem[];
 };
 
@@ -1494,6 +1518,7 @@ export type PurchaseListFilters = {
   date_from?: string;
   date_to?: string;
   created_by_user_id?: string;
+  attachment_status?: PurchaseAttachmentStatus;
   page?: number;
   page_size?: number;
   sort_by?: "purchase_date" | "created_at" | "total_ars" | "supplier_name";

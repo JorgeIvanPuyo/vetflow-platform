@@ -292,8 +292,12 @@ export const api = {
   ): Promise<T> {
     return request<T>(path, "POST", { body, ...options });
   },
-  postFormData<T>(path: string, body: FormData): Promise<T> {
-    return request<T>(path, "POST", { body, isMultipart: true });
+  postFormData<T>(
+    path: string,
+    body: FormData,
+    options: Pick<RequestOptions, "retryTransient"> = {},
+  ): Promise<T> {
+    return request<T>(path, "POST", { body, isMultipart: true, ...options });
   },
   postBlob(path: string, body: unknown): Promise<BlobResponse> {
     return requestBlob(path, "POST", { body });

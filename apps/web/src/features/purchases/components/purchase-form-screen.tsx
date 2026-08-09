@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, FileUp, Plus, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import { getInventoryItems } from "@/services/inventory";
-import { createPurchase, getPurchase, updatePurchase } from "@/services/purchases";
+import { createPurchase, getPurchase, updatePurchase, uploadPurchaseAttachment } from "@/services/purchases";
 import { createSupplier, getSuppliers } from "@/services/suppliers";
 import type { InventoryItem, PurchaseDocumentType, PurchaseItem, PurchaseWritePayload, SupplierSummary } from "@/types/api";
 
@@ -44,6 +44,9 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
   const [documentType, setDocumentType] = useState<PurchaseDocumentType>("invoice");
   const [documentNumber, setDocumentNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [existingAttachmentName, setExistingAttachmentName] = useState<string | null>(null);
+  const [attachmentErrorMessage, setAttachmentErrorMessage] = useState<string | null>(null);
   const [lines, setLines] = useState<EditableLine[]>([]);
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<InventoryItem[]>([]);
@@ -68,6 +71,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         setDocumentType(data.document_type);
         setDocumentNumber(data.document_number ?? "");
         setNotes(data.notes ?? "");
+        setExistingAttachmentName(data.attachment?.original_filename ?? null);
         setLines(data.items.map(lineFromPurchaseItem));
         setIsCancelled(data.status !== "draft");
       })
@@ -218,6 +222,13 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       setErrorMessage(validationMessage);
       return;
     }
+    if (attachmentFile) {
+      const attachmentValidationMessage = await validateAttachmentFile(attachmentFile);
+      if (attachmentValidationMessage) {
+        setAttachmentErrorMessage(attachmentValidationMessage);
+        return;
+      }
+    }
     const payload: PurchaseWritePayload = {
       supplier_id: selectedSupplier!.id,
       purchase_date: purchaseDate,
@@ -237,6 +248,14 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       const response = purchaseId
         ? await updatePurchase(purchaseId, payload)
         : await createPurchase(payload);
+      if (attachmentFile) {
+        try {
+          await uploadPurchaseAttachment(response.data.id, attachmentFile);
+        } catch {
+          router.push(`/purchases/${response.data.id}?attachment_upload=failed`);
+          return;
+        }
+      }
       router.push(`/purchases/${response.data.id}`);
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error));
@@ -383,6 +402,37 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         <p>Estimación visual. El backend recalcula y persiste los importes definitivos.</p>
       </section>
 
+      <section className="panel purchase-form-section purchase-attachment-form">
+        <div className="section-heading">
+          <h2>Comprobante</h2>
+          <p>Opcional. PDF, JPEG o PNG de hasta 10 MB. Se guarda de forma privada.</p>
+        </div>
+        {existingAttachmentName ? (
+          <p className="purchase-attachment-current">
+            Actual: <strong>{existingAttachmentName}</strong>. Al elegir otro archivo se conservará el anterior en el historial.
+          </p>
+        ) : null}
+        <label className="purchase-attachment-picker">
+          <FileUp size={22} />
+          <span>{attachmentFile ? attachmentFile.name : existingAttachmentName ? "Reemplazar archivo" : "Seleccionar archivo"}</span>
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            onChange={(event) => {
+              const selected = event.target.files?.[0] ?? null;
+              setAttachmentFile(selected);
+              setAttachmentErrorMessage(null);
+              if (selected) {
+                void validateAttachmentFile(selected).then(setAttachmentErrorMessage);
+              }
+            }}
+          />
+        </label>
+        {attachmentFile ? <div className="purchase-attachment-selection"><small>{formatAttachmentSize(attachmentFile.size)} · se cargará después de guardar la compra</small><button className="secondary-button" type="button" onClick={() => { setAttachmentFile(null); setAttachmentErrorMessage(null); }}>Quitar selección</button></div> : null}
+        <small>Puedes cargarlo ahora o agregarlo después desde el detalle de la compra.</small>
+        {attachmentErrorMessage ? <div className="error-state" role="alert">{attachmentErrorMessage}</div> : null}
+      </section>
+
       <div className="purchase-form-actions">
         <Link className="secondary-button" href={purchaseId ? `/purchases/${purchaseId}` : "/purchases"}>Cancelar</Link>
         <button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar borrador"}</button>
@@ -455,4 +505,34 @@ function nonNegativeNumber(value: string) {
 function todayIso() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_MIME_BY_EXTENSION: Record<string, string> = {
+  pdf: "application/pdf",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+};
+
+async function validateAttachmentFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const expectedMime = ATTACHMENT_MIME_BY_EXTENSION[extension];
+  if (!expectedMime) return "El comprobante debe ser PDF, JPEG o PNG.";
+  if (file.type.toLowerCase() !== expectedMime) return "La extensión y el tipo del archivo no coinciden.";
+  if (file.size === 0) return "El comprobante no puede estar vacío.";
+  if (file.size > MAX_ATTACHMENT_BYTES) return "El comprobante supera el máximo de 10 MB.";
+  const signature = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  const valid = expectedMime === "application/pdf"
+    ? signature[0] === 0x25 && signature[1] === 0x50 && signature[2] === 0x44 && signature[3] === 0x46 && signature[4] === 0x2d
+    : expectedMime === "image/jpeg"
+      ? signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff
+      : signature.length >= 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((byte, index) => signature[index] === byte);
+  return valid ? null : "El contenido del archivo no corresponde al formato seleccionado.";
+}
+
+function formatAttachmentSize(size: number) {
+  return size >= 1024 * 1024
+    ? `${(size / (1024 * 1024)).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(size / 1024))} KB`;
 }

@@ -12,6 +12,7 @@ from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.purchase import Purchase, PurchaseItem
+from app.models.purchase_attachment import PurchaseAttachment
 from app.models.supplier import Supplier
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -36,5 +37,6 @@ __all__ = [
     "InventoryMovement",
     "Purchase",
     "PurchaseItem",
+    "PurchaseAttachment",
     "Supplier",
 ]

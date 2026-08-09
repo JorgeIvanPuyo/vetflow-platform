@@ -3,11 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import asc, desc, func, or_, select
+from sqlalchemy import asc, desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
 from app.models.purchase import Purchase, PurchaseItem
+from app.models.purchase_attachment import PurchaseAttachment
 from app.models.supplier import Supplier
 from app.models.user import User
 
@@ -59,6 +60,16 @@ class PurchaseRepository:
                     Purchase.reversed_by_user.and_(User.tenant_id == tenant_id)
                 ),
                 selectinload(Purchase.supplier.and_(Supplier.tenant_id == tenant_id)),
+                selectinload(
+                    Purchase.attachments.and_(PurchaseAttachment.tenant_id == tenant_id)
+                ).selectinload(
+                    PurchaseAttachment.uploaded_by_user.and_(User.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Purchase.attachments.and_(PurchaseAttachment.tenant_id == tenant_id)
+                ).selectinload(
+                    PurchaseAttachment.replaced_by_user.and_(User.tenant_id == tenant_id)
+                ),
             )
         )
         if for_update:
@@ -77,11 +88,12 @@ class PurchaseRepository:
         date_from: date | None,
         date_to: date | None,
         created_by_user_id: uuid.UUID | None,
+        attachment_status: str | None,
         page: int,
         page_size: int,
         sort_by: str,
         sort_direction: str,
-    ) -> tuple[list[tuple[Purchase, int]], int]:
+    ) -> tuple[list[tuple[Purchase, int, bool]], int]:
         item_count = (
             select(func.count(PurchaseItem.id))
             .where(
@@ -91,8 +103,19 @@ class PurchaseRepository:
             .correlate(Purchase)
             .scalar_subquery()
         )
+        has_attachment = exists(
+            select(PurchaseAttachment.id).where(
+                PurchaseAttachment.tenant_id == tenant_id,
+                PurchaseAttachment.purchase_id == Purchase.id,
+                PurchaseAttachment.is_active.is_(True),
+            )
+        )
         statement = (
-            select(Purchase, item_count.label("item_count"))
+            select(
+                Purchase,
+                item_count.label("item_count"),
+                has_attachment.label("has_attachment"),
+            )
             .where(Purchase.tenant_id == tenant_id)
             .options(
                 selectinload(
@@ -125,6 +148,10 @@ class PurchaseRepository:
             filters.append(Purchase.purchase_date <= date_to)
         if created_by_user_id:
             filters.append(Purchase.created_by_user_id == created_by_user_id)
+        if attachment_status == "attached":
+            filters.append(has_attachment)
+        elif attachment_status == "pending":
+            filters.append(~has_attachment)
         if filters:
             statement = statement.where(*filters)
             count_statement = count_statement.where(*filters)
@@ -139,7 +166,7 @@ class PurchaseRepository:
         statement = statement.order_by(order(sort_columns[sort_by]), order(Purchase.id))
         statement = statement.offset((page - 1) * page_size).limit(page_size)
         rows = self.db.execute(statement).all()
-        return [(row[0], int(row[1] or 0)) for row in rows], int(
+        return [(row[0], int(row[1] or 0), bool(row[2])) for row in rows], int(
             self.db.scalar(count_statement) or 0
         )
 

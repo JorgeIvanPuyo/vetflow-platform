@@ -86,6 +86,7 @@ class PurchaseService:
         date_from,
         date_to,
         created_by_user_id: uuid.UUID | None,
+        attachment_status: str | None,
         page: int,
         page_size: int,
         sort_by: str,
@@ -107,6 +108,7 @@ class PurchaseService:
             date_from=date_from,
             date_to=date_to,
             created_by_user_id=created_by_user_id,
+            attachment_status=attachment_status,
             page=page,
             page_size=page_size,
             sort_by=sort_by,
@@ -127,13 +129,14 @@ class PurchaseService:
                 "total_ars": purchase.total_ars,
                 "status": purchase.status,
                 "item_count": item_count,
+                "attachment_status": "attached" if has_attachment else "pending",
                 "created_by_user_id": purchase.created_by_user_id,
                 "created_by_user_name": purchase.created_by_user_name,
                 "created_by_user_email": purchase.created_by_user_email,
                 "created_at": purchase.created_at,
                 "updated_at": purchase.updated_at,
             }
-            for purchase, item_count in rows
+            for purchase, item_count, has_attachment in rows
         ]
         return data, {
             "page": page,

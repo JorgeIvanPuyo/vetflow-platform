@@ -605,6 +605,43 @@ al recibir como al revertir. Los movimientos `purchase` no pueden revertirse
 desde el endpoint genérico de Inventario; deben usar la reversión atómica de la
 compra.
 
+### Comprobante digital de Compra
+
+Los datos comerciales `document_type` y `document_number` son independientes
+del archivo digital. El detalle y el listado exponen `attachment_status` con
+`pending` o `attached`; una compra sin archivo sigue siendo válida y puede
+recibirse o revertirse. Adjuntar o reemplazar un comprobante nunca cambia el
+estado, stock, costos, IDs de operación ni movimientos de Inventario.
+
+- `POST /api/v1/purchases/{purchase_id}/attachment` recibe multipart `file`.
+  Si ya existe un archivo activo, este mismo endpoint crea una nueva versión y
+  marca la anterior como inactiva; no existe eliminación libre.
+- `GET /api/v1/purchases/{purchase_id}/attachment` transmite el archivo de
+  forma autenticada con disposición `inline`. `?download=true` usa disposición
+  de descarga y el nombre sanitizado.
+- `GET /api/v1/purchases` admite `attachment_status=pending|attached`, aplicado
+  en PostgreSQL mediante existencia del attachment activo y dentro del tenant.
+
+Se aceptan exclusivamente PDF, JPEG y PNG (`.pdf`, `.jpg`, `.jpeg`, `.png`) de
+hasta 10 MB. El backend valida extensión, MIME, tamaño real y firma básica,
+sanitiza el nombre para presentación, calcula SHA-256 y genera una clave opaca
+con aislamiento lógico por tenant. La API muestra nombre, MIME, tamaño, hash,
+usuario, fecha y trazabilidad de reemplazo, pero nunca bucket ni clave interna.
+Un reupload con el mismo hash es idempotente.
+
+Los objetos permanecen privados. Se reutilizan el bucket GCS y credenciales ya
+configurados por `CLINICAL_FILES_BUCKET_NAME`; en desarrollo sin bucket se usa
+`LOCAL_FILE_STORAGE_PATH` (el compose lo monta en un volumen local persistente).
+Tests usan un fake y no requieren credenciales ni buckets reales. Si la DB falla
+después de subir, el servicio intenta eliminar el objeto nuevo; un fallo del
+nuevo upload deja intacta la versión activa anterior. Las versiones reemplazadas
+se conservan como historial y sus objetos no se borran.
+
+Las rutas reutilizan autenticación y permisos de Compras. Compra, metadata,
+usuario, filtro y descarga se resuelven por `tenant_id`; un ID cross-tenant
+devuelve `404`. La comprobación por firma es una defensa básica y este slice no
+incluye antivirus, OCR ni análisis avanzado del contenido.
+
 ## Tenant Rule
 Every business response must belong only to the authenticated tenant.
 No cross-tenant access is allowed.

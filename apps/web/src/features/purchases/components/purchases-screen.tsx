@@ -75,7 +75,7 @@ export function PurchasesScreen() {
   }
 
   const hasFilters = Boolean(
-    filters.search || filters.supplier_id || filters.status || filters.document_type || filters.date_from || filters.date_to,
+    filters.search || filters.supplier_id || filters.status || filters.document_type || filters.attachment_status || filters.date_from || filters.date_to,
   );
 
   return (
@@ -133,6 +133,14 @@ export function PurchasesScreen() {
           </select>
         </label>
         <label className="field">
+          <span>Archivo</span>
+          <select value={filters.attachment_status ?? ""} onChange={(event) => updateFilters({ attachment_status: event.target.value || null })}>
+            <option value="">Todos</option>
+            <option value="attached">Cargado</option>
+            <option value="pending">Pendiente</option>
+          </select>
+        </label>
+        <label className="field">
           <span>Desde</span>
           <input type="date" value={filters.date_from ?? ""} onChange={(event) => updateFilters({ date_from: event.target.value || null })} />
         </label>
@@ -186,7 +194,7 @@ export function PurchasesScreen() {
                     >
                       <td className="purchase-cell--date">{formatPurchaseDate(purchase.purchase_date)}</td>
                       <td className="purchase-cell-text purchase-cell--supplier"><strong className="purchase-clamp-two" title={purchase.supplier_name}>{purchase.supplier_name}</strong><small className="purchase-ellipsis" title={purchase.supplier_tax_id || "Sin identificación fiscal"}>{purchase.supplier_tax_id || "Sin identificación fiscal"}</small></td>
-                      <td className="purchase-cell-text purchase-cell--document"><strong>{labelPurchaseDocumentType(purchase.document_type)}</strong><small className="purchase-ellipsis" title={purchase.document_number || "Sin número"}>{purchase.document_number || "Sin número"}</small></td>
+                      <td className="purchase-cell-text purchase-cell--document"><strong>{labelPurchaseDocumentType(purchase.document_type)}</strong><small className="purchase-ellipsis" title={purchase.document_number || "Sin número"}>{purchase.document_number || "Sin número"}</small><span className={`badge purchase-attachment-status purchase-attachment-status--${purchase.attachment_status}`}>{purchase.attachment_status === "attached" ? "Cargado" : "Pendiente"}</span></td>
                       <td className="purchase-cell--number">{purchase.item_count}</td>
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars)}</td>
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars)}</td>
@@ -214,11 +222,13 @@ function readFilters(queryString: string): PurchaseListFilters {
   const params = new URLSearchParams(queryString);
   const status = params.get("status");
   const documentType = params.get("document_type") as PurchaseDocumentType | null;
+  const attachmentStatus = params.get("attachment_status");
   return {
     search: params.get("search") || undefined,
     supplier_id: params.get("supplier_id") || undefined,
     status: status === "draft" || status === "cancelled" || status === "received" || status === "reversed" ? status : undefined,
     document_type: ["invoice", "receipt", "ticket", "delivery_note", "other"].includes(documentType ?? "") ? documentType ?? undefined : undefined,
+    attachment_status: attachmentStatus === "pending" || attachmentStatus === "attached" ? attachmentStatus : undefined,
     date_from: params.get("date_from") || undefined,
     date_to: params.get("date_to") || undefined,
     page: Math.max(1, Number(params.get("page")) || 1),
