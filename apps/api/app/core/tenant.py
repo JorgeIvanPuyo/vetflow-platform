@@ -172,3 +172,15 @@ def require_superadmin(
             message="No tienes permiso para esta acción",
         )
     return tenant
+
+
+def require_clinic_admin(
+    tenant: TenantContext = Depends(get_tenant_context),
+) -> TenantContext:
+    if tenant.role != Role.CLINIC_ADMIN.value:
+        raise AppError(
+            status_code=403,
+            code="forbidden",
+            message="No tienes permiso para esta acción",
+        )
+    return tenant

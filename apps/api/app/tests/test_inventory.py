@@ -284,6 +284,126 @@ def test_round_sale_price_to_nearest_10(client, tenant):
     assert response.json()["data"]["sale_price_ars"] == "1370.00"
 
 
+def _user_headers(email: str) -> dict[str, str]:
+    return {"X-User-Email": email}
+
+
+def _create_admin(db_session, tenant, email: str, full_name: str) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email=email,
+        full_name=full_name,
+        role="clinic_admin",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+def test_create_item_without_explicit_pricing_uses_tenant_preferences(
+    client, db_session, tenant, other_tenant
+):
+    admin = _create_admin(db_session, tenant, "pref-admin@example.com", "Admin")
+    client.patch(
+        "/api/v1/clinic/preferences",
+        headers=_user_headers(admin.email),
+        json={"default_profit_margin": 50, "money_rounding_increment": 20},
+    )
+
+    item = _create_item(
+        client,
+        tenant,
+        purchase_price_ars="1000",
+        profit_margin_percentage=None,
+        round_sale_price=True,
+    )
+    other_tenant_item = _create_item(
+        client,
+        other_tenant,
+        purchase_price_ars="1000",
+        profit_margin_percentage=None,
+        round_sale_price=True,
+    )
+
+    assert item["profit_margin_percentage"] == "50.00"
+    assert item["sale_price_ars"] == "1500.00"
+    assert other_tenant_item["profit_margin_percentage"] == "35.00"
+    assert other_tenant_item["sale_price_ars"] == "1350.00"
+
+
+def test_update_item_with_explicit_null_margin_falls_back_to_preferences(
+    client, db_session, tenant
+):
+    admin = _create_admin(db_session, tenant, "pref-admin2@example.com", "Admin")
+    client.patch(
+        "/api/v1/clinic/preferences",
+        headers=_user_headers(admin.email),
+        json={"default_profit_margin": 60},
+    )
+    item = _create_item(client, tenant, purchase_price_ars="1000", profit_margin_percentage="35")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"profit_margin_percentage": None},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["profit_margin_percentage"] == "60.00"
+
+
+def _create_supplier(client, admin, name: str = "Distribuidora Test") -> dict:
+    response = client.post(
+        "/api/v1/suppliers",
+        headers=_user_headers(admin.email),
+        json={"name": name},
+    )
+    assert response.status_code == 201
+    return response.json()["data"]
+
+
+def test_create_item_with_supplier_id_resolves_supplier_name(client, db_session, tenant):
+    admin = _create_admin(db_session, tenant, "sup-item-admin@example.com", "Admin")
+    supplier = _create_supplier(client, admin)
+
+    item = _create_item(client, tenant, supplier_id=supplier["id"])
+
+    assert item["supplier_id"] == supplier["id"]
+    assert item["supplier_name"] == "Distribuidora Test"
+
+
+def test_create_item_with_cross_tenant_supplier_is_rejected(
+    client, db_session, tenant, other_tenant
+):
+    other_admin = _create_admin(
+        db_session, other_tenant, "sup-item-admin2@example.com", "Admin"
+    )
+    foreign_supplier = _create_supplier(client, other_admin, name="Proveedor Ajeno")
+
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=foreign_supplier["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invalid_cross_tenant_access"
+
+
+def test_create_item_with_unknown_supplier_id_returns_404(client, tenant):
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=str(uuid.uuid4())),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "supplier_not_found"
+
+
 def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
     item = _create_item(
         client,

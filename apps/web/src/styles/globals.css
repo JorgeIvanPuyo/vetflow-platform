@@ -6176,6 +6176,12 @@ code {
   border-radius: 18px;
 }
 
+.list-page__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .list-page__header .eyebrow {
   margin-bottom: 6px;
   font-size: 11px;

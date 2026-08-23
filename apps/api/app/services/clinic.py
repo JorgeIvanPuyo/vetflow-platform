@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from pathlib import Path
 import re
 
@@ -6,10 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.tenant import Tenant
+from app.models.tenant_preference import TenantPreference
 from app.models.user import User
 from app.repositories.clinic import ClinicRepository
+from app.repositories.service import ServiceRepository
 from app.repositories.user import UserRepository
-from app.schemas.clinic import ClinicProfileUpdate, ClinicTeamMemberUpdate
+from app.schemas.clinic import ClinicProfileUpdate, ClinicTeamMemberUpdate, TenantPreferenceUpdate
+from app.services.catalog_items import CatalogItemService
 from app.services.storage import ClinicalFileStorageService
 
 
@@ -21,12 +25,15 @@ ALLOWED_CLINIC_LOGO_CONTENT_TYPES = {
 ALLOWED_CLINIC_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_CLINIC_LOGO_SIZE_BYTES = 5 * 1024 * 1024
 SIGNED_LOGO_URL_EXPIRES_IN_SECONDS = 900
+SUPPORTED_REGIONAL_SETTINGS = {("USD", "es-PA"), ("ARS", "es-AR")}
+DEFAULT_DURATION_OPTIONS = [15, 30, 45, 60]
 
 
 class ClinicService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.clinic_repository = ClinicRepository(db)
+        self.service_repository = ServiceRepository(db)
         self.user_repository = UserRepository(db)
 
     def get_profile(self, tenant_id: uuid.UUID) -> Tenant:
@@ -45,6 +52,82 @@ class ClinicService:
         updated_tenant = self.clinic_repository.update_profile(tenant, updates)
         self.db.commit()
         return updated_tenant
+
+    def get_preferences(self, tenant_id: uuid.UUID) -> TenantPreference:
+        self.get_profile(tenant_id)
+        preferences = self.clinic_repository.get_preferences(tenant_id)
+        if preferences is not None:
+            return preferences
+
+        preferences = TenantPreference(
+            tenant_id=tenant_id,
+            currency_code="USD",
+            locale="es-PA",
+            default_appointment_duration_minutes=30,
+            appointment_duration_options=DEFAULT_DURATION_OPTIONS,
+            catalog_template_version="regional-v1",
+            default_purchase_tax_rate=Decimal("0"),
+            default_sale_tax_rate=Decimal("0"),
+            default_profit_margin=Decimal("35"),
+            money_rounding_increment=Decimal("10"),
+        )
+        self.clinic_repository.create_preferences(preferences)
+        self.db.commit()
+        return preferences
+
+    def update_preferences(
+        self,
+        tenant_id: uuid.UUID,
+        payload: TenantPreferenceUpdate,
+    ) -> TenantPreference:
+        preferences = self.get_preferences(tenant_id)
+        updates = payload.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            if value is None:
+                raise AppError(422, "validation_error", f"{field} cannot be null")
+
+        resolved = {
+            "currency_code": updates.get("currency_code", preferences.currency_code),
+            "locale": updates.get("locale", preferences.locale),
+            "default_appointment_duration_minutes": updates.get(
+                "default_appointment_duration_minutes",
+                preferences.default_appointment_duration_minutes,
+            ),
+            "appointment_duration_options": updates.get(
+                "appointment_duration_options",
+                preferences.appointment_duration_options,
+            ),
+        }
+        self._validate_preferences(resolved)
+        updated_preferences = self.clinic_repository.update_preferences(
+            preferences,
+            updates,
+        )
+        self.db.commit()
+        return updated_preferences
+
+    def get_configuration(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        include_preferences: bool,
+        include_services: bool,
+        include_catalogs: bool = False,
+    ) -> dict:
+        self.get_profile(tenant_id)
+        return {
+            "preferences": self.get_preferences(tenant_id) if include_preferences else None,
+            "services": self.service_repository.list(
+                tenant_id,
+                include_inactive=False,
+                bookable_only=False,
+            )
+            if include_services
+            else None,
+            "catalogs": CatalogItemService(self.db).list_active_grouped(tenant_id)
+            if include_catalogs
+            else None,
+        }
 
     def list_team(self, tenant_id: uuid.UUID) -> list[User]:
         self.get_profile(tenant_id)
@@ -237,3 +320,38 @@ class ClinicService:
         safe_filename: str,
     ) -> str:
         return f"tenants/{tenant_id}/branding/logo/{tenant_id}-{safe_filename}"
+
+    def _validate_preferences(self, values: dict) -> None:
+        currency_code = values["currency_code"]
+        locale = values["locale"]
+        if (currency_code, locale) not in SUPPORTED_REGIONAL_SETTINGS:
+            raise AppError(
+                422,
+                "unsupported_regional_preferences",
+                "Unsupported currency_code and locale combination",
+            )
+
+        options = values["appointment_duration_options"]
+        if (
+            not isinstance(options, list)
+            or not options
+            or any(not isinstance(option, int) for option in options)
+            or any(option <= 0 or option > 480 for option in options)
+        ):
+            raise AppError(
+                422,
+                "invalid_appointment_duration_options",
+                "Appointment duration options must be positive minute values",
+            )
+        if len(set(options)) != len(options):
+            raise AppError(
+                422,
+                "invalid_appointment_duration_options",
+                "Appointment duration options must be unique",
+            )
+        if values["default_appointment_duration_minutes"] not in options:
+            raise AppError(
+                422,
+                "invalid_default_appointment_duration",
+                "Default appointment duration must be included in appointment duration options",
+            )

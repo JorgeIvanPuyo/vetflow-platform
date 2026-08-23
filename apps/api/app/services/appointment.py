@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -7,10 +7,12 @@ from app.core.errors import AppError
 from app.models.appointment import Appointment
 from app.models.owner import Owner
 from app.models.patient import Patient
+from app.models.service import Service
 from app.models.user import User
 from app.repositories.appointment import AppointmentRepository
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
+from app.repositories.service import ServiceRepository
 from app.repositories.user import UserRepository
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate
 
@@ -21,6 +23,7 @@ class AppointmentService:
         self.appointment_repository = AppointmentRepository(db)
         self.owner_repository = OwnerRepository(db)
         self.patient_repository = PatientRepository(db)
+        self.service_repository = ServiceRepository(db)
         self.user_repository = UserRepository(db)
 
     def create_appointment(
@@ -30,7 +33,19 @@ class AppointmentService:
         *,
         created_by_user_id: uuid.UUID | None = None,
     ) -> Appointment:
-        self._validate_time_range(payload.start_at, payload.end_at)
+        appointment_data = payload.model_dump()
+        linked_service = self._validate_optional_active_service(
+            tenant_id,
+            payload.service_id,
+        )
+        if linked_service is not None:
+            appointment_data["appointment_type"] = linked_service.kind
+            if payload.end_at is None:
+                appointment_data["end_at"] = payload.start_at + timedelta(
+                    minutes=linked_service.default_duration_minutes,
+                )
+
+        self._validate_time_range(payload.start_at, appointment_data["end_at"])
         self._validate_optional_patient(tenant_id, payload.patient_id)
         self._validate_optional_owner(tenant_id, payload.owner_id)
         self._validate_optional_user(tenant_id, payload.assigned_user_id)
@@ -39,7 +54,7 @@ class AppointmentService:
         appointment = Appointment(
             tenant_id=tenant_id,
             created_by_user_id=created_by_user_id,
-            **payload.model_dump(),
+            **appointment_data,
         )
         self.appointment_repository.create(appointment)
         self.db.commit()
@@ -98,7 +113,24 @@ class AppointmentService:
             if field in updates and updates[field] is None:
                 raise AppError(422, "validation_error", f"{field} cannot be null")
 
+        linked_service = None
+        if "service_id" in updates and updates["service_id"] is not None:
+            linked_service = self._validate_optional_active_service(
+                tenant_id,
+                updates["service_id"],
+            )
+            updates["appointment_type"] = linked_service.kind
+        elif "start_at" in updates and appointment.service_id is not None:
+            linked_service = self._validate_optional_active_service(
+                tenant_id,
+                appointment.service_id,
+            )
+
         start_at = updates.get("start_at", appointment.start_at)
+        if linked_service is not None and "end_at" not in updates:
+            updates["end_at"] = start_at + timedelta(
+                minutes=linked_service.default_duration_minutes,
+            )
         end_at = updates.get("end_at", appointment.end_at)
         self._validate_time_range(start_at, end_at)
 
@@ -200,3 +232,28 @@ class AppointmentService:
                 "User does not belong to the provided tenant",
             )
         raise AppError(404, "user_not_found", "User not found")
+
+    def _validate_optional_active_service(
+        self,
+        tenant_id: uuid.UUID,
+        service_id: uuid.UUID | None,
+    ) -> Service | None:
+        if service_id is None:
+            return None
+        service = self.service_repository.get_by_id(tenant_id, service_id)
+        if service is not None:
+            if not service.is_active:
+                raise AppError(
+                    409,
+                    "inactive_service",
+                    "Service is inactive",
+                )
+            return service
+        service_any_tenant = self.db.get(Service, service_id)
+        if service_any_tenant is not None:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Service does not belong to the provided tenant",
+            )
+        raise AppError(404, "service_not_found", "Service not found")

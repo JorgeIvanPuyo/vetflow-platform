@@ -32,6 +32,12 @@ class PatientPreventiveCare(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     care_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     applied_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -50,6 +56,13 @@ class PatientPreventiveCare(BaseModel):
         back_populates="preventive_care_records",
     )
     created_by_user: Mapped[User | None] = relationship("User")
+    catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
+
+    @property
+    def catalog_item_name(self) -> str | None:
+        if self.catalog_item is None or self.catalog_item.tenant_id != self.tenant_id:
+            return None
+        return self.catalog_item.name
 
     @property
     def created_by_user_name(self) -> str | None:

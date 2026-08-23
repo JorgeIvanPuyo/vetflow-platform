@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { InventoryItemForm } from "@/features/inventory/components/inventory-item-form";
 import {
   calculateInventoryEntryUnitCostPreview,
@@ -22,6 +23,7 @@ import {
   formatInventoryPercentage,
   formatInventoryQuantity,
   formatInventorySignedQuantity,
+  getInitialInventoryFormState,
   getInventoryCategoryLabel,
   getInventoryExitReasonLabel,
   getInventoryMovementAmountLabel,
@@ -30,7 +32,6 @@ import {
   getInventoryUnitLabel,
   initialInventoryEntryFormState,
   initialInventoryExitFormState,
-  initialInventoryFormState,
   inventoryEntryFormToPayload,
   inventoryExitFormToPayload,
   inventoryItemToFormState,
@@ -109,6 +110,11 @@ const initialMovementState: MovementState = {
 
 export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const router = useRouter();
+  const { preferences } = useClinic();
+  const moneyPreferences = {
+    currencyCode: preferences?.currency_code ?? "USD",
+    locale: preferences?.locale ?? "es-PA",
+  };
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
   const [movementFilter, setMovementFilter] = useState<InventoryMovementFilter>("all");
@@ -116,7 +122,9 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isEntryOpen, setIsEntryOpen] = useState(false);
   const [isExitOpen, setIsExitOpen] = useState(false);
-  const [formState, setFormState] = useState<InventoryFormState>(initialInventoryFormState);
+  const [formState, setFormState] = useState<InventoryFormState>(
+    getInitialInventoryFormState(preferences),
+  );
   const [manualSalePriceOverride, setManualSalePriceOverride] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [entryFormState, setEntryFormState] = useState<InventoryEntryFormState>(
@@ -222,7 +230,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
   function closeEdit() {
     setIsEditOpen(false);
-    setFormState(initialInventoryFormState);
+    setFormState(getInitialInventoryFormState(preferences));
     setManualSalePriceOverride(false);
     setState((current) => ({
       ...current,
@@ -491,19 +499,19 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <dl className="metric-list inventory-metric-list">
             <div>
               <dt>Stock actual</dt>
-              <dd>{formatInventoryQuantity(item.current_stock, item.unit)}</dd>
+              <dd>{formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</dd>
             </div>
             <div>
               <dt>Stock mínimo</dt>
-              <dd>{formatInventoryQuantity(item.minimum_stock, item.unit)}</dd>
+              <dd>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</dd>
             </div>
             <div>
               <dt>Precio compra sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(item.purchase_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Precio venta final con IVA</dt>
-              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
+              <dd>{formatInventoryCurrency(salePriceWithTax, moneyPreferences)}</dd>
             </div>
           </dl>
 
@@ -538,21 +546,21 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <dl className="detail-grid">
             <div>
               <dt>Precio compra sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(item.purchase_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>IVA compra</dt>
               <dd>
-                {formatInventoryPercentage(item.purchase_tax_rate_percentage)}
+                {formatInventoryPercentage(item.purchase_tax_rate_percentage, moneyPreferences.locale)}
                 {item.purchase_tax_amount_ars !== undefined &&
                 item.purchase_tax_amount_ars !== null
-                  ? ` · ${formatInventoryCurrency(item.purchase_tax_amount_ars)}`
+                  ? ` · ${formatInventoryCurrency(item.purchase_tax_amount_ars, moneyPreferences)}`
                   : ""}
               </dd>
             </div>
             <div>
               <dt>Costo compra con IVA</dt>
-              <dd>{formatInventoryCurrency(purchasePriceWithTax)}</dd>
+              <dd>{formatInventoryCurrency(purchasePriceWithTax, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Margen de ganancia</dt>
@@ -560,21 +568,21 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             </div>
             <div>
               <dt>Precio venta sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>IVA venta</dt>
               <dd>
-                {formatInventoryPercentage(item.sale_tax_rate_percentage)}
+                {formatInventoryPercentage(item.sale_tax_rate_percentage, moneyPreferences.locale)}
                 {item.sale_tax_amount_ars !== undefined &&
                 item.sale_tax_amount_ars !== null
-                  ? ` · ${formatInventoryCurrency(item.sale_tax_amount_ars)}`
+                  ? ` · ${formatInventoryCurrency(item.sale_tax_amount_ars, moneyPreferences)}`
                   : ""}
               </dd>
             </div>
             <div>
               <dt>Precio venta final con IVA</dt>
-              <dd>{formatInventoryCurrency(salePriceWithTax)}</dd>
+              <dd>{formatInventoryCurrency(salePriceWithTax, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Redondear precio</dt>
@@ -582,7 +590,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             </div>
             <div>
               <dt>Proveedor habitual</dt>
-              <dd>{item.supplier || "No indicado"}</dd>
+              <dd>{item.supplier_name ?? item.supplier ?? "No indicado"}</dd>
             </div>
           </dl>
         </article>
@@ -598,6 +606,12 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             <dt>Categoría</dt>
             <dd>{getInventoryCategoryLabel(item.category)}</dd>
           </div>
+          {item.category_catalog_item_name ? (
+            <div>
+              <dt>Categoría de la clínica</dt>
+              <dd>{item.category_catalog_item_name}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Subcategoría</dt>
             <dd>{item.subcategory || "No indicada"}</dd>
@@ -608,7 +622,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           </div>
           <div>
             <dt>Proveedor</dt>
-            <dd>{item.supplier || "No indicado"}</dd>
+            <dd>{item.supplier_name ?? item.supplier ?? "No indicado"}</dd>
           </div>
           <div>
             <dt>Lote</dt>
@@ -675,7 +689,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <>
             <div className="inventory-movement-list">
               {movementState.data.map((movement) => {
-                const amountLabel = getInventoryMovementAmountLabel(movement);
+                const amountLabel = getInventoryMovementAmountLabel(movement, moneyPreferences);
                 const actor =
                   movement.created_by_user_name ||
                   movement.created_by_user_email ||
@@ -704,6 +718,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                               movement.quantity,
                               item.unit,
                               movement.movement_type,
+                              moneyPreferences.locale,
                             )}
                           </strong>
                           <p>{getInventoryMovementTypeLabel(movement.movement_type)}</p>
@@ -850,7 +865,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       total_cost_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 
@@ -868,14 +883,14 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       unit_cost_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 
               {entryUnitCostPreview !== null ? (
                 <div className="clinical-section inventory-inline-note">
                   <strong>Costo unitario estimado</strong>
-                  <span>{formatInventoryCurrency(String(entryUnitCostPreview))}</span>
+                  <span>{formatInventoryCurrency(String(entryUnitCostPreview), moneyPreferences)}</span>
                 </div>
               ) : null}
 
@@ -969,7 +984,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                   }
                 />
                 <small>
-                  Disponible: {formatInventoryQuantity(item.current_stock, item.unit)}
+                  Disponible: {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}
                 </small>
               </label>
 
@@ -1006,7 +1021,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       unit_sale_price_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 

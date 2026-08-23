@@ -1,10 +1,11 @@
 "use client";
 
-import { Search, ShieldCheck, UserPlus } from "lucide-react";
+import { Building2, Search, ShieldCheck, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth/current-user-context";
+import { CreateTenantModal } from "@/features/users/components/create-tenant-modal";
 import { InviteUserModal } from "@/features/users/components/invite-user-modal";
 import { listTenants, listUsers } from "@/features/users/services/users";
 import { getApiErrorMessage } from "@/lib/api";
@@ -12,6 +13,7 @@ import type { AdminUser, AppRole, TenantOption } from "@/types/api";
 
 const ROLE_LABELS: Record<AppRole, string> = {
   superadmin: "Superadmin",
+  clinic_admin: "Administrador de clínica",
   medico_veterinario: "Médico veterinario",
   contador: "Contador",
 };
@@ -43,6 +45,7 @@ export function UsersScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isCreateTenantOpen, setIsCreateTenantOpen] = useState(false);
 
   const isSuperadmin = role === "superadmin";
 
@@ -105,13 +108,22 @@ export function UsersScreen() {
           </h1>
           <p>{users.length} usuarios</p>
         </div>
-        <button
-          className="primary-button"
-          onClick={() => setIsInviteOpen(true)}
-          type="button"
-        >
-          <UserPlus aria-hidden="true" size={18} /> Invitar usuario
-        </button>
+        <div className="list-page__header-actions">
+          <button
+            className="secondary-button"
+            onClick={() => setIsCreateTenantOpen(true)}
+            type="button"
+          >
+            <Building2 aria-hidden="true" size={18} /> Nueva clínica
+          </button>
+          <button
+            className="primary-button"
+            onClick={() => setIsInviteOpen(true)}
+            type="button"
+          >
+            <UserPlus aria-hidden="true" size={18} /> Invitar usuario
+          </button>
+        </div>
       </section>
 
       <section className="panel users-toolbar">
@@ -212,6 +224,15 @@ export function UsersScreen() {
           onClose={() => setIsInviteOpen(false)}
           onInvited={() => {
             void loadUsers();
+          }}
+        />
+      ) : null}
+
+      {isCreateTenantOpen ? (
+        <CreateTenantModal
+          onClose={() => setIsCreateTenantOpen(false)}
+          onCreated={(createdTenant) => {
+            setTenants((current) => [...current, createdTenant]);
           }}
         />
       ) : null}

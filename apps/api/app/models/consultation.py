@@ -257,9 +257,25 @@ class ConsultationStudyRequest(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     study_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    exam_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     consultation: Mapped[Consultation] = relationship(
         "Consultation",
         back_populates="study_requests",
     )
+    exam_catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
+
+    @property
+    def exam_catalog_item_name(self) -> str | None:
+        if (
+            self.exam_catalog_item is None
+            or self.exam_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.exam_catalog_item.name

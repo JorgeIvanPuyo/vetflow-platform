@@ -22,7 +22,10 @@ class PreventiveCareRepository:
         statement = select(PatientPreventiveCare).where(
             PatientPreventiveCare.id == record_id,
             PatientPreventiveCare.tenant_id == tenant_id,
-        ).options(selectinload(PatientPreventiveCare.created_by_user))
+        ).options(
+            selectinload(PatientPreventiveCare.created_by_user),
+            selectinload(PatientPreventiveCare.catalog_item),
+        )
         return self.db.scalar(statement)
 
     def list_by_patient(
@@ -34,7 +37,10 @@ class PreventiveCareRepository:
                 PatientPreventiveCare.tenant_id == tenant_id,
                 PatientPreventiveCare.patient_id == patient_id,
             )
-            .options(selectinload(PatientPreventiveCare.created_by_user))
+            .options(
+                selectinload(PatientPreventiveCare.created_by_user),
+                selectinload(PatientPreventiveCare.catalog_item),
+            )
             .order_by(PatientPreventiveCare.applied_at.desc())
         )
         records = list(self.db.scalars(statement).all())

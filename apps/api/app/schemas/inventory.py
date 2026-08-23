@@ -49,9 +49,11 @@ InventoryExitReason = Literal[
 class InventoryItemBase(BaseModel):
     name: str
     category: InventoryCategory
+    category_catalog_item_id: uuid.UUID | None = None
     subcategory: str | None = None
     unit: InventoryUnit
     supplier: str | None = None
+    supplier_id: uuid.UUID | None = None
     lot_number: str | None = None
     expiration_date: date | None = None
     current_stock: Decimal = Field(default=Decimal("0"), ge=0)
@@ -75,15 +77,21 @@ class InventoryItemBase(BaseModel):
 
 
 class InventoryItemCreate(InventoryItemBase):
-    pass
+    # Omitted tax/margin fields fall back to the tenant's regional preferences
+    # (see InventoryService._resolve_pricing_defaults) instead of a hardcoded value.
+    purchase_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
+    profit_margin_percentage: Decimal | None = Field(default=None, ge=0)
+    sale_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
 
 
 class InventoryItemUpdate(BaseModel):
     name: str | None = None
     category: InventoryCategory | None = None
+    category_catalog_item_id: uuid.UUID | None = None
     subcategory: str | None = None
     unit: InventoryUnit | None = None
     supplier: str | None = None
+    supplier_id: uuid.UUID | None = None
     lot_number: str | None = None
     expiration_date: date | None = None
     current_stock: Decimal | None = Field(default=None, ge=0)
@@ -104,6 +112,8 @@ class InventoryItemRead(InventoryItemBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     created_by_user_id: uuid.UUID | None = None
+    supplier_name: str | None = None
+    category_catalog_item_name: str | None = None
     purchase_tax_amount_ars: Decimal | None = None
     purchase_price_with_tax_ars: Decimal | None = None
     sale_tax_amount_ars: Decimal | None = None

@@ -138,6 +138,7 @@ class ConsultationMedicationRead(ConsultationMedicationCreate):
 class ConsultationStudyRequestCreate(BaseModel):
     name: str
     study_type: Literal["laboratory", "exam", "other"]
+    exam_catalog_item_id: uuid.UUID | None = None
     notes: str | None = None
 
 
@@ -147,6 +148,7 @@ class ConsultationStudyRequestRead(ConsultationStudyRequestCreate):
     id: uuid.UUID
     tenant_id: uuid.UUID
     consultation_id: uuid.UUID
+    exam_catalog_item_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

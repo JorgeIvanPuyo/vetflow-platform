@@ -31,7 +31,11 @@ class InventoryRepository:
                 InventoryItem.id == item_id,
                 InventoryItem.tenant_id == tenant_id,
             )
-            .options(selectinload(InventoryItem.created_by_user))
+            .options(
+                selectinload(InventoryItem.created_by_user),
+                selectinload(InventoryItem.supplier_record),
+                selectinload(InventoryItem.category_catalog_item),
+            )
         )
         return self.db.scalar(statement)
 
@@ -51,7 +55,11 @@ class InventoryRepository:
         statement: Select[tuple[InventoryItem]] = (
             select(InventoryItem)
             .where(InventoryItem.tenant_id == tenant_id)
-            .options(selectinload(InventoryItem.created_by_user))
+            .options(
+                selectinload(InventoryItem.created_by_user),
+                selectinload(InventoryItem.supplier_record),
+                selectinload(InventoryItem.category_catalog_item),
+            )
         )
         count_statement = select(func.count()).select_from(InventoryItem).where(
             InventoryItem.tenant_id == tenant_id,

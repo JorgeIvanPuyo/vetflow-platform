@@ -7,13 +7,17 @@ from math import ceil
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 from app.models.patient import Patient
+from app.models.supplier import Supplier
 from app.models.user import User
+from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.patient import PatientRepository
+from app.repositories.supplier import SupplierRepository
 from app.repositories.user import UserRepository
 from app.schemas.inventory import (
     InventoryItemCreate,
@@ -23,11 +27,17 @@ from app.schemas.inventory import (
 )
 
 
+CATEGORY_CATALOG_TYPE = "inventory_category"
+
+
 ALLOWED_SORT_BY = {"name", "current_stock", "expiration_date", "created_at", "updated_at"}
 ALLOWED_SORT_ORDER = {"asc", "desc"}
 ZERO = Decimal("0")
-TEN = Decimal("10")
 HUNDRED = Decimal("100")
+FALLBACK_PURCHASE_TAX_RATE = Decimal("0")
+FALLBACK_SALE_TAX_RATE = Decimal("0")
+FALLBACK_PROFIT_MARGIN = Decimal("35")
+FALLBACK_ROUNDING_INCREMENT = Decimal("10")
 
 
 class InventoryService:
@@ -36,6 +46,8 @@ class InventoryService:
         self.inventory_repository = InventoryRepository(db)
         self.patient_repository = PatientRepository(db)
         self.user_repository = UserRepository(db)
+        self.clinic_repository = ClinicRepository(db)
+        self.supplier_repository = SupplierRepository(db)
 
     def create_item(
         self,
@@ -44,24 +56,47 @@ class InventoryService:
         *,
         created_by_user_id: uuid.UUID | None = None,
     ) -> InventoryItem:
+        defaults = self._resolve_pricing_defaults(tenant_id)
+        purchase_tax_rate = (
+            payload.purchase_tax_rate_percentage
+            if payload.purchase_tax_rate_percentage is not None
+            else defaults["purchase_tax_rate"]
+        )
+        profit_margin = (
+            payload.profit_margin_percentage
+            if payload.profit_margin_percentage is not None
+            else defaults["profit_margin"]
+        )
+        sale_tax_rate = (
+            payload.sale_tax_rate_percentage
+            if payload.sale_tax_rate_percentage is not None
+            else defaults["sale_tax_rate"]
+        )
+
         self._validate_non_negative_prices(
             payload.purchase_price_ars,
-            payload.profit_margin_percentage,
+            profit_margin,
             payload.sale_price_ars,
         )
-        self._validate_tax_rates(
-            payload.purchase_tax_rate_percentage,
-            payload.sale_tax_rate_percentage,
-        )
+        self._validate_tax_rates(purchase_tax_rate, sale_tax_rate)
         self._validate_optional_user(tenant_id, created_by_user_id)
+        self._validate_optional_supplier(tenant_id, payload.supplier_id)
+        self._validate_optional_category_catalog_item(
+            tenant_id,
+            payload.category_catalog_item_id,
+        )
 
         item_data = payload.model_dump()
+        item_data["purchase_tax_rate_percentage"] = purchase_tax_rate
+        item_data["profit_margin_percentage"] = profit_margin
+        item_data["sale_tax_rate_percentage"] = sale_tax_rate
         item_data["sale_price_ars"] = self._resolve_sale_price(
             purchase_price_ars=payload.purchase_price_ars,
-            purchase_tax_rate_percentage=payload.purchase_tax_rate_percentage,
-            profit_margin_percentage=payload.profit_margin_percentage,
+            purchase_tax_rate_percentage=purchase_tax_rate,
+            profit_margin_percentage=profit_margin,
             round_sale_price=payload.round_sale_price,
             manual_sale_price_ars=payload.sale_price_ars,
+            rounding_increment=defaults["rounding_increment"],
         )
 
         item = InventoryItem(
@@ -126,12 +161,14 @@ class InventoryService:
     ) -> InventoryItem:
         item = self.get_item(tenant_id, item_id)
         updates = payload.model_dump(exclude_unset=True)
-        for field in (
-            "purchase_tax_rate_percentage",
-            "sale_tax_rate_percentage",
+        defaults = self._resolve_pricing_defaults(tenant_id)
+        for field, default_value in (
+            ("purchase_tax_rate_percentage", defaults["purchase_tax_rate"]),
+            ("sale_tax_rate_percentage", defaults["sale_tax_rate"]),
+            ("profit_margin_percentage", defaults["profit_margin"]),
         ):
             if field in updates and updates[field] is None:
-                updates[field] = ZERO
+                updates[field] = default_value
         self._validate_non_negative_prices(
             updates.get("purchase_price_ars", item.purchase_price_ars),
             updates.get("profit_margin_percentage", item.profit_margin_percentage),
@@ -144,6 +181,13 @@ class InventoryService:
             ),
             updates.get("sale_tax_rate_percentage", item.sale_tax_rate_percentage),
         )
+        if "supplier_id" in updates:
+            self._validate_optional_supplier(tenant_id, updates["supplier_id"])
+        if "category_catalog_item_id" in updates:
+            self._validate_optional_category_catalog_item(
+                tenant_id,
+                updates["category_catalog_item_id"],
+            )
 
         if self._should_recalculate_sale_price(updates):
             updates["sale_price_ars"] = self._resolve_sale_price(
@@ -158,6 +202,7 @@ class InventoryService:
                 ),
                 round_sale_price=updates.get("round_sale_price", item.round_sale_price),
                 manual_sale_price_ars=updates.get("sale_price_ars"),
+                rounding_increment=defaults["rounding_increment"],
             )
 
         self.inventory_repository.update_item(item, updates)
@@ -278,6 +323,22 @@ class InventoryService:
             "total_pages": ceil(total / page_size) if total else 0,
         }
 
+    def _resolve_pricing_defaults(self, tenant_id: uuid.UUID) -> dict[str, Decimal]:
+        preferences = self.clinic_repository.get_preferences(tenant_id)
+        if preferences is None:
+            return {
+                "purchase_tax_rate": FALLBACK_PURCHASE_TAX_RATE,
+                "sale_tax_rate": FALLBACK_SALE_TAX_RATE,
+                "profit_margin": FALLBACK_PROFIT_MARGIN,
+                "rounding_increment": FALLBACK_ROUNDING_INCREMENT,
+            }
+        return {
+            "purchase_tax_rate": preferences.default_purchase_tax_rate,
+            "sale_tax_rate": preferences.default_sale_tax_rate,
+            "profit_margin": preferences.default_profit_margin,
+            "rounding_increment": preferences.money_rounding_increment,
+        }
+
     def _resolve_sale_price(
         self,
         *,
@@ -286,6 +347,7 @@ class InventoryService:
         profit_margin_percentage: Decimal | None,
         round_sale_price: bool,
         manual_sale_price_ars: Decimal | None,
+        rounding_increment: Decimal,
     ) -> Decimal | None:
         if manual_sale_price_ars is not None:
             return self._quantize_money(manual_sale_price_ars)
@@ -300,7 +362,7 @@ class InventoryService:
         )
         sale_price = self._quantize_money(sale_price)
         if round_sale_price:
-            sale_price = self._round_to_nearest_ten(sale_price)
+            sale_price = self._round_to_increment(sale_price, rounding_increment)
         return sale_price
 
     def _should_recalculate_sale_price(self, updates: dict) -> bool:
@@ -325,8 +387,8 @@ class InventoryService:
         tax_amount = self._quantize_money(price * tax_rate / HUNDRED)
         return self._quantize_money(price + tax_amount)
 
-    def _round_to_nearest_ten(self, value: Decimal) -> Decimal:
-        return (value / TEN).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * TEN
+    def _round_to_increment(self, value: Decimal, increment: Decimal) -> Decimal:
+        return (value / increment).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * increment
 
     def _quantize_money(self, value: Decimal) -> Decimal:
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -398,6 +460,48 @@ class InventoryService:
                 "Patient does not belong to the provided tenant",
             )
         raise AppError(404, "patient_not_found", "Patient not found")
+
+    def _validate_optional_supplier(
+        self,
+        tenant_id: uuid.UUID,
+        supplier_id: uuid.UUID | None,
+    ) -> None:
+        if supplier_id is None:
+            return
+        supplier = self.supplier_repository.get_by_id(tenant_id, supplier_id)
+        if supplier is not None:
+            return
+        supplier_any_tenant = self.db.get(Supplier, supplier_id)
+        if supplier_any_tenant is not None:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Supplier does not belong to the provided tenant",
+            )
+        raise AppError(404, "supplier_not_found", "Supplier not found")
+
+    def _validate_optional_category_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != CATEGORY_CATALOG_TYPE:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {CATEGORY_CATALOG_TYPE}",
+            )
 
     def _validate_optional_consultation(
         self,

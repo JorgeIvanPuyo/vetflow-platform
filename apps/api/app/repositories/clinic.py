@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.models.tenant_preference import TenantPreference
 from app.models.tenant import Tenant
 
 
@@ -20,3 +21,27 @@ class ClinicRepository:
         self.db.flush()
         self.db.refresh(tenant)
         return tenant
+
+    def get_preferences(self, tenant_id: uuid.UUID) -> TenantPreference | None:
+        return self.db.query(TenantPreference).filter(
+            TenantPreference.tenant_id == tenant_id
+        ).one_or_none()
+
+    def create_preferences(self, preferences: TenantPreference) -> TenantPreference:
+        self.db.add(preferences)
+        self.db.flush()
+        self.db.refresh(preferences)
+        return preferences
+
+    def update_preferences(
+        self,
+        preferences: TenantPreference,
+        updates: dict,
+    ) -> TenantPreference:
+        for field, value in updates.items():
+            setattr(preferences, field, value)
+
+        self.db.add(preferences)
+        self.db.flush()
+        self.db.refresh(preferences)
+        return preferences

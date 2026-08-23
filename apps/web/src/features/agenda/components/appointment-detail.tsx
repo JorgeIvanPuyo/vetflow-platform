@@ -23,9 +23,11 @@ import {
 import { getClinicTeam } from "@/services/clinic";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
+import { getServices } from "@/services/services";
 import type {
   Appointment,
   AppointmentStatus,
+  ClinicService,
   ClinicTeamMember,
   Owner,
   Patient,
@@ -35,6 +37,7 @@ import type {
 import {
   AppointmentFormModal,
   buildAppointmentPayload,
+  getEndTimeForDuration,
   validateAppointmentForm,
 } from "./agenda-screen";
 import {
@@ -61,6 +64,7 @@ type AppointmentDetailState = {
   patients: Patient[];
   owners: Owner[];
   team: ClinicTeamMember[];
+  services: ClinicService[];
   errorMessage: string | null;
   successMessage: string | null;
   flowMessage: string | null;
@@ -74,6 +78,7 @@ const initialState: AppointmentDetailState = {
   patients: [],
   owners: [],
   team: [],
+  services: [],
   errorMessage: null,
   successMessage: null,
   flowMessage: null,
@@ -95,12 +100,19 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
     }));
 
     try {
-      const [appointmentResponse, patientsResponse, ownersResponse, teamResponse] =
+      const [
+        appointmentResponse,
+        patientsResponse,
+        ownersResponse,
+        teamResponse,
+        servicesResponse,
+      ] =
         await Promise.all([
           getAppointment(appointmentId),
           getPatients(),
           getOwners(),
           getClinicTeam(),
+          getServices({ bookable_only: true }),
         ]);
 
       setState((current) => ({
@@ -110,6 +122,7 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
         patients: patientsResponse.data,
         owners: ownersResponse.data,
         team: teamResponse.data,
+        services: servicesResponse.data,
       }));
     } catch (error) {
       setState((current) => ({
@@ -155,6 +168,21 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
     });
   }
 
+  function handleServiceChange(serviceId: string) {
+    if (!formState) {
+      return;
+    }
+    const service = state.services.find((item) => item.id === serviceId);
+    setFormState({
+      ...formState,
+      service_id: serviceId,
+      appointment_type: service?.kind ?? formState.appointment_type,
+      end_time: service
+        ? getEndTimeForDuration(formState.date, formState.start_time, service.default_duration_minutes)
+        : formState.end_time,
+    });
+  }
+
   async function handleSaveAppointment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -162,7 +190,9 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
       return;
     }
 
-    const validationMessage = validateAppointmentForm(formState);
+    const validationMessage = validateAppointmentForm(formState, {
+      serviceRequired: state.services.length > 0,
+    });
     if (validationMessage) {
       setState((current) => ({ ...current, flowMessage: validationMessage }));
       return;
@@ -314,7 +344,7 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
             <h2>Información del turno</h2>
           </div>
           <span className={getTypeBadgeClass(appointment.appointment_type)}>
-            {getAppointmentTypeLabel(appointment.appointment_type)}
+            {appointment.service_name ?? getAppointmentTypeLabel(appointment.appointment_type)}
           </span>
         </div>
 
@@ -328,8 +358,8 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
             <dd>{formatAppointmentTimeRange(appointment)}</dd>
           </div>
           <div>
-            <dt>Tipo</dt>
-            <dd>{getAppointmentTypeLabel(appointment.appointment_type)}</dd>
+            <dt>Servicio</dt>
+            <dd>{appointment.service_name ?? getAppointmentTypeLabel(appointment.appointment_type)}</dd>
           </div>
           <div>
             <dt>Estado</dt>
@@ -428,16 +458,19 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
 
       {isEditOpen && formState ? (
         <AppointmentFormModal
+          allowLegacyType
           flowMessage={state.flowMessage}
           formState={formState}
           isSubmitting={state.isSaving}
           owners={state.owners}
           patients={state.patients}
           team={state.team}
+          services={state.services}
           submitLabel="Guardar cambios"
           title="Editar turno"
           onClose={closeEditModal}
           onPatientChange={handlePatientChange}
+          onServiceChange={handleServiceChange}
           onSubmit={handleSaveAppointment}
           onUpdateForm={setFormState}
         />

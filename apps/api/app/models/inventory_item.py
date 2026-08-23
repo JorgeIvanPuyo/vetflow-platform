@@ -26,9 +26,21 @@ class InventoryItem(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    category_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     subcategory: Mapped[str | None] = mapped_column(String(100), nullable=True)
     unit: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     supplier: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("suppliers.id"),
+        nullable=True,
+        index=True,
+    )
     lot_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
     expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     current_stock: Mapped[Decimal] = mapped_column(
@@ -86,10 +98,27 @@ class InventoryItem(BaseModel):
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="inventory_items")
     created_by_user: Mapped[User | None] = relationship("User")
+    supplier_record: Mapped[Supplier | None] = relationship("Supplier")
+    category_catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
     movements: Mapped[list[InventoryMovement]] = relationship(
         "InventoryMovement",
         back_populates="inventory_item",
     )
+
+    @property
+    def supplier_name(self) -> str | None:
+        if self.supplier_record is None or self.supplier_record.tenant_id != self.tenant_id:
+            return None
+        return self.supplier_record.name
+
+    @property
+    def category_catalog_item_name(self) -> str | None:
+        if (
+            self.category_catalog_item is None
+            or self.category_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.category_catalog_item.name
 
     @property
     def is_low_stock(self) -> bool:

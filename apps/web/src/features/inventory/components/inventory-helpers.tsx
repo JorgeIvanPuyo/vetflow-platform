@@ -6,6 +6,7 @@ import {
   Syringe,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { formatCurrency, formatPercentage, type MoneyPreferences } from "@/lib/money";
 import type {
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
@@ -18,6 +19,7 @@ import type {
   InventoryMovementType,
   InventoryStatusFilter,
   InventoryUnit,
+  TenantPreferences,
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
@@ -94,9 +96,11 @@ export const inventoryExitReasonOptions: Array<{
 export type InventoryFormState = {
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id: string;
   subcategory: string;
   unit: InventoryUnit;
   supplier: string;
+  supplier_id: string;
   lot_number: string;
   expiration_date: string;
   current_stock: string;
@@ -137,24 +141,30 @@ export const initialInventoryFilterState: InventoryFilterState = {
   supplier: "",
 };
 
-export const initialInventoryFormState: InventoryFormState = {
-  name: "",
-  category: "medication",
-  subcategory: "",
-  unit: "unit",
-  supplier: "",
-  lot_number: "",
-  expiration_date: "",
-  current_stock: "0",
-  minimum_stock: "0",
-  purchase_price_ars: "",
-  purchase_tax_rate_percentage: "0",
-  profit_margin_percentage: "35",
-  sale_price_ars: "",
-  sale_tax_rate_percentage: "0",
-  round_sale_price: false,
-  notes: "",
-};
+export function getInitialInventoryFormState(
+  preferences?: TenantPreferences | null,
+): InventoryFormState {
+  return {
+    name: "",
+    category: "medication",
+    category_catalog_item_id: "",
+    subcategory: "",
+    unit: "unit",
+    supplier: "",
+    supplier_id: "",
+    lot_number: "",
+    expiration_date: "",
+    current_stock: "0",
+    minimum_stock: "0",
+    purchase_price_ars: "",
+    purchase_tax_rate_percentage: preferences?.default_purchase_tax_rate ?? "0",
+    profit_margin_percentage: preferences?.default_profit_margin ?? "35",
+    sale_price_ars: "",
+    sale_tax_rate_percentage: preferences?.default_sale_tax_rate ?? "0",
+    round_sale_price: false,
+    notes: "",
+  };
+}
 
 export const initialInventoryEntryFormState: InventoryEntryFormState = {
   quantity: "",
@@ -197,30 +207,18 @@ export function getInventoryCategoryIcon(category: InventoryCategory): ReactNode
   return <Box size={20} />;
 }
 
-export function formatInventoryCurrency(value?: string | number | null) {
-  if (value === undefined || value === null || value === "") {
-    return "ARS -";
-  }
-
-  const numericValue = Number(value);
-  if (Number.isNaN(numericValue)) {
-    return "ARS -";
-  }
-
-  return `ARS ${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}`;
+export function formatInventoryCurrency(
+  value: string | number | null | undefined,
+  preferences: MoneyPreferences,
+) {
+  return formatCurrency(value, preferences);
 }
 
-export function formatInventoryPercentage(value?: string | number | null) {
-  const numericValue = Number(value ?? 0);
-  if (Number.isNaN(numericValue)) {
-    return "0%";
-  }
-
-  return `${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}%`;
+export function formatInventoryPercentage(
+  value: string | number | null | undefined,
+  locale: string,
+) {
+  return formatPercentage(value, locale);
 }
 
 export function formatInventoryDate(value?: string | null) {
@@ -246,11 +244,11 @@ export function formatInventoryDateCompact(value?: string | null) {
   }).format(new Date(value));
 }
 
-export function formatInventoryQuantity(value: string, unit: InventoryUnit) {
+export function formatInventoryQuantity(value: string, unit: InventoryUnit, locale: string) {
   const numericValue = Number(value);
   const formatted = Number.isInteger(numericValue)
-    ? new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(numericValue)
-    : new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(numericValue);
+    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(numericValue)
+    : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(numericValue);
   return `${formatted} ${getInventoryUnitLabel(unit)}`;
 }
 
@@ -258,9 +256,10 @@ export function formatInventorySignedQuantity(
   quantity: string,
   unit: InventoryUnit,
   movementType: InventoryMovementType,
+  locale: string,
 ) {
   const sign = movementType === "entry" ? "+" : movementType === "exit" ? "-" : "";
-  return `${sign}${formatInventoryQuantity(quantity, unit)}`;
+  return `${sign}${formatInventoryQuantity(quantity, unit, locale)}`;
 }
 
 export function formatInventoryDateTime(value?: string | null) {
@@ -321,13 +320,16 @@ export function getInventoryExitReasonLabel(reason?: InventoryExitReason | null)
   );
 }
 
-export function getInventoryMovementAmountLabel(movement: InventoryMovement) {
+export function getInventoryMovementAmountLabel(
+  movement: InventoryMovement,
+  preferences: MoneyPreferences,
+) {
   if (movement.movement_type === "entry" && movement.total_cost_ars) {
-    return formatInventoryCurrency(movement.total_cost_ars);
+    return formatInventoryCurrency(movement.total_cost_ars, preferences);
   }
 
   if (movement.movement_type === "exit" && movement.total_sale_price_ars) {
-    return formatInventoryCurrency(movement.total_sale_price_ars);
+    return formatInventoryCurrency(movement.total_sale_price_ars, preferences);
   }
 
   return null;
@@ -500,6 +502,12 @@ export function inventoryFormToCreatePayload(
   if (formState.supplier.trim()) {
     payload.supplier = formState.supplier.trim();
   }
+  if (formState.supplier_id) {
+    payload.supplier_id = formState.supplier_id;
+  }
+  if (formState.category_catalog_item_id) {
+    payload.category_catalog_item_id = formState.category_catalog_item_id;
+  }
   if (formState.lot_number.trim()) {
     payload.lot_number = formState.lot_number.trim();
   }
@@ -538,6 +546,8 @@ export function inventoryFormToUpdatePayload(
 
   payload.subcategory = formState.subcategory.trim() || null;
   payload.supplier = formState.supplier.trim() || null;
+  payload.supplier_id = formState.supplier_id || null;
+  payload.category_catalog_item_id = formState.category_catalog_item_id || null;
   payload.lot_number = formState.lot_number.trim() || null;
   payload.expiration_date = formState.expiration_date || null;
   payload.purchase_price_ars = formState.purchase_price_ars.trim()
@@ -556,9 +566,11 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
   return {
     name: item.name,
     category: item.category,
+    category_catalog_item_id: item.category_catalog_item_id ?? "",
     subcategory: item.subcategory ?? "",
     unit: item.unit,
     supplier: item.supplier ?? "",
+    supplier_id: item.supplier_id ?? "",
     lot_number: item.lot_number ?? "",
     expiration_date: item.expiration_date ?? "",
     current_stock: item.current_stock,

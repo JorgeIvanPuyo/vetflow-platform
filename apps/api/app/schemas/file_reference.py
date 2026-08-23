@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 class FileReferenceBase(BaseModel):
     name: str
     file_type: str
+    file_type_catalog_item_id: uuid.UUID | None = None
     description: str | None = None
     external_url: str | None = None
 
@@ -18,6 +19,7 @@ class FileReferenceCreate(FileReferenceBase):
 class FileReferenceUpdate(BaseModel):
     name: str | None = None
     file_type: str | None = None
+    file_type_catalog_item_id: uuid.UUID | None = None
     description: str | None = None
     external_url: str | None = None
 
@@ -28,6 +30,7 @@ class FileReferenceRead(FileReferenceBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
+    file_type_catalog_item_name: str | None = None
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None

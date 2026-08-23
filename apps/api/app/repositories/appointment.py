@@ -33,6 +33,7 @@ class AppointmentRepository:
                 selectinload(Appointment.owner),
                 selectinload(Appointment.assigned_user),
                 selectinload(Appointment.created_by_user),
+                selectinload(Appointment.service),
             )
         )
         return self.db.scalar(statement)
@@ -60,6 +61,7 @@ class AppointmentRepository:
                 selectinload(Appointment.owner),
                 selectinload(Appointment.assigned_user),
                 selectinload(Appointment.created_by_user),
+                selectinload(Appointment.service),
             )
         )
         count_statement = select(func.count()).select_from(Appointment).where(

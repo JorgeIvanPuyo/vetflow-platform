@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import {
   buildInventoryListFilters,
   formatInventoryCurrency,
@@ -62,6 +63,11 @@ const initialState: InventoryScreenState = {
 };
 
 export function InventoryScreen() {
+  const { preferences } = useClinic();
+  const moneyPreferences = {
+    currencyCode: preferences?.currency_code ?? "USD",
+    locale: preferences?.locale ?? "es-PA",
+  };
   const router = useRouter();
   const [state, setState] = useState<InventoryScreenState>(initialState);
   const [queryInput, setQueryInput] = useState("");
@@ -289,12 +295,12 @@ export function InventoryScreen() {
                     </div>
                     <p className="inventory-card__meta">
                       {getInventoryCategoryLabel(item.category)}
-                      {item.supplier ? ` · ${item.supplier}` : ""}
+                      {item.supplier_name || item.supplier ? ` · ${item.supplier_name ?? item.supplier}` : ""}
                     </p>
                     <div className="inventory-card__stats">
-                      <span>Stock: {formatInventoryQuantity(item.current_stock, item.unit)}</span>
-                      <span>Mínimo: {formatInventoryQuantity(item.minimum_stock, item.unit)}</span>
-                      <span>Venta: {formatInventoryCurrency(item.sale_price_ars)}</span>
+                      <span>Stock: {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</span>
+                      <span>Mínimo: {formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</span>
+                      <span>Venta: {formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</span>
                     </div>
                     <div className="timeline-card__badges">
                       {getInventoryStatusBadges(item).map((badge) => (
@@ -357,12 +363,12 @@ export function InventoryScreen() {
                           <td>
                             <span className="inventory-table__secondary">
                               <strong>{getInventoryCategoryLabel(item.category)}</strong>
-                              <small>{item.supplier ?? "Sin proveedor"}</small>
+                              <small>{item.supplier_name ?? item.supplier ?? "Sin proveedor"}</small>
                             </span>
                           </td>
-                          <td>{formatInventoryQuantity(item.current_stock, item.unit)}</td>
-                          <td>{formatInventoryQuantity(item.minimum_stock, item.unit)}</td>
-                          <td>{formatInventoryCurrency(item.sale_price_ars)}</td>
+                          <td>{formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</td>
+                          <td>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</td>
+                          <td>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</td>
                           <td>
                             <span className="inventory-table__badges">
                               {statusBadges.length > 0 ? statusBadges.map((badge) => (

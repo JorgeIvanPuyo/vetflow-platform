@@ -8,6 +8,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import type { AppRole, InviteUserResult, TenantOption } from "@/types/api";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
+  { value: "clinic_admin", label: "Administrador de clínica" },
   { value: "medico_veterinario", label: "Médico veterinario" },
   { value: "contador", label: "Contador" },
   { value: "superadmin", label: "Superadmin" },

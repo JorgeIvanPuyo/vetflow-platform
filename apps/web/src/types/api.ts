@@ -100,6 +100,8 @@ export type ConsultationStudyRequest = {
   consultation_id: string;
   name: string;
   study_type: ConsultationStudyRequestType;
+  exam_catalog_item_id?: string | null;
+  exam_catalog_item_name?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -189,6 +191,8 @@ export type Exam = {
   requested_by_user_name?: string | null;
   requested_by_user_email?: string | null;
   exam_type: string;
+  exam_catalog_item_id?: string | null;
+  exam_catalog_item_name?: string | null;
   status: ExamStatus;
   requested_at: string;
   performed_at: string | null;
@@ -207,6 +211,8 @@ export type PreventiveCare = {
   patient_id: string;
   name: string;
   care_type: PreventiveCareType;
+  catalog_item_id?: string | null;
+  catalog_item_name?: string | null;
   applied_at: string;
   next_due_at: string | null;
   lot_number: string | null;
@@ -224,6 +230,8 @@ export type PatientFileReference = {
   patient_id: string;
   name: string;
   file_type: string;
+  file_type_catalog_item_id?: string | null;
+  file_type_catalog_item_name?: string | null;
   description: string | null;
   external_url: string | null;
   created_by_user_id?: string | null;
@@ -377,6 +385,146 @@ export type UpdateClinicTeamMemberPayload = {
   full_name: string;
 };
 
+export type TenantPreferences = {
+  id: string;
+  tenant_id: string;
+  currency_code: "USD" | "ARS";
+  locale: "es-PA" | "es-AR";
+  default_appointment_duration_minutes: number;
+  appointment_duration_options: number[];
+  catalog_template_version: string;
+  default_purchase_tax_rate: string;
+  default_sale_tax_rate: string;
+  default_profit_margin: string;
+  money_rounding_increment: string;
+};
+
+export type UpdateTenantPreferencesPayload = Partial<{
+  currency_code: "USD" | "ARS";
+  locale: "es-PA" | "es-AR";
+  default_appointment_duration_minutes: number;
+  appointment_duration_options: number[];
+  default_purchase_tax_rate: number;
+  default_sale_tax_rate: number;
+  default_profit_margin: number;
+  money_rounding_increment: number;
+}>;
+
+export type ClinicServiceKind =
+  | "consultation"
+  | "follow_up"
+  | "vaccine"
+  | "deworming"
+  | "exam"
+  | "procedure"
+  | "other";
+
+export type ClinicService = {
+  id: string;
+  tenant_id: string;
+  code: string;
+  name: string;
+  normalized_name: string;
+  description: string | null;
+  kind: ClinicServiceKind;
+  default_duration_minutes: number;
+  calendar_color: string;
+  is_bookable: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateClinicServicePayload = {
+  code: string;
+  name: string;
+  description?: string | null;
+  kind: ClinicServiceKind;
+  default_duration_minutes: number;
+  calendar_color?: string;
+  is_bookable?: boolean;
+  sort_order?: number;
+};
+
+export type UpdateClinicServicePayload = Partial<CreateClinicServicePayload>;
+
+export type CatalogType =
+  | "mucous_membrane"
+  | "hydration"
+  | "inventory_category"
+  | "inventory_subcategory"
+  | "exam_type"
+  | "preventive_care_type"
+  | "document_type"
+  | "follow_up_template";
+
+export type CatalogItem = {
+  id: string;
+  tenant_id: string;
+  catalog_type: CatalogType;
+  name: string;
+  normalized_name: string;
+  description: string | null;
+  code: string | null;
+  parent_id: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateCatalogItemPayload = {
+  name: string;
+  description?: string | null;
+  code?: string | null;
+  parent_id?: string | null;
+  sort_order?: number;
+};
+
+export type UpdateCatalogItemPayload = Partial<CreateCatalogItemPayload>;
+
+export type Supplier = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  normalized_name: string;
+  document_id: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSupplierPayload = {
+  name: string;
+  document_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
+
+export type UpdateSupplierPayload = Partial<CreateSupplierPayload>;
+
+export type ClinicConfiguration = {
+  preferences?: TenantPreferences | null;
+  services?: ClinicService[] | null;
+  catalogs?: Partial<Record<CatalogType, CatalogItem[]>> | null;
+};
+
 export type DashboardPeriod = {
   date_from: string;
   date_to: string;
@@ -520,9 +668,13 @@ export type InventoryItem = {
   tenant_id: string;
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id?: string | null;
+  category_catalog_item_name?: string | null;
   subcategory: string | null;
   unit: InventoryUnit;
   supplier: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
   lot_number: string | null;
   expiration_date: string | null;
   current_stock: string;
@@ -558,9 +710,11 @@ export type InventorySummary = {
 export type CreateInventoryItemPayload = {
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id?: string | null;
   subcategory?: string | null;
   unit: InventoryUnit;
   supplier?: string | null;
+  supplier_id?: string | null;
   lot_number?: string | null;
   expiration_date?: string | null;
   current_stock?: number;
@@ -648,6 +802,7 @@ export type AppointmentType =
   | "vaccine"
   | "deworming"
   | "exam"
+  | "procedure"
   | "other";
 
 export type AppointmentStatus =
@@ -663,6 +818,7 @@ export type Appointment = {
   owner_id: string | null;
   assigned_user_id?: string | null;
   created_by_user_id?: string | null;
+  service_id?: string | null;
   title: string;
   reason: string | null;
   appointment_type: AppointmentType;
@@ -676,6 +832,8 @@ export type Appointment = {
   assigned_user_email?: string | null;
   created_by_user_name?: string | null;
   created_by_user_email?: string | null;
+  service_name?: string | null;
+  service_calendar_color?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -684,12 +842,13 @@ export type CreateAppointmentPayload = {
   patient_id?: string | null;
   owner_id?: string | null;
   assigned_user_id?: string | null;
+  service_id?: string | null;
   title: string;
   reason?: string | null;
-  appointment_type: AppointmentType;
+  appointment_type?: AppointmentType | null;
   status?: AppointmentStatus;
   start_at: string;
-  end_at: string;
+  end_at?: string | null;
   notes?: string | null;
 };
 
@@ -885,6 +1044,7 @@ export type CreateMedicationPayload = {
 export type CreateStudyRequestPayload = {
   name: string;
   study_type: ConsultationStudyRequestType;
+  exam_catalog_item_id?: string | null;
   notes?: string | null;
 };
 
@@ -892,11 +1052,14 @@ export type CreateExamPayload = {
   patient_id: string;
   consultation_id?: string | null;
   exam_type: string;
+  exam_catalog_item_id?: string | null;
   requested_at: string;
   observations?: string | null;
 };
 
 export type UpdateExamPayload = {
+  exam_type?: string;
+  exam_catalog_item_id?: string | null;
   status?: ExamStatus;
   performed_at?: string | null;
   result_summary?: string | null;
@@ -907,6 +1070,7 @@ export type UpdateExamPayload = {
 export type CreatePreventiveCarePayload = {
   name: string;
   care_type: PreventiveCareType;
+  catalog_item_id?: string | null;
   applied_at: string;
   next_due_at?: string | null;
   lot_number?: string | null;
@@ -918,6 +1082,7 @@ export type UpdatePreventiveCarePayload = Partial<CreatePreventiveCarePayload>;
 export type CreatePatientFileReferencePayload = {
   name: string;
   file_type: string;
+  file_type_catalog_item_id?: string | null;
   description?: string | null;
   external_url?: string | null;
 };
@@ -941,7 +1106,7 @@ export type SearchResponse = {
   };
 };
 
-export type AppRole = "superadmin" | "medico_veterinario" | "contador";
+export type AppRole = "superadmin" | "clinic_admin" | "medico_veterinario" | "contador";
 
 export type CurrentUser = {
   id: string;
@@ -967,6 +1132,10 @@ export type AdminUser = {
 
 export type TenantOption = {
   id: string;
+  name: string;
+};
+
+export type CreateTenantPayload = {
   name: string;
 };
 

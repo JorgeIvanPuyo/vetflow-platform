@@ -158,6 +158,50 @@ def test_upload_file_creates_metadata_and_calls_storage(client, tenant):
     assert storage.uploads[0]["content_type"] == "application/pdf"
 
 
+def test_upload_file_with_document_type_catalog_item_resolves_name(
+    client, db_session, tenant
+):
+    from app.models.user import User
+
+    storage = _override_storage(client, FakeStorageService())
+    patient = _create_patient(client, tenant)
+    admin = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email="upload-cat-admin@example.com",
+        full_name="Admin",
+        role="clinic_admin",
+        is_active=True,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    db_session.refresh(admin)
+    catalog_response = client.post(
+        "/api/v1/clinic/catalogs/document_type",
+        headers={"X-User-Email": admin.email},
+        json={"name": "Laboratorio"},
+    )
+    assert catalog_response.status_code == 201
+    catalog_item = catalog_response.json()["data"]
+
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/files/upload",
+        headers=_headers(tenant),
+        data={
+            "name": "Laboratorio",
+            "file_type": "laboratory",
+            "file_type_catalog_item_id": catalog_item["id"],
+        },
+        files={"file": ("laboratorio.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+
+    assert response.status_code == 201
+    file_reference = response.json()["data"]
+    assert file_reference["file_type_catalog_item_id"] == catalog_item["id"]
+    assert file_reference["file_type_catalog_item_name"] == "Laboratorio"
+    assert len(storage.uploads) == 1
+
+
 def test_upload_rejects_invalid_content_type(client, tenant):
     _override_storage(client, FakeStorageService())
     patient = _create_patient(client, tenant)

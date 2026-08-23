@@ -3,9 +3,10 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { InventoryItemForm } from "@/features/inventory/components/inventory-item-form";
 import {
-  initialInventoryFormState,
+  getInitialInventoryFormState,
   inventoryFormToCreatePayload,
   InventoryFormState,
   validateInventoryForm,
@@ -15,7 +16,10 @@ import { createInventoryItem } from "@/services/inventory";
 
 export function InventoryCreateScreen() {
   const router = useRouter();
-  const [formState, setFormState] = useState<InventoryFormState>(initialInventoryFormState);
+  const { preferences } = useClinic();
+  const [formState, setFormState] = useState<InventoryFormState>(
+    getInitialInventoryFormState(preferences),
+  );
   const [manualSalePriceOverride, setManualSalePriceOverride] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [flowMessage, setFlowMessage] = useState<string | null>(null);

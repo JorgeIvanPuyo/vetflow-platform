@@ -1,9 +1,17 @@
 "use client";
 
 import { X } from "lucide-react";
-import type { FormEvent } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import type { ClinicTeamMember, FollowUpStatus, FollowUpType, Owner, Patient } from "@/types/api";
+import { getCatalogItems } from "@/services/catalogs";
+import type {
+  CatalogItem,
+  ClinicTeamMember,
+  FollowUpStatus,
+  FollowUpType,
+  Owner,
+  Patient,
+} from "@/types/api";
 
 import {
   FollowUpFormState,
@@ -51,6 +59,32 @@ export function FollowUpFormModal({
   const selectedPatient = patients.find((patient) => patient.id === formState.patient_id);
   const selectedOwner = owners.find((owner) => owner.id === formState.owner_id);
   const teamRequired = team.length > 0;
+  const [templates, setTemplates] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadTemplates() {
+      try {
+        const response = await getCatalogItems("follow_up_template", {
+          include_inactive: false,
+        });
+        if (isCurrent) {
+          setTemplates(response.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setTemplates([]);
+        }
+      }
+    }
+
+    void loadTemplates();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -220,6 +254,28 @@ export function FollowUpFormModal({
               />
             </label>
           </div>
+
+          {templates.length > 0 ? (
+            <label className="field">
+              <span>Plantilla (opcional)</span>
+              <select
+                value=""
+                onChange={(event) => {
+                  const selected = templates.find((item) => item.id === event.target.value);
+                  if (selected) {
+                    onUpdateForm({ ...formState, title: selected.name });
+                  }
+                }}
+              >
+                <option value="">Escribir manualmente</option>
+                {templates.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <label className="field">
             <span>Título *</span>

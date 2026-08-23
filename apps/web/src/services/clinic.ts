@@ -1,10 +1,13 @@
 import { api } from "@/lib/api";
 import type {
   ApiItemResponse,
+  ClinicConfiguration,
   ClinicProfile,
   ClinicTeamMember,
+  TenantPreferences,
   UpdateClinicProfilePayload,
   UpdateClinicTeamMemberPayload,
+  UpdateTenantPreferencesPayload,
 } from "@/types/api";
 
 export function getClinicProfile() {
@@ -45,5 +48,22 @@ export function updateClinicTeamMember(
   return api.patch<ApiItemResponse<ClinicTeamMember>>(
     `/api/v1/clinic/team/${userId}`,
     payload,
+  );
+}
+
+export function getClinicPreferences() {
+  return api.get<ApiItemResponse<TenantPreferences>>("/api/v1/clinic/preferences");
+}
+
+export function updateClinicPreferences(payload: UpdateTenantPreferencesPayload) {
+  return api.patch<ApiItemResponse<TenantPreferences>>(
+    "/api/v1/clinic/preferences",
+    payload,
+  );
+}
+
+export function getClinicConfiguration(include = "preferences,services") {
+  return api.get<ApiItemResponse<ClinicConfiguration>>(
+    `/api/v1/clinic/configuration?include=${encodeURIComponent(include)}`,
   );
 }

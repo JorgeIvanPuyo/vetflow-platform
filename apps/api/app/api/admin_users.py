@@ -7,12 +7,14 @@ from app.core.tenant import TenantContext, require_superadmin
 from app.db.session import get_db
 from app.schemas.admin_users import (
     AdminUserRead,
+    CreateTenantRequest,
     InviteUserRequest,
     InviteUserResponse,
     TenantOptionRead,
 )
 from app.schemas.common import ListMeta
 from app.services.admin_user import AdminUserService
+from app.services.tenant_provisioning import TenantProvisioningService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -74,5 +76,18 @@ def list_tenants(
             TenantOptionRead.model_validate(tenant).model_dump(mode="json")
             for tenant in tenants
         ],
+        "meta": {},
+    }
+
+
+@router.post("/tenants", status_code=status.HTTP_201_CREATED)
+def create_tenant(
+    payload: CreateTenantRequest,
+    _: TenantContext = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+) -> dict:
+    tenant = TenantProvisioningService(db).create_tenant(payload)
+    return {
+        "data": TenantOptionRead.model_validate(tenant).model_dump(mode="json"),
         "meta": {},
     }

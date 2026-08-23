@@ -61,3 +61,12 @@ class TenantOptionRead(BaseModel):
 
     id: uuid.UUID
     name: str
+
+
+class CreateTenantRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value

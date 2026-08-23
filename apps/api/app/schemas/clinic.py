@@ -1,6 +1,10 @@
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.catalog_item import CatalogItemRead
+from app.schemas.service import ServiceRead
 
 
 class ClinicProfileRead(BaseModel):
@@ -49,3 +53,36 @@ class ClinicTeamMemberUpdate(BaseModel):
     @classmethod
     def strip_full_name(cls, value: str) -> str:
         return value.strip() if isinstance(value, str) else value
+
+
+class TenantPreferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    currency_code: str
+    locale: str
+    default_appointment_duration_minutes: int
+    appointment_duration_options: list[int]
+    catalog_template_version: str
+    default_purchase_tax_rate: Decimal
+    default_sale_tax_rate: Decimal
+    default_profit_margin: Decimal
+    money_rounding_increment: Decimal
+
+
+class TenantPreferenceUpdate(BaseModel):
+    currency_code: str | None = None
+    locale: str | None = None
+    default_appointment_duration_minutes: int | None = Field(default=None, gt=0, le=480)
+    appointment_duration_options: list[int] | None = None
+    default_purchase_tax_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    default_sale_tax_rate: Decimal | None = Field(default=None, ge=0, le=100)
+    default_profit_margin: Decimal | None = Field(default=None, ge=0)
+    money_rounding_increment: Decimal | None = Field(default=None, gt=0)
+
+
+class ClinicConfigurationRead(BaseModel):
+    preferences: TenantPreferenceRead | None = None
+    services: list[ServiceRead] | None = None
+    catalogs: dict[str, list[CatalogItemRead]] | None = None

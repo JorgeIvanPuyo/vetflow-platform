@@ -3,6 +3,7 @@ import type {
   AdminUser,
   ApiItemResponse,
   ApiListResponse,
+  CreateTenantPayload,
   InviteUserPayload,
   InviteUserResult,
   ListUsersFilters,
@@ -37,5 +38,12 @@ export function inviteUser(payload: InviteUserPayload) {
 export function listTenants() {
   return api.get<{ data: TenantOption[]; meta: Record<string, never> }>(
     "/api/v1/admin/tenants",
+  );
+}
+
+export function createTenant(payload: CreateTenantPayload) {
+  return api.post<ApiItemResponse<TenantOption>>(
+    "/api/v1/admin/tenants",
+    payload,
   );
 }
