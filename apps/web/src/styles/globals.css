@@ -292,6 +292,10 @@
 .fiscal-status--pending { background: var(--color-warning-soft); color: #7c5200; }
 .fiscal-status--documented { background: var(--color-success-soft); color: var(--color-primary-dark); }
 .fiscal-status--requires_attention { background: #fee2e2; color: #991b1b; }
+.payment-status--unpaid { background: var(--color-warning-soft); color: #7c5200; }
+.payment-status--partial { background: var(--color-blue-soft); color: #1d4ed8; }
+.payment-status--paid { background: var(--color-success-soft); color: var(--color-primary-dark); }
+.payment-status--requires_attention { background: #fee2e2; color: #991b1b; }
 
 .fiscal-issuer-form,
 .sale-fiscal-form,

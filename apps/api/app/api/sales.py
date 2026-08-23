@@ -22,6 +22,7 @@ from app.schemas.sale import (
     SaleUpdate,
 )
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
+from app.schemas.payment import PaymentStatus
 from app.services.purchase_attachment import MAX_PURCHASE_ATTACHMENT_SIZE_BYTES
 from app.services.sale import SaleService
 from app.services.sale_fiscal_document import SaleFiscalDocumentService
@@ -57,6 +58,7 @@ def list_sales(
     date_to: date | None = Query(default=None),
     created_by_user_id: uuid.UUID | None = Query(default=None),
     fiscal_status: FiscalStatus | None = Query(default=None),
+    payment_status: PaymentStatus | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort_by: SaleSortBy = Query(default="sale_date"),
@@ -70,6 +72,7 @@ def list_sales(
         owner_id=owner_id, patient_id=patient_id, status=sale_status, line_type=line_type,
         date_from=date_from, date_to=date_to, created_by_user_id=created_by_user_id,
         fiscal_status=fiscal_status,
+        payment_status=payment_status,
         page=page, page_size=page_size, sort_by=sort_by, sort_direction=sort_direction,
     )
     return {"data": [SaleSummaryRead.model_validate(item).model_dump(mode="json") for item in sales], "meta": meta}

@@ -857,8 +857,8 @@ Crear, editar, consultar o cancelar un borrador no modifica stock y no crea
 `InventoryMovement`. Confirmar y revertir son transacciones únicas. Sale,
 SaleItem, InventoryItem, InventoryMovement y actores se resuelven dentro del
 tenant autenticado; IDs cross-tenant devuelven `404` sin revelar existencia.
-No se implementan todavía ARCA, CAE, certificados, pagos, caja, cuentas por
-cobrar, devoluciones comerciales, notas de crédito ni dashboard de ventas.
+No se implementan todavía ARCA, CAE, certificados, caja, conciliación,
+devoluciones comerciales automáticas, notas de crédito ni dashboard de ventas.
 
 ### Facturación manual y comprobantes de Venta
 
@@ -920,3 +920,56 @@ persona como emisor no cambia `created_by_user_id`, `confirmed_by_user_id` ni
 consulta, relación, filtro, unicidad lógica y acceso a archivo incluye
 `tenant_id`; recursos y usuarios cross-tenant devuelven `404`. Se reutilizan los
 permisos operativos actuales y no se agregan roles.
+
+### Formas de pago y registro de cobros de Venta
+
+`PaymentMethod` es un catálogo tenant-owned configurable desde Ajustes. Cada
+registro conserva una etiqueta visible editable, un tipo interno estable
+(`cash`, `bank_transfer`, `debit_card`, `credit_card`, `digital_wallet` u
+`other`), estado activo y orden. No se crean valores arbitrarios durante la
+migración: una clínica existente puede iniciar con catálogo vacío y debe crear
+sus opciones explícitamente. Sólo las opciones activas aparecen al registrar un
+cobro. No existe borrado; inactivar o renombrar no altera el historial. El tipo
+puede editarse únicamente mientras no exista ningún cobro histórico, incluso si
+fue anulado. Dos opciones activas no pueden compartir una etiqueta normalizada
+sin distinguir mayúsculas, espacios ni minúsculas dentro del mismo tenant.
+
+- `POST /api/v1/payment-methods` crea una forma de pago.
+- `GET /api/v1/payment-methods` admite `active`, `type`, `search`, `page` y
+  `page_size`; ordena por `sort_order`, etiqueta e ID estable.
+- `GET /api/v1/payment-methods/{method_id}` consulta una opción.
+- `PATCH /api/v1/payment-methods/{method_id}` modifica etiqueta, orden, estado
+  y, sólo antes del primer uso, tipo.
+
+`SalePayment` registra cobros independientes de la confirmación y del comprobante
+fiscal. Sólo una `Sale` confirmada acepta nuevos cobros. Cada fila captura
+snapshots de etiqueta y tipo, importe ARS decimal positivo, fecha y hora,
+referencia y notas opcionales, actor y trazabilidad de anulación. El request no
+acepta tenant, snapshots, actores, estado ni campos derivados. Referencia y notas
+son metadata operativa; no deben incluir PAN, CVV, PIN ni otros datos sensibles
+de tarjeta.
+
+- `POST /api/v1/sales/{sale_id}/payments` registra un cobro.
+- `GET /api/v1/sales/{sale_id}/payments` devuelve historial activo y anulado,
+  junto con resumen derivado en `meta`.
+- `POST /api/v1/sale-payments/{payment_id}/void` exige `reason`, conserva la
+  fila y registra fecha y actor. Una segunda anulación devuelve conflicto.
+
+El alta bloquea la venta con `FOR UPDATE`, recalcula la suma de cobros activos y
+rechaza cualquier importe que supere el saldo; dos cobros concurrentes no pueden
+producir sobrepago. La anulación bloquea primero la venta y luego el cobro para
+mantener un orden consistente. No existe edición destructiva: una corrección se
+realiza anulando y registrando un cobro nuevo.
+
+Los campos derivados son `paid_total_ars`, `balance_due_ars`, `payment_status` y
+`payment_requires_attention`. En confirmadas, el estado es `unpaid`, `partial` o
+`paid`. En borradores, canceladas y revertidas sin cobros es nulo. Una revertida
+con cobros activos conserva el dinero histórico y pasa a `requires_attention`;
+Vetflow no crea automáticamente una devolución o reembolso. `GET /api/v1/sales`
+admite `payment_status=unpaid|partial|paid|requires_attention`: los tres primeros
+se limitan a confirmadas y el último a revertidas con suma activa positiva.
+
+Sale, PaymentMethod, SalePayment, agregados, filtros y actores se resuelven con
+`tenant_id` explícito. IDs cross-tenant se comportan como inexistentes (`404`).
+Los índices por tenant, venta, forma, fecha y actor sostienen futuros reportes,
+sin introducir caja, conciliación bancaria ni cuentas por cobrar complejas.

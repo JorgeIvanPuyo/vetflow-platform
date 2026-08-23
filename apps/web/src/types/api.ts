@@ -1702,6 +1702,44 @@ export type SaleStatus = "draft" | "confirmed" | "cancelled" | "reversed";
 export type SaleLineType = "product" | "service";
 export type FiscalDocumentType = "receipt_c" | "invoice_c";
 export type SaleFiscalStatus = "pending" | "documented" | "requires_attention";
+export type PaymentMethodType = "cash" | "bank_transfer" | "debit_card" | "credit_card" | "digital_wallet" | "other";
+export type SalePaymentStatus = "unpaid" | "partial" | "paid" | "requires_attention";
+
+export type PaymentMethod = {
+  id: string;
+  label: string;
+  type: PaymentMethodType;
+  is_active: boolean;
+  sort_order: number;
+  has_payments: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order">;
+
+export type SalePayment = {
+  id: string;
+  sale_id: string;
+  payment_method_id: string;
+  payment_method_label_snapshot: string;
+  payment_method_type_snapshot: PaymentMethodType;
+  amount_ars: string;
+  received_at: string;
+  reference: string | null;
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  is_active: boolean;
+  voided_at: string | null;
+  voided_by_user_id: string | null;
+  voided_by_user_name: string | null;
+  voided_by_user_email: string | null;
+  void_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type FiscalIssuer = {
   id: string;
@@ -1815,6 +1853,10 @@ export type SaleSummary = {
   total_ars: string;
   status: SaleStatus;
   fiscal_status: SaleFiscalStatus | null;
+  paid_total_ars: string;
+  balance_due_ars: string;
+  payment_status: SalePaymentStatus | null;
+  payment_requires_attention: boolean;
   item_count: number;
   created_by_user_id: string | null;
   created_by_user_name: string | null;
@@ -1846,6 +1888,7 @@ export type Sale = Omit<SaleSummary, "item_count"> & {
   reversal_reason: string | null;
   reversal_operation_id: string | null;
   fiscal_document: SaleFiscalDocument | null;
+  payments: SalePayment[];
   items: SaleItem[];
 };
 
@@ -1867,6 +1910,7 @@ export type SaleListFilters = {
   date_to?: string;
   created_by_user_id?: string;
   fiscal_status?: SaleFiscalStatus;
+  payment_status?: SalePaymentStatus;
   page?: number;
   page_size?: number;
   sort_by?: "sale_date" | "created_at" | "total_ars" | "status";

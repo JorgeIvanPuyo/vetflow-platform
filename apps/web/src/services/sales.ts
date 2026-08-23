@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { ApiItemResponse, FiscalIssuer, FiscalIssuerWritePayload, PurchaseCreatorOption, Sale, SaleFiscalDocument, SaleListFilters, SaleSummary, SaleWritePayload } from "@/types/api";
+import type { ApiItemResponse, FiscalIssuer, FiscalIssuerWritePayload, PaymentMethod, PaymentMethodWritePayload, PurchaseCreatorOption, Sale, SaleFiscalDocument, SaleListFilters, SalePayment, SaleSummary, SaleWritePayload } from "@/types/api";
 
 export type SaleListResponse = { data: SaleSummary[]; meta: { page: number; page_size: number; total: number; total_pages: number } };
 
@@ -17,6 +17,12 @@ export function cancelSale(id: string, reason: string) { return api.post<ApiItem
 export function confirmSale(id: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, { confirm: true }, { retryTransient: false }); }
 export function reverseSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/reverse`, { reason }, { retryTransient: false }); }
 export function getSaleFilterOptions() { return api.get<{ data: { creators: PurchaseCreatorOption[] }; meta: Record<string, never> }>("/api/v1/sales/filter-options"); }
+
+export function getPaymentMethods(active?: boolean) { const query = active === undefined ? "" : `?active=${active}`; return api.get<{ data: PaymentMethod[]; meta: { total: number } }>(`/api/v1/payment-methods${query}`); }
+export function createPaymentMethod(payload: PaymentMethodWritePayload) { return api.post<ApiItemResponse<PaymentMethod>>("/api/v1/payment-methods", payload, { retryTransient: false }); }
+export function updatePaymentMethod(id: string, payload: Partial<PaymentMethodWritePayload>) { return api.patch<ApiItemResponse<PaymentMethod>>(`/api/v1/payment-methods/${id}`, payload); }
+export function createSalePayment(saleId: string, payload: { payment_method_id: string; amount_ars: string; received_at: string; reference?: string | null; notes?: string | null }) { return api.post<ApiItemResponse<SalePayment>>(`/api/v1/sales/${saleId}/payments`, payload, { retryTransient: false }); }
+export function voidSalePayment(id: string, reason: string) { return api.post<ApiItemResponse<SalePayment>>(`/api/v1/sale-payments/${id}/void`, { reason }, { retryTransient: false }); }
 
 export function getFiscalIssuers(activeOnly = false) {
   return api.get<{ data: FiscalIssuer[]; meta: { total: number } }>(`/api/v1/fiscal-issuers${activeOnly ? "?active_only=true" : ""}`);

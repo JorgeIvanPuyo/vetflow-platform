@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
+from app.schemas.payment import PaymentStatus, SalePaymentRead
 
 
 SaleStatus = Literal["draft", "confirmed", "cancelled", "reversed"]
@@ -142,6 +143,10 @@ class SaleSummaryRead(BaseModel):
     total_ars: Decimal
     status: SaleStatus
     fiscal_status: FiscalStatus | None = None
+    paid_total_ars: Decimal
+    balance_due_ars: Decimal
+    payment_status: PaymentStatus | None = None
+    payment_requires_attention: bool = False
     item_count: int
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
@@ -174,6 +179,11 @@ class SaleDetailRead(BaseModel):
     status: SaleStatus
     fiscal_status: FiscalStatus | None = None
     fiscal_document: SaleFiscalDocumentRead | None = None
+    paid_total_ars: Decimal
+    balance_due_ars: Decimal
+    payment_status: PaymentStatus | None = None
+    payment_requires_attention: bool = False
+    payments: list[SalePaymentRead]
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None

@@ -65,6 +65,9 @@ class Sale(BaseModel):
         back_populates="sale",
         order_by="desc(SaleFiscalDocument.created_at)",
     )
+    payments: Mapped[list[SalePayment]] = relationship(
+        "SalePayment", back_populates="sale", order_by="desc(SalePayment.received_at)"
+    )
 
     @property
     def fiscal_document(self) -> SaleFiscalDocument | None:
@@ -75,6 +78,31 @@ class Sale(BaseModel):
         if self.fiscal_document is not None:
             return "requires_attention" if self.status == "reversed" else "documented"
         return "pending" if self.status == "confirmed" else None
+
+    @property
+    def paid_total_ars(self) -> Decimal:
+        return sum(
+            (payment.amount_ars for payment in self.payments if payment.is_active),
+            Decimal("0.00"),
+        ).quantize(Decimal("0.01"))
+
+    @property
+    def balance_due_ars(self) -> Decimal:
+        return self.total_ars - self.paid_total_ars
+
+    @property
+    def payment_requires_attention(self) -> bool:
+        return self.status == "reversed" and self.paid_total_ars > 0
+
+    @property
+    def payment_status(self) -> str | None:
+        if self.payment_requires_attention:
+            return "requires_attention"
+        if self.status != "confirmed":
+            return None
+        if self.paid_total_ars == 0:
+            return "unpaid"
+        return "paid" if self.paid_total_ars == self.total_ars else "partial"
 
     @staticmethod
     def _user_value(user, tenant_id: uuid.UUID, field: str):

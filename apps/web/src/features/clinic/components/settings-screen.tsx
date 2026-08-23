@@ -350,13 +350,17 @@ export function SettingsScreen() {
               </span>
               <span className="settings-section-card__copy">
                 <strong>Ventas y facturación</strong>
-                <small>Emisores y configuración de comprobantes manuales.</small>
+                <small>Formas de pago, emisores y comprobantes manuales.</small>
               </span>
               <ChevronDown aria-hidden="true" size={16} />
             </button>
 
             {expandedSettingsSections.salesBilling ? (
               <div className="settings-section-card__content">
+                <Link className="settings-navigation-row" href="/settings/sales/payment-methods">
+                  <span><strong>Formas de pago</strong><small>Configura las opciones disponibles para registrar cobros.</small></span>
+                  <span aria-hidden="true">→</span>
+                </Link>
                 <Link className="settings-navigation-row" href="/settings/sales/fiscal-issuers">
                   <span>
                     <strong>Emisores fiscales</strong>

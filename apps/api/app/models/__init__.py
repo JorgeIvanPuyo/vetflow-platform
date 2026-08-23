@@ -11,6 +11,7 @@ from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
+from app.models.payment import PaymentMethod, SalePayment
 from app.models.purchase import Purchase, PurchaseItem
 from app.models.purchase_attachment import PurchaseAttachment
 from app.models.purchase_return import (
@@ -37,6 +38,8 @@ __all__ = [
     "Exam",
     "PatientPreventiveCare",
     "PatientFileReference",
+    "PaymentMethod",
+    "SalePayment",
     "Appointment",
     "FollowUp",
     "InventoryCodeSequence",

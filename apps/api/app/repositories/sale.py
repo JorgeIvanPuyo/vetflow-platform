@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import asc, desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
+from app.models.payment import SalePayment
 from app.models.sale import Sale, SaleItem
 from app.models.sale_fiscal import SaleFiscalDocument, SaleFiscalDocumentFileVersion
 from app.models.user import User
@@ -43,6 +45,10 @@ class SaleRepository:
                 selectinload(Sale.cancelled_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.confirmed_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.reversed_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(Sale.payments.and_(SalePayment.tenant_id == tenant_id)).options(
+                    selectinload(SalePayment.created_by_user.and_(User.tenant_id == tenant_id)),
+                    selectinload(SalePayment.voided_by_user.and_(User.tenant_id == tenant_id)),
+                ),
                 selectinload(
                     Sale.fiscal_documents.and_(
                         SaleFiscalDocument.tenant_id == tenant_id,
@@ -88,11 +94,12 @@ class SaleRepository:
         date_to: date | None,
         created_by_user_id: uuid.UUID | None,
         fiscal_status: str | None,
+        payment_status: str | None,
         page: int,
         page_size: int,
         sort_by: str,
         sort_direction: str,
-    ) -> tuple[list[tuple[Sale, int]], int]:
+    ) -> tuple[list[tuple[Sale, int, Decimal]], int]:
         filters = [Sale.tenant_id == tenant_id]
         if search:
             pattern = f"%{search}%"
@@ -127,11 +134,25 @@ class SaleRepository:
         elif fiscal_status == "requires_attention":
             filters.extend((Sale.status == "reversed", active_document))
 
+        paid_total = select(func.coalesce(func.sum(SalePayment.amount_ars), 0)).where(
+            SalePayment.tenant_id == tenant_id,
+            SalePayment.sale_id == Sale.id,
+            SalePayment.is_active.is_(True),
+        ).correlate(Sale).scalar_subquery()
+        if payment_status == "unpaid":
+            filters.extend((Sale.status == "confirmed", paid_total == 0))
+        elif payment_status == "partial":
+            filters.extend((Sale.status == "confirmed", paid_total > 0, paid_total < Sale.total_ars))
+        elif payment_status == "paid":
+            filters.extend((Sale.status == "confirmed", paid_total == Sale.total_ars))
+        elif payment_status == "requires_attention":
+            filters.extend((Sale.status == "reversed", paid_total > 0))
+
         item_count = select(func.count(SaleItem.id)).where(SaleItem.tenant_id == tenant_id, SaleItem.sale_id == Sale.id).correlate(Sale).scalar_subquery()
         sort_columns = {"sale_date": Sale.sale_date, "created_at": Sale.created_at, "total_ars": Sale.total_ars, "status": Sale.status}
         order = asc if sort_direction == "asc" else desc
         statement = (
-            select(Sale, item_count.label("item_count"))
+            select(Sale, item_count.label("item_count"), paid_total.label("paid_total"))
             .where(*filters)
             .options(
                 selectinload(Sale.created_by_user.and_(User.tenant_id == tenant_id)),
@@ -148,4 +169,4 @@ class SaleRepository:
         )
         count_statement = select(func.count(Sale.id)).where(*filters)
         rows = self.db.execute(statement).all()
-        return [(row[0], int(row[1] or 0)) for row in rows], int(self.db.scalar(count_statement) or 0)
+        return [(row[0], int(row[1] or 0), Decimal(row[2] or 0)) for row in rows], int(self.db.scalar(count_statement) or 0)

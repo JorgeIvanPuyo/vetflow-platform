@@ -294,8 +294,17 @@ class SaleService:
                 "item_count": item_count,
                 "created_by_user_id": sale.created_by_user_id, "created_by_user_name": sale.created_by_user_name,
                 "created_by_user_email": sale.created_by_user_email, "created_at": sale.created_at, "updated_at": sale.updated_at,
+                "paid_total_ars": paid_total,
+                "balance_due_ars": sale.total_ars - paid_total,
+                "payment_status": (
+                    "requires_attention" if sale.status == "reversed" and paid_total > 0
+                    else "unpaid" if sale.status == "confirmed" and paid_total == 0
+                    else "paid" if sale.status == "confirmed" and paid_total == sale.total_ars
+                    else "partial" if sale.status == "confirmed" else None
+                ),
+                "payment_requires_attention": sale.status == "reversed" and paid_total > 0,
             }
-            for sale, item_count in rows
+            for sale, item_count, paid_total in rows
         ]
         page, page_size = filters["page"], filters["page_size"]
         return data, {"page": page, "page_size": page_size, "total": total, "total_pages": ceil(total / page_size) if total else 0}
