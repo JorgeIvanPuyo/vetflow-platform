@@ -1,132 +1,30 @@
+import secrets
 import uuid
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
+from app.core.firebase import (
+    FirebaseUserProvisioningError,
+    create_firebase_user,
+    generate_password_reset_link,
+)
 from app.models.catalog_item import CatalogItem
 from app.models.service import Service
 from app.models.tenant import Tenant
 from app.models.tenant_preference import TenantPreference
+from app.models.user import User
 from app.repositories.catalog_item import CatalogItemRepository
 from app.repositories.clinic import ClinicRepository
 from app.repositories.service import ServiceRepository
+from app.repositories.user import UserRepository
 from app.schemas.admin_users import CreateTenantRequest
+from app.services.catalog_defaults import (
+    DEFAULT_CATALOG_ITEM_TEMPLATES,
+    DEFAULT_SERVICE_TEMPLATES,
+)
 from app.services.clinic import DEFAULT_DURATION_OPTIONS
 from app.services.normalization import normalize_name
-
-# New tenants get the same defaults every existing tenant already sees today
-# (ClinicService.get_preferences' lazy default, and the SERVICE_TEMPLATES_V1 /
-# CATALOG_SEED_TEMPLATES_V1 seeded by alembic/versions/0026 and 0027). This is a
-# deliberate separate copy: those migrations are frozen historical snapshots and
-# must not import from application code that can keep evolving.
-DEFAULT_SERVICE_TEMPLATES = (
-    {
-        "code": "CONSULTA",
-        "name": "Consulta general",
-        "description": "Atencion clinica general",
-        "kind": "consultation",
-        "default_duration_minutes": 30,
-        "calendar_color": "#2563eb",
-        "is_bookable": True,
-        "sort_order": 10,
-    },
-    {
-        "code": "SEGUIMIENTO",
-        "name": "Seguimiento",
-        "description": "Control posterior a consulta o tratamiento",
-        "kind": "follow_up",
-        "default_duration_minutes": 30,
-        "calendar_color": "#0891b2",
-        "is_bookable": True,
-        "sort_order": 20,
-    },
-    {
-        "code": "VACUNA",
-        "name": "Vacunacion",
-        "description": "Aplicacion de vacunas",
-        "kind": "vaccine",
-        "default_duration_minutes": 20,
-        "calendar_color": "#16a34a",
-        "is_bookable": True,
-        "sort_order": 30,
-    },
-    {
-        "code": "DESPARASITACION",
-        "name": "Desparasitacion",
-        "description": "Control y aplicacion antiparasitaria",
-        "kind": "deworming",
-        "default_duration_minutes": 20,
-        "calendar_color": "#ca8a04",
-        "is_bookable": True,
-        "sort_order": 40,
-    },
-    {
-        "code": "EXAMEN",
-        "name": "Examen",
-        "description": "Toma o revision de examenes",
-        "kind": "exam",
-        "default_duration_minutes": 30,
-        "calendar_color": "#9333ea",
-        "is_bookable": True,
-        "sort_order": 50,
-    },
-)
-
-DEFAULT_CATALOG_ITEM_TEMPLATES = {
-    "mucous_membrane": (
-        {"name": "Rosas", "sort_order": 10},
-        {"name": "Rosas pálidas", "sort_order": 20},
-        {"name": "Pálidas", "sort_order": 30},
-        {"name": "Congestionadas", "sort_order": 40},
-        {"name": "Cianóticas", "sort_order": 50},
-        {"name": "Ictéricas", "sort_order": 60},
-    ),
-    "hydration": (
-        {"name": "Normal", "sort_order": 10},
-        {"name": "Leve deshidratación", "sort_order": 20},
-        {"name": "Moderada", "sort_order": 30},
-        {"name": "Severa", "sort_order": 40},
-    ),
-    # These mirror alembic/versions/0030_operational_catalog_references.py's
-    # CATALOG_SEED_TEMPLATES_V2 (a frozen historical snapshot for existing tenants);
-    # this copy is what new tenants get going forward and can evolve independently.
-    "inventory_category": (
-        {"name": "Medicamento", "code": "medication", "sort_order": 10},
-        {"name": "Vacuna", "code": "vaccine", "sort_order": 20},
-        {"name": "Insumo", "code": "supply", "sort_order": 30},
-        {"name": "Alimento", "code": "food", "sort_order": 40},
-        {"name": "Otro", "code": "other", "sort_order": 50},
-    ),
-    "document_type": (
-        {"name": "Laboratorio", "code": "laboratory", "sort_order": 10},
-        {"name": "Radiografía", "code": "radiography", "sort_order": 20},
-        {"name": "Ecografía", "code": "ultrasound", "sort_order": 30},
-        {"name": "Foto clínica", "code": "clinical_photo", "sort_order": 40},
-        {"name": "Documento", "code": "document", "sort_order": 50},
-        {"name": "Otro", "code": "other", "sort_order": 60},
-    ),
-    "exam_type": (
-        {"name": "Hemograma completo", "sort_order": 10},
-        {"name": "Perfil bioquímico", "sort_order": 20},
-        {"name": "Urianálisis", "sort_order": 30},
-        {"name": "Coproparasitológico", "sort_order": 40},
-        {"name": "Radiografía", "sort_order": 50},
-        {"name": "Ecografía abdominal", "sort_order": 60},
-    ),
-    "preventive_care_type": (
-        {"name": "Vacuna antirrábica", "sort_order": 10},
-        {"name": "Vacuna polivalente", "sort_order": 20},
-        {"name": "Desparasitación interna", "sort_order": 30},
-        {"name": "Desparasitación externa", "sort_order": 40},
-        {"name": "Control antipulgas y garrapatas", "sort_order": 50},
-    ),
-    "follow_up_template": (
-        {"name": "Control posterior a consulta", "sort_order": 10},
-        {"name": "Recordatorio de vacunación", "sort_order": 20},
-        {"name": "Recordatorio de desparasitación", "sort_order": 30},
-        {"name": "Revisión de resultado de examen", "sort_order": 40},
-        {"name": "Seguimiento general", "sort_order": 50},
-    ),
-}
 
 
 class TenantProvisioningService:
@@ -135,8 +33,35 @@ class TenantProvisioningService:
         self.clinic_repository = ClinicRepository(db)
         self.service_repository = ServiceRepository(db)
         self.catalog_item_repository = CatalogItemRepository(db)
+        self.user_repository = UserRepository(db)
 
-    def create_tenant(self, payload: CreateTenantRequest) -> Tenant:
+    def create_tenant(
+        self,
+        payload: CreateTenantRequest,
+    ) -> tuple[Tenant, dict, str | None]:
+        if self.user_repository.get_by_email(payload.admin_email) is not None:
+            raise AppError(
+                409,
+                "user_already_exists",
+                "Ya existe un usuario con ese correo",
+            )
+
+        # Provision the Firebase account before touching the database: if this fails,
+        # no tenant should end up partially provisioned (RF-07).
+        temporary_password = secrets.token_urlsafe(16)
+        try:
+            create_firebase_user(
+                email=payload.admin_email,
+                display_name=payload.admin_full_name,
+                password=temporary_password,
+            )
+        except FirebaseUserProvisioningError as exc:
+            raise AppError(
+                502,
+                "firebase_user_create_failed",
+                "No se pudo crear la cuenta de acceso",
+            ) from exc
+
         tenant = Tenant(id=uuid.uuid4(), name=payload.name)
         self.db.add(tenant)
         self.db.flush()
@@ -172,6 +97,35 @@ class TenantProvisioningService:
                     )
                 )
 
+        admin_user = User(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            email=payload.admin_email,
+            full_name=payload.admin_full_name,
+            role="clinic_admin",
+            is_active=True,
+        )
+        self.db.add(admin_user)
+
         self.db.commit()
         self.db.refresh(tenant)
-        return tenant
+        self.db.refresh(admin_user)
+
+        reset_link: str | None = None
+        try:
+            reset_link = generate_password_reset_link(payload.admin_email)
+        except FirebaseUserProvisioningError:
+            reset_link = None
+
+        admin_user_response = {
+            "id": admin_user.id,
+            "full_name": admin_user.full_name,
+            "email": admin_user.email,
+            "role": admin_user.role,
+            "is_active": admin_user.is_active,
+            "tenant_id": admin_user.tenant_id,
+            "tenant_name": tenant.display_name or tenant.name,
+            "created_at": admin_user.created_at,
+            "updated_at": admin_user.updated_at,
+        }
+        return tenant, admin_user_response, reset_link

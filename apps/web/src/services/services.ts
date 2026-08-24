@@ -52,6 +52,13 @@ export function deactivateService(serviceId: string) {
   );
 }
 
+export function restoreServiceDefaults() {
+  return api.post<{ data: ClinicService[]; meta: Record<string, never> }>(
+    "/api/v1/services/restore-defaults",
+    {},
+  );
+}
+
 export function reorderServices(items: Array<{ id: string; sort_order: number }>) {
   return api.patch<{ data: ClinicService[]; meta: Record<string, never> }>(
     "/api/v1/services/reorder",

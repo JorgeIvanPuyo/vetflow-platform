@@ -14,6 +14,10 @@ CatalogType = Literal[
     "preventive_care_type",
     "document_type",
     "follow_up_template",
+    "species",
+    "breed",
+    "diagnostic_tag",
+    "prescription_template",
 ]
 CATALOG_TYPES: tuple[str, ...] = (
     "mucous_membrane",
@@ -24,6 +28,10 @@ CATALOG_TYPES: tuple[str, ...] = (
     "preventive_care_type",
     "document_type",
     "follow_up_template",
+    "species",
+    "breed",
+    "diagnostic_tag",
+    "prescription_template",
 )
 
 # Catalog types that nest under another catalog type (child -> required parent type).
@@ -31,6 +39,7 @@ CATALOG_TYPES: tuple[str, ...] = (
 # item of the mapped parent type within the same tenant.
 PARENT_CATALOG_TYPES: dict[str, str] = {
     "inventory_subcategory": "inventory_category",
+    "breed": "species",
 }
 
 

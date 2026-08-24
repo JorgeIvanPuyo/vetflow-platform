@@ -320,6 +320,8 @@ class FileReferenceService:
                 "invalid_catalog_item_type",
                 f"Catalog item must be of type {DOCUMENT_TYPE_CATALOG_TYPE}",
             )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_upload_fields(self, name: str, file_type: str) -> None:
         if not name or not name.strip():

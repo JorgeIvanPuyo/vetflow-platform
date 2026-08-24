@@ -70,6 +70,21 @@ def reorder_services(
     }
 
 
+@router.post("/restore-defaults")
+def restore_default_services(
+    tenant: TenantContext = Depends(require_clinic_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    services = ServiceCatalogService(db).restore_defaults(tenant.tenant_id)
+    return {
+        "data": [
+            ServiceRead.model_validate(service).model_dump(mode="json")
+            for service in services
+        ],
+        "meta": {},
+    }
+
+
 @router.get("/{service_id}")
 def get_service(
     service_id: uuid.UUID,

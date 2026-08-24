@@ -32,24 +32,65 @@ def _mock_auth(monkeypatch):
     monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": token})
 
 
+def _mock_firebase(monkeypatch):
+    import app.services.tenant_provisioning as provisioning
+
+    monkeypatch.setattr(
+        provisioning,
+        "create_firebase_user",
+        lambda email, display_name, password: "fake-uid",
+    )
+    monkeypatch.setattr(
+        provisioning,
+        "generate_password_reset_link",
+        lambda email: f"https://reset.example/{email}",
+    )
+
+
+def _create_tenant_payload(**overrides) -> dict:
+    payload = {
+        "name": "Nueva Clínica",
+        "admin_email": "nueva-clinica-admin@example.com",
+        "admin_full_name": "Admin Nueva Clínica",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_superadmin_creates_tenant_with_seeded_defaults(
     client, db_session, tenant, monkeypatch
 ):
     _mock_auth(monkeypatch)
+    _mock_firebase(monkeypatch)
     admin = _create_user(db_session, tenant, "admin@example.com", "Admin", "superadmin")
 
     response = client.post(
         "/api/v1/admin/tenants",
         headers=_auth_headers(admin.email),
-        json={"name": "Nueva Clínica"},
+        json=_create_tenant_payload(),
     )
 
     assert response.status_code == 201
     data = response.json()["data"]
-    assert data["name"] == "Nueva Clínica"
+    assert data["tenant"]["name"] == "Nueva Clínica"
+    assert data["admin_user"]["email"] == "nueva-clinica-admin@example.com"
+    assert data["admin_user"]["role"] == "clinic_admin"
+    assert data["admin_user"]["tenant_id"] == data["tenant"]["id"]
+    assert data["password_reset_link"] == (
+        "https://reset.example/nueva-clinica-admin@example.com"
+    )
 
-    new_tenant_id = uuid.UUID(data["id"])
+    new_tenant_id = uuid.UUID(data["tenant"]["id"])
     db_session.expire_all()
+
+    admin_user = (
+        db_session.query(User)
+        .filter(User.email == "nueva-clinica-admin@example.com")
+        .one()
+    )
+    assert admin_user.tenant_id == new_tenant_id
+    assert admin_user.role == "clinic_admin"
+    assert admin_user.is_active is True
 
     created_tenant = db_session.get(Tenant, new_tenant_id)
     assert created_tenant is not None
@@ -84,12 +125,13 @@ def test_superadmin_creates_tenant_with_seeded_defaults(
 
 def test_non_superadmin_cannot_create_tenant(client, db_session, tenant, monkeypatch):
     _mock_auth(monkeypatch)
+    _mock_firebase(monkeypatch)
     vet = _create_user(db_session, tenant, "vet@example.com", "Vet")
 
     response = client.post(
         "/api/v1/admin/tenants",
         headers=_auth_headers(vet.email),
-        json={"name": "Otra Clínica"},
+        json=_create_tenant_payload(name="Otra Clínica"),
     )
 
     assert response.status_code == 403
@@ -98,12 +140,66 @@ def test_non_superadmin_cannot_create_tenant(client, db_session, tenant, monkeyp
 
 def test_create_tenant_rejects_blank_name(client, db_session, tenant, monkeypatch):
     _mock_auth(monkeypatch)
+    _mock_firebase(monkeypatch)
     admin = _create_user(db_session, tenant, "admin2@example.com", "Admin", "superadmin")
 
     response = client.post(
         "/api/v1/admin/tenants",
         headers=_auth_headers(admin.email),
-        json={"name": "   "},
+        json=_create_tenant_payload(name="   "),
     )
 
     assert response.status_code == 422
+
+
+def test_create_tenant_rejects_duplicate_admin_email(
+    client, db_session, tenant, monkeypatch
+):
+    _mock_auth(monkeypatch)
+    _mock_firebase(monkeypatch)
+    admin = _create_user(db_session, tenant, "admin3@example.com", "Admin", "superadmin")
+    _create_user(db_session, tenant, "taken@example.com", "Ya Existe")
+
+    tenants_before = db_session.query(Tenant).count()
+
+    response = client.post(
+        "/api/v1/admin/tenants",
+        headers=_auth_headers(admin.email),
+        json=_create_tenant_payload(admin_email="taken@example.com"),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "user_already_exists"
+    db_session.expire_all()
+    assert db_session.query(Tenant).count() == tenants_before
+
+
+def test_create_tenant_leaves_no_partial_tenant_when_firebase_fails(
+    client, db_session, tenant, monkeypatch
+):
+    import app.services.tenant_provisioning as provisioning
+
+    _mock_auth(monkeypatch)
+    admin = _create_user(db_session, tenant, "admin4@example.com", "Admin", "superadmin")
+
+    def _raise_firebase_error(email, display_name, password):
+        raise provisioning.FirebaseUserProvisioningError("boom")
+
+    monkeypatch.setattr(provisioning, "create_firebase_user", _raise_firebase_error)
+
+    tenants_before = db_session.query(Tenant).count()
+
+    response = client.post(
+        "/api/v1/admin/tenants",
+        headers=_auth_headers(admin.email),
+        json=_create_tenant_payload(name="Clínica Fallida"),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "firebase_user_create_failed"
+    db_session.expire_all()
+    assert db_session.query(Tenant).count() == tenants_before
+    assert (
+        db_session.query(Tenant).filter(Tenant.name == "Clínica Fallida").one_or_none()
+        is None
+    )

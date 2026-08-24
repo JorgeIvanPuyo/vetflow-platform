@@ -250,6 +250,131 @@ def test_reorder_items_is_tenant_and_type_scoped(client, db_session, tenant, oth
     assert cross_type.status_code == 404
 
 
+def test_restore_defaults_creates_missing_items(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "restore-admin1@example.com", "Clinic Admin", "clinic_admin")
+
+    response = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    names = {item["name"] for item in response.json()["data"]}
+    assert names == {"Normal", "Leve deshidratación", "Moderada", "Severa"}
+    assert all(item["is_active"] for item in response.json()["data"])
+
+
+def test_restore_defaults_is_idempotent(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "restore-admin2@example.com", "Clinic Admin", "clinic_admin")
+    client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    second = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert second.status_code == 200
+    assert len(second.json()["data"]) == 4
+
+
+def test_restore_defaults_reactivates_deactivated_default_without_duplicating(
+    client, db_session, tenant
+):
+    admin = _create_user(db_session, tenant, "restore-admin3@example.com", "Clinic Admin", "clinic_admin")
+    seeded = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    ).json()["data"]
+    normal_item = next(item for item in seeded if item["name"] == "Normal")
+    client.post(
+        f"/api/v1/clinic/catalogs/hydration/{normal_item['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+
+    response = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    items = response.json()["data"]
+    assert len(items) == 4
+    restored = next(item for item in items if item["id"] == normal_item["id"])
+    assert restored["is_active"] is True
+
+
+def test_restore_defaults_never_overwrites_active_customization(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "restore-admin4@example.com", "Clinic Admin", "clinic_admin")
+    seeded = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    ).json()["data"]
+    normal_item = next(item for item in seeded if item["name"] == "Normal")
+    client.patch(
+        f"/api/v1/clinic/catalogs/hydration/{normal_item['id']}",
+        headers=_user_headers(admin.email),
+        json={"description": "Personalizado por la clínica", "sort_order": 999},
+    )
+
+    response = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    items = response.json()["data"]
+    assert len(items) == 4
+    customized = next(item for item in items if item["id"] == normal_item["id"])
+    assert customized["description"] == "Personalizado por la clínica"
+    assert customized["sort_order"] == 999
+
+
+def test_restore_defaults_adds_back_renamed_item_without_touching_rename(
+    client, db_session, tenant
+):
+    admin = _create_user(db_session, tenant, "restore-admin5@example.com", "Clinic Admin", "clinic_admin")
+    seeded = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    ).json()["data"]
+    normal_item = next(item for item in seeded if item["name"] == "Normal")
+    client.patch(
+        f"/api/v1/clinic/catalogs/hydration/{normal_item['id']}",
+        headers=_user_headers(admin.email),
+        json={"name": "Hidratación normal (personalizado)"},
+    )
+
+    response = client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    names = {item["name"] for item in response.json()["data"]}
+    assert "Hidratación normal (personalizado)" in names
+    assert "Normal" in names
+    assert len(response.json()["data"]) == 5
+
+
+def test_restore_defaults_is_tenant_scoped(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "restore-admin6@example.com", "Clinic Admin", "clinic_admin")
+
+    client.post(
+        "/api/v1/clinic/catalogs/hydration/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+    other_list = client.get(
+        "/api/v1/clinic/catalogs/hydration",
+        headers=_headers(other_tenant),
+    )
+
+    assert other_list.status_code == 200
+    assert other_list.json()["data"] == []
+
+
 def test_configuration_includes_grouped_active_catalogs(client, db_session, tenant):
     admin = _create_user(db_session, tenant, "cat-admin9@example.com", "Clinic Admin", "clinic_admin")
     mucous = _create_item(client, admin, name="Rosas")

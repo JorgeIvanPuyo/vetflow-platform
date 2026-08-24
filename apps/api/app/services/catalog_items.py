@@ -15,6 +15,7 @@ from app.schemas.catalog_item import (
     CatalogItemReorderRequest,
     CatalogItemUpdate,
 )
+from app.services.catalog_defaults import DEFAULT_CATALOG_ITEM_TEMPLATES
 from app.services.normalization import normalize_name
 
 
@@ -178,6 +179,36 @@ class CatalogItemService:
             item = self.get_item(tenant_id, catalog_type, entry.id)
             self.catalog_item_repository.update(item, {"sort_order": entry.sort_order})
 
+        self.db.commit()
+        return self.list_items(tenant_id, catalog_type, include_inactive=True)
+
+    def restore_defaults(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_type: str,
+    ) -> list[CatalogItem]:
+        self._validate_catalog_type(catalog_type)
+        templates = DEFAULT_CATALOG_ITEM_TEMPLATES.get(catalog_type, ())
+        for template in templates:
+            normalized_name = normalize_name(str(template["name"]))
+            existing = self.catalog_item_repository.get_by_normalized_name(
+                tenant_id,
+                catalog_type,
+                normalized_name,
+            )
+            if existing is None:
+                self.catalog_item_repository.create(
+                    CatalogItem(
+                        tenant_id=tenant_id,
+                        catalog_type=catalog_type,
+                        normalized_name=normalized_name,
+                        **template,
+                    )
+                )
+            elif not existing.is_active:
+                # Reactivate only: never overwrite a name/description/sort_order the
+                # tenant may have already customized before deactivating it.
+                self.catalog_item_repository.update(existing, {"is_active": True})
         self.db.commit()
         return self.list_items(tenant_id, catalog_type, include_inactive=True)
 

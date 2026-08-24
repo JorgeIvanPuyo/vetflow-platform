@@ -137,6 +137,8 @@ class PreventiveCareService:
                 "invalid_catalog_item_type",
                 f"Catalog item must be of type {PREVENTIVE_CARE_CATALOG_TYPE}",
             )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_care_type(self, care_type: str | None) -> None:
         if care_type is None:

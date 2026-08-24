@@ -176,6 +176,51 @@ def test_reorder_services_is_tenant_scoped(client, db_session, tenant, other_ten
     assert cross_tenant.status_code == 404
 
 
+def test_restore_defaults_creates_missing_and_reactivates_without_overwriting(
+    client, db_session, tenant
+):
+    admin = _create_user(db_session, tenant, "restore-admin1@example.com", "Clinic Admin", "clinic_admin")
+
+    seeded = client.post(
+        "/api/v1/services/restore-defaults",
+        headers=_user_headers(admin.email),
+    ).json()["data"]
+    assert {service["code"] for service in seeded} == {
+        "CONSULTA",
+        "SEGUIMIENTO",
+        "VACUNA",
+        "DESPARASITACION",
+        "EXAMEN",
+    }
+
+    consulta = next(service for service in seeded if service["code"] == "CONSULTA")
+    client.patch(
+        f"/api/v1/services/{consulta['id']}",
+        headers=_user_headers(admin.email),
+        json={"default_duration_minutes": 45},
+    )
+    seguimiento = next(service for service in seeded if service["code"] == "SEGUIMIENTO")
+    client.post(
+        f"/api/v1/services/{seguimiento['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+
+    response = client.post(
+        "/api/v1/services/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    services = response.json()["data"]
+    assert len(services) == 5
+    restored_consulta = next(service for service in services if service["id"] == consulta["id"])
+    assert restored_consulta["default_duration_minutes"] == 45
+    restored_seguimiento = next(
+        service for service in services if service["id"] == seguimiento["id"]
+    )
+    assert restored_seguimiento["is_active"] is True
+
+
 def test_bookable_only_filters_services(client, db_session, tenant):
     admin = _create_user(db_session, tenant, "admin6@example.com", "Clinic Admin", "clinic_admin")
     bookable = _create_service(client, tenant, admin, code="BOOK", name="Bookable")

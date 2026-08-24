@@ -354,6 +354,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [documentTypeCatalogItems, setDocumentTypeCatalogItems] = useState<CatalogItem[]>(
     [],
   );
+  const [speciesCatalog, setSpeciesCatalog] = useState<CatalogItem[]>([]);
+  const [breedCatalog, setBreedCatalog] = useState<CatalogItem[]>([]);
   const [pdfExportFormState, setPdfExportFormState] =
     useState<PdfExportFormState>(initialPdfExportFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
@@ -471,6 +473,34 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     }
 
     void loadDocumentTypeCatalog();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadSpeciesAndBreedCatalogs() {
+      try {
+        const [speciesResponse, breedResponse] = await Promise.all([
+          getCatalogItems("species", { include_inactive: false }),
+          getCatalogItems("breed", { include_inactive: false }),
+        ]);
+        if (isCurrent) {
+          setSpeciesCatalog(speciesResponse.data);
+          setBreedCatalog(breedResponse.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setSpeciesCatalog([]);
+          setBreedCatalog([]);
+        }
+      }
+    }
+
+    void loadSpeciesAndBreedCatalogs();
 
     return () => {
       isCurrent = false;
@@ -1119,6 +1149,24 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       allergies: editHasNoKnownAllergies ? null : allergies,
       chronic_conditions: editHasNoKnownChronicConditions ? null : chronicConditions,
     };
+
+    const matchedSpecies = speciesCatalog.find(
+      (item) => item.name.trim().toLowerCase() === species.toLowerCase(),
+    );
+    if (matchedSpecies) {
+      payload.species_catalog_item_id = matchedSpecies.id;
+    }
+    const breedValue = patientEditFormState.breed.trim();
+    if (breedValue) {
+      const matchedBreed = breedCatalog.find(
+        (item) =>
+          item.parent_id === (matchedSpecies?.id ?? null) &&
+          item.name.trim().toLowerCase() === breedValue.toLowerCase(),
+      );
+      if (matchedBreed) {
+        payload.breed_catalog_item_id = matchedBreed.id;
+      }
+    }
 
     payload.weight_kg = patientEditFormState.weight_kg.trim()
       ? Number(patientEditFormState.weight_kg)

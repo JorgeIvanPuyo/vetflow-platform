@@ -9,6 +9,7 @@ from app.models.user import User
 from app.repositories.service import ServiceRepository
 from app.repositories.user import UserRepository
 from app.schemas.service import ServiceCreate, ServiceReorderRequest, ServiceUpdate
+from app.services.catalog_defaults import DEFAULT_SERVICE_TEMPLATES
 from app.services.normalization import normalize_name
 
 
@@ -140,6 +141,28 @@ class ServiceCatalogService:
             service = self.get_service(tenant_id, item.id)
             services.append(self.service_repository.update(service, {"sort_order": item.sort_order}))
 
+        self.db.commit()
+        return self.list_services(tenant_id, include_inactive=True)
+
+    def restore_defaults(self, tenant_id: uuid.UUID) -> list[Service]:
+        for template in DEFAULT_SERVICE_TEMPLATES:
+            normalized_name = normalize_service_name(str(template["name"]))
+            existing = self.service_repository.get_by_normalized_name(
+                tenant_id,
+                normalized_name,
+            )
+            if existing is None:
+                self.service_repository.create(
+                    Service(
+                        tenant_id=tenant_id,
+                        normalized_name=normalized_name,
+                        **template,
+                    )
+                )
+            elif not existing.is_active:
+                # Reactivate only: never overwrite fields the tenant may have already
+                # customized before deactivating it.
+                self.service_repository.update(existing, {"is_active": True})
         self.db.commit()
         return self.list_services(tenant_id, include_inactive=True)
 

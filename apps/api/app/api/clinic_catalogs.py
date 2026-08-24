@@ -111,6 +111,22 @@ def activate_catalog_item(
     }
 
 
+@router.post("/{catalog_type}/restore-defaults")
+def restore_default_catalog_items(
+    catalog_type: str,
+    tenant: TenantContext = Depends(require_clinic_admin),
+    db: Session = Depends(get_db),
+) -> dict:
+    items = CatalogItemService(db).restore_defaults(tenant.tenant_id, catalog_type)
+    return {
+        "data": [
+            CatalogItemRead.model_validate(item).model_dump(mode="json")
+            for item in items
+        ],
+        "meta": {},
+    }
+
+
 @router.post("/{catalog_type}/{item_id}/deactivate")
 def deactivate_catalog_item(
     catalog_type: str,

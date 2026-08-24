@@ -32,9 +32,16 @@ const AUTH_TOKEN_WAIT_MS = 100;
 const REQUEST_RETRY_DELAYS_MS = [700, 1400];
 
 let authTokenProvider: AuthTokenProvider | null = null;
+let actingTenantId: string | null = null;
 
 function setAuthTokenProvider(provider: AuthTokenProvider | null) {
   authTokenProvider = provider;
+}
+
+// Lets a superadmin browse the app as another tenant (see the navbar tenant
+// switcher in AppSidebar). Ignored server-side for anyone who isn't a superadmin.
+function setActingTenantId(tenantId: string | null) {
+  actingTenantId = tenantId;
 }
 
 async function request<T>(
@@ -56,6 +63,10 @@ async function request<T>(
     Accept: "application/json",
     Authorization: `Bearer ${token}`,
   });
+
+  if (actingTenantId) {
+    headers.set("X-Acting-Tenant-Id", actingTenantId);
+  }
 
   if (!options.isMultipart) {
     headers.set("Content-Type", "application/json");
@@ -123,6 +134,10 @@ async function requestBlob(
     Accept: "application/pdf",
     Authorization: `Bearer ${token}`,
   });
+
+  if (actingTenantId) {
+    headers.set("X-Acting-Tenant-Id", actingTenantId);
+  }
 
   if (!options.isMultipart) {
     headers.set("Content-Type", "application/json");
@@ -303,4 +318,4 @@ export const api = {
   },
 };
 
-export { ApiClientError, getApiErrorMessage, setAuthTokenProvider };
+export { ApiClientError, getApiErrorMessage, setActingTenantId, setAuthTokenProvider };

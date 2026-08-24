@@ -114,14 +114,18 @@ class AppointmentService:
                 raise AppError(422, "validation_error", f"{field} cannot be null")
 
         linked_service = None
-        if "service_id" in updates and updates["service_id"] is not None:
-            linked_service = self._validate_optional_active_service(
-                tenant_id,
-                updates["service_id"],
-            )
-            updates["appointment_type"] = linked_service.kind
-        elif "start_at" in updates and appointment.service_id is not None:
-            linked_service = self._validate_optional_active_service(
+        if "service_id" in updates:
+            if updates["service_id"] is not None:
+                # Newly selected service: must be active, same as on creation.
+                linked_service = self._validate_optional_active_service(
+                    tenant_id,
+                    updates["service_id"],
+                )
+                updates["appointment_type"] = linked_service.kind
+        elif appointment.service_id is not None:
+            # Service unchanged: only needed to keep the duration on reschedule,
+            # so a since-deactivated service must not block moving the appointment.
+            linked_service = self._get_service_for_tenant(
                 tenant_id,
                 appointment.service_id,
             )
@@ -233,7 +237,7 @@ class AppointmentService:
             )
         raise AppError(404, "user_not_found", "User not found")
 
-    def _validate_optional_active_service(
+    def _get_service_for_tenant(
         self,
         tenant_id: uuid.UUID,
         service_id: uuid.UUID | None,
@@ -242,12 +246,6 @@ class AppointmentService:
             return None
         service = self.service_repository.get_by_id(tenant_id, service_id)
         if service is not None:
-            if not service.is_active:
-                raise AppError(
-                    409,
-                    "inactive_service",
-                    "Service is inactive",
-                )
             return service
         service_any_tenant = self.db.get(Service, service_id)
         if service_any_tenant is not None:
@@ -257,3 +255,13 @@ class AppointmentService:
                 "Service does not belong to the provided tenant",
             )
         raise AppError(404, "service_not_found", "Service not found")
+
+    def _validate_optional_active_service(
+        self,
+        tenant_id: uuid.UUID,
+        service_id: uuid.UUID | None,
+    ) -> Service | None:
+        service = self._get_service_for_tenant(tenant_id, service_id)
+        if service is not None and not service.is_active:
+            raise AppError(409, "inactive_service", "Service is inactive")
+        return service

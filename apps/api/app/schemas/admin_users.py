@@ -65,8 +65,28 @@ class TenantOptionRead(BaseModel):
 
 class CreateTenantRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    admin_email: str = Field(min_length=3, max_length=255)
+    admin_full_name: str = Field(min_length=2, max_length=255)
 
-    @field_validator("name", mode="before")
+    @field_validator("name", "admin_full_name", mode="before")
     @classmethod
     def strip_name(cls, value: str) -> str:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("admin_email", mode="before")
+    @classmethod
+    def normalize_admin_email(cls, value: str) -> str:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("admin_email")
+    @classmethod
+    def validate_admin_email(cls, value: str) -> str:
+        if "@" not in value or "." not in value.split("@")[-1]:
+            raise ValueError("admin_email must be a valid email address")
+        return value
+
+
+class CreateTenantResponse(BaseModel):
+    tenant: TenantOptionRead
+    admin_user: AdminUserRead
+    password_reset_link: str | None = None

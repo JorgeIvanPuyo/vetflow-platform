@@ -470,6 +470,8 @@ class InventoryService:
             return
         supplier = self.supplier_repository.get_by_id(tenant_id, supplier_id)
         if supplier is not None:
+            if not supplier.is_active:
+                raise AppError(409, "inactive_supplier", "Supplier is inactive")
             return
         supplier_any_tenant = self.db.get(Supplier, supplier_id)
         if supplier_any_tenant is not None:
@@ -502,6 +504,8 @@ class InventoryService:
                 "invalid_catalog_item_type",
                 f"Catalog item must be of type {CATEGORY_CATALOG_TYPE}",
             )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_optional_consultation(
         self,

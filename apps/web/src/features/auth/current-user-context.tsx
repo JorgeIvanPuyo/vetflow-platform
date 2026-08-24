@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { applyStoredActingTenant } from "@/lib/acting-tenant";
 import { getApiErrorMessage } from "@/lib/api";
 import { getCurrentUser } from "@/services/auth";
 import type { AppRole, CurrentUser } from "@/types/api";
@@ -25,6 +26,13 @@ type CurrentUserContextValue = {
 const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
+  // Runs once, during this component's first render — guaranteed to happen before
+  // any effect in this tree (including ClinicProvider's own fetch) can fire, so the
+  // very first request already carries any stored tenant override.
+  useState(() => {
+    applyStoredActingTenant();
+    return null;
+  });
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

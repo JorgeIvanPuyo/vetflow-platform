@@ -49,6 +49,26 @@ class CatalogItemRepository:
         )
         return self.db.scalar(statement)
 
+    def get_by_normalized_name(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_type: str,
+        normalized_name: str,
+    ) -> CatalogItem | None:
+        # is_active is only guaranteed unique among active rows (see the partial
+        # unique index), so an inactive normalized_name can have duplicates. Prefer
+        # the active match, then the most recently touched inactive one.
+        statement = (
+            select(CatalogItem)
+            .where(
+                CatalogItem.tenant_id == tenant_id,
+                CatalogItem.catalog_type == catalog_type,
+                CatalogItem.normalized_name == normalized_name,
+            )
+            .order_by(CatalogItem.is_active.desc(), CatalogItem.updated_at.desc())
+        )
+        return self.db.scalars(statement).first()
+
     def list(
         self,
         tenant_id: uuid.UUID,

@@ -492,6 +492,8 @@ class ConsultationService:
                 "invalid_catalog_item_type",
                 f"Catalog item must be of type {EXAM_CATALOG_TYPE}",
             )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_update_numbers(self, updates: dict) -> None:
         non_negative_fields = {

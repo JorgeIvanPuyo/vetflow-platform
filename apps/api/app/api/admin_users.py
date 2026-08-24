@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.admin_users import (
     AdminUserRead,
     CreateTenantRequest,
+    CreateTenantResponse,
     InviteUserRequest,
     InviteUserResponse,
     TenantOptionRead,
@@ -86,8 +87,12 @@ def create_tenant(
     _: TenantContext = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ) -> dict:
-    tenant = TenantProvisioningService(db).create_tenant(payload)
+    tenant, admin_user, reset_link = TenantProvisioningService(db).create_tenant(payload)
     return {
-        "data": TenantOptionRead.model_validate(tenant).model_dump(mode="json"),
+        "data": CreateTenantResponse(
+            tenant=TenantOptionRead.model_validate(tenant),
+            admin_user=AdminUserRead.model_validate(admin_user),
+            password_reset_link=reset_link,
+        ).model_dump(mode="json"),
         "meta": {},
     }

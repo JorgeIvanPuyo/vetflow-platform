@@ -268,6 +268,75 @@ def test_update_appointment_with_service_recalculates_duration(
     assert updated["end_at"] == "2026-05-10T12:20:00"
 
 
+def test_reschedule_appointment_with_since_deactivated_service_succeeds(
+    client,
+    db_session,
+    tenant,
+):
+    service = _create_service(
+        client,
+        db_session,
+        tenant,
+        name="Vacuna antirrábica",
+        kind="vaccine",
+        default_duration_minutes=20,
+    )
+    appointment = _create_appointment(client, tenant, service_id=service["id"])
+    admin = _create_user(
+        db_session,
+        tenant,
+        "reschedule-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=_headers(tenant),
+        json={"start_at": "2026-05-10T14:00:00Z"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["data"]
+    assert updated["service_id"] == service["id"]
+    assert updated["end_at"] == "2026-05-10T14:20:00"
+
+
+def test_update_appointment_rejects_newly_selected_inactive_service(
+    client,
+    db_session,
+    tenant,
+):
+    appointment = _create_appointment(client, tenant)
+    service = _create_service(client, db_session, tenant)
+    admin = _create_user(
+        db_session,
+        tenant,
+        "reselect-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=_headers(tenant),
+        json={"service_id": service["id"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inactive_service"
+
+
 def test_create_appointment_assigned_to_same_tenant_veterinarian(
     client,
     db_session,

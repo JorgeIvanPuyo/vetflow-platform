@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
@@ -22,9 +22,42 @@ class TenantContext:
     role: str | None = None
 
 
+def _apply_acting_tenant_override(
+    context: TenantContext,
+    x_acting_tenant_id: str | None,
+    db: Session,
+) -> TenantContext:
+    # Lets a superadmin browse the app as if they belonged to another tenant
+    # (a navbar tenant switcher), without changing who they are: user_id/role stay
+    # theirs, only the effective tenant_id used for every query changes. Silently
+    # ignored for anyone who isn't a superadmin, so a stray header can't be used to
+    # cross tenant boundaries.
+    if not x_acting_tenant_id or context.role != Role.SUPERADMIN.value:
+        return context
+
+    try:
+        acting_tenant_id = uuid.UUID(x_acting_tenant_id)
+    except ValueError as exc:
+        raise AppError(
+            status_code=400,
+            code="invalid_acting_tenant_header",
+            message="X-Acting-Tenant-Id must be a valid UUID",
+        ) from exc
+
+    if db.get(Tenant, acting_tenant_id) is None:
+        raise AppError(
+            status_code=404,
+            code="tenant_not_found",
+            message="Tenant not found",
+        )
+
+    return replace(context, tenant_id=acting_tenant_id)
+
+
 def _resolve_development_tenant(
     x_tenant_id: str | None,
     x_user_email: str | None,
+    x_acting_tenant_id: str | None,
     db: Session,
 ) -> TenantContext:
     # Dev-only helper: if X-User-Email is provided, resolve a real DB user (with
@@ -52,13 +85,14 @@ def _resolve_development_tenant(
                 message="Tenant not found",
             )
 
-        return TenantContext(
+        context = TenantContext(
             tenant_id=user.tenant_id,
             user_id=user.id,
             user_email=user.email,
             user_full_name=user.full_name,
             role=user.role,
         )
+        return _apply_acting_tenant_override(context, x_acting_tenant_id, db)
 
     if not x_tenant_id:
         raise AppError(
@@ -91,13 +125,19 @@ def get_tenant_context(
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+    x_acting_tenant_id: str | None = Header(default=None, alias="X-Acting-Tenant-Id"),
     db: Session = Depends(get_db),
 ) -> TenantContext:
     settings = get_settings()
 
     if not authorization:
         if settings.app_env == "development":
-            return _resolve_development_tenant(x_tenant_id, x_user_email, db)
+            return _resolve_development_tenant(
+                x_tenant_id,
+                x_user_email,
+                x_acting_tenant_id,
+                db,
+            )
 
         raise AppError(
             status_code=401,
@@ -153,13 +193,14 @@ def get_tenant_context(
             message="Tenant not found",
         )
 
-    return TenantContext(
+    context = TenantContext(
         tenant_id=user.tenant_id,
         user_id=user.id,
         user_email=user.email,
         user_full_name=user.full_name,
         role=user.role,
     )
+    return _apply_acting_tenant_override(context, x_acting_tenant_id, db)
 
 
 def require_superadmin(

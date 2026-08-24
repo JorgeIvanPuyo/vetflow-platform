@@ -54,7 +54,11 @@ export type Patient = {
   created_by_user_email?: string | null;
   name: string;
   species: string;
+  species_catalog_item_id?: string | null;
+  species_catalog_item_name?: string | null;
   breed: string | null;
+  breed_catalog_item_id?: string | null;
+  breed_catalog_item_name?: string | null;
   sex: string | null;
   estimated_age: string | null;
   birth_date: string | null;
@@ -460,7 +464,11 @@ export type CatalogType =
   | "exam_type"
   | "preventive_care_type"
   | "document_type"
-  | "follow_up_template";
+  | "follow_up_template"
+  | "species"
+  | "breed"
+  | "diagnostic_tag"
+  | "prescription_template";
 
 export type CatalogItem = {
   id: string;
@@ -970,7 +978,9 @@ export type CreatePatientPayload = {
   owner_id: string;
   name: string;
   species: string;
+  species_catalog_item_id?: string | null;
   breed?: string;
+  breed_catalog_item_id?: string | null;
   sex?: string;
   estimated_age?: string;
   weight_kg?: number;
@@ -1137,6 +1147,14 @@ export type TenantOption = {
 
 export type CreateTenantPayload = {
   name: string;
+  admin_email: string;
+  admin_full_name: string;
+};
+
+export type CreateTenantResult = {
+  tenant: TenantOption;
+  admin_user: AdminUser;
+  password_reset_link: string | null;
 };
 
 export type InviteUserPayload = {

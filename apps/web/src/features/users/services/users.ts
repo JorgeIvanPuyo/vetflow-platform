@@ -4,6 +4,7 @@ import type {
   ApiItemResponse,
   ApiListResponse,
   CreateTenantPayload,
+  CreateTenantResult,
   InviteUserPayload,
   InviteUserResult,
   ListUsersFilters,
@@ -42,7 +43,7 @@ export function listTenants() {
 }
 
 export function createTenant(payload: CreateTenantPayload) {
-  return api.post<ApiItemResponse<TenantOption>>(
+  return api.post<ApiItemResponse<CreateTenantResult>>(
     "/api/v1/admin/tenants",
     payload,
   );

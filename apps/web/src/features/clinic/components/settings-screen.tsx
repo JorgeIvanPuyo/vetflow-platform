@@ -23,6 +23,7 @@ import { useCurrentUser } from "@/features/auth/current-user-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 import { ClinicalCatalogsSection } from "@/features/clinic/components/clinical-catalogs-section";
 import { InventoryCatalogsSection } from "@/features/clinic/components/inventory-catalogs-section";
+import { SpeciesCatalogSection } from "@/features/clinic/components/species-catalog-section";
 import { SuppliersSection } from "@/features/clinic/components/suppliers-section";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import {
@@ -40,6 +41,7 @@ import {
   createService,
   deactivateService,
   reorderServices,
+  restoreServiceDefaults,
   updateService,
 } from "@/services/services";
 import type {
@@ -585,6 +587,35 @@ export function SettingsScreen() {
     }
   }
 
+  async function handleRestoreServiceDefaults() {
+    if (!canManageCatalog) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      isSaving: true,
+      catalogMessage: null,
+      successMessage: null,
+    }));
+
+    try {
+      const response = await restoreServiceDefaults();
+      setState((current) => ({
+        ...current,
+        isSaving: false,
+        services: response.data,
+        successMessage: "Servicios predeterminados restaurados.",
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isSaving: false,
+        catalogMessage: getApiErrorMessage(error),
+      }));
+    }
+  }
+
   return (
     <div className="page-stack settings-layout">
       <section className="screen-heading list-page__header">
@@ -1030,6 +1061,14 @@ export function SettingsScreen() {
 
                 <div className="modal-actions">
                   <button
+                    className="secondary-button"
+                    disabled={!canManageCatalog || state.isSaving}
+                    onClick={() => void handleRestoreServiceDefaults()}
+                    type="button"
+                  >
+                    Restaurar predeterminados
+                  </button>
+                  <button
                     className="primary-button"
                     disabled={!canManageCatalog || state.isSaving}
                     onClick={openNewServiceForm}
@@ -1121,6 +1160,11 @@ export function SettingsScreen() {
           <ClinicalCatalogsSection
             isExpanded={Boolean(expandedSettingsSections.clinicalCatalogs)}
             onToggle={() => toggleSettingsSection("clinicalCatalogs")}
+          />
+
+          <SpeciesCatalogSection
+            isExpanded={Boolean(expandedSettingsSections.speciesCatalogs)}
+            onToggle={() => toggleSettingsSection("speciesCatalogs")}
           />
 
           <InventoryCatalogsSection

@@ -404,6 +404,25 @@ def test_create_item_with_unknown_supplier_id_returns_404(client, tenant):
     assert response.json()["error"]["code"] == "supplier_not_found"
 
 
+def test_create_item_with_inactive_supplier_is_rejected(client, db_session, tenant):
+    admin = _create_admin(db_session, tenant, "sup-item-admin3@example.com", "Admin")
+    supplier = _create_supplier(client, admin, name="Proveedor Descontinuado")
+    deactivate = client.post(
+        f"/api/v1/suppliers/{supplier['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=supplier["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inactive_supplier"
+
+
 def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
     item = _create_item(
         client,

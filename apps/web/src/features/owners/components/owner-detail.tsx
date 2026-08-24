@@ -6,9 +6,16 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
+import { getCatalogItems } from "@/services/catalogs";
 import { deleteOwner, getOwner, updateOwner } from "@/services/owners";
 import { getPatient, getPatients, updatePatient } from "@/services/patients";
-import type { Owner, Patient, UpdateOwnerPayload, UpdatePatientPayload } from "@/types/api";
+import type {
+  CatalogItem,
+  Owner,
+  Patient,
+  UpdateOwnerPayload,
+  UpdatePatientPayload,
+} from "@/types/api";
 
 type OwnerDetailProps = {
   ownerId: string;
@@ -87,6 +94,36 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
   const [isPetLoading, setIsPetLoading] = useState(false);
   const [isSavingPet, setIsSavingPet] = useState(false);
   const [petFormMessage, setPetFormMessage] = useState<string | null>(null);
+  const [speciesCatalog, setSpeciesCatalog] = useState<CatalogItem[]>([]);
+  const [breedCatalog, setBreedCatalog] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadSpeciesAndBreedCatalogs() {
+      try {
+        const [speciesResponse, breedResponse] = await Promise.all([
+          getCatalogItems("species", { include_inactive: false }),
+          getCatalogItems("breed", { include_inactive: false }),
+        ]);
+        if (isCurrent) {
+          setSpeciesCatalog(speciesResponse.data);
+          setBreedCatalog(breedResponse.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setSpeciesCatalog([]);
+          setBreedCatalog([]);
+        }
+      }
+    }
+
+    void loadSpeciesAndBreedCatalogs();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   const loadOwnerDetail = useCallback(async () => {
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
@@ -242,6 +279,24 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
       allergies: petFormState.allergies.trim() || null,
       chronic_conditions: petFormState.chronic_conditions.trim() || null,
     };
+
+    const matchedSpecies = speciesCatalog.find(
+      (item) => item.name.trim().toLowerCase() === species.toLowerCase(),
+    );
+    if (matchedSpecies) {
+      payload.species_catalog_item_id = matchedSpecies.id;
+    }
+    const breedValue = petFormState.breed.trim();
+    if (breedValue) {
+      const matchedBreed = breedCatalog.find(
+        (item) =>
+          item.parent_id === (matchedSpecies?.id ?? null) &&
+          item.name.trim().toLowerCase() === breedValue.toLowerCase(),
+      );
+      if (matchedBreed) {
+        payload.breed_catalog_item_id = matchedBreed.id;
+      }
+    }
 
     setIsSavingPet(true);
     setPetFormMessage(null);

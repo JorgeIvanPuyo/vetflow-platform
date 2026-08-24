@@ -5008,6 +5008,10 @@ code {
   margin-bottom: 24px;
 }
 
+.app-sidebar__tenant-switcher {
+  margin-bottom: 20px;
+}
+
 .app-sidebar__nav {
   display: grid;
   gap: 4px;

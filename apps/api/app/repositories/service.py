@@ -39,6 +39,24 @@ class ServiceRepository:
         )
         return self.db.scalar(statement)
 
+    def get_by_normalized_name(
+        self,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
+    ) -> Service | None:
+        # is_active is only guaranteed unique among active rows (see the partial
+        # unique index), so an inactive normalized_name can have duplicates. Prefer
+        # the active match, then the most recently touched inactive one.
+        statement = (
+            select(Service)
+            .where(
+                Service.tenant_id == tenant_id,
+                Service.normalized_name == normalized_name,
+            )
+            .order_by(Service.is_active.desc(), Service.updated_at.desc())
+        )
+        return self.db.scalars(statement).first()
+
     def list(
         self,
         tenant_id: uuid.UUID,

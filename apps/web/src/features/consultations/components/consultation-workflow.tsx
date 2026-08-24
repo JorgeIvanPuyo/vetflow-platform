@@ -230,12 +230,16 @@ type ClinicalCatalogOptions = {
   mucousMembrane: string[];
   hydration: string[];
   examTypes: CatalogItem[];
+  diagnosticTags: string[];
+  prescriptionTemplates: CatalogItem[];
 };
 
 const fallbackClinicalCatalogOptions: ClinicalCatalogOptions = {
   mucousMembrane: fallbackMucousMembraneOptions,
   hydration: fallbackHydrationOptions,
   examTypes: [],
+  diagnosticTags: [],
+  prescriptionTemplates: [],
 };
 
 function getStepIcon(stepId: (typeof steps)[number]["id"]) {
@@ -438,6 +442,8 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
           hydration:
             catalogs?.hydration?.map((item) => item.name) ?? fallbackHydrationOptions,
           examTypes: catalogs?.exam_type ?? [],
+          diagnosticTags: catalogs?.diagnostic_tag?.map((item) => item.name) ?? [],
+          prescriptionTemplates: catalogs?.prescription_template ?? [],
         });
       } catch {
         if (isCurrent) {
@@ -1408,10 +1414,18 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Etiquetas diagnósticas</span>
           <input
+            list="diagnostic-tag-suggestions"
             placeholder="Separar con comas: respiratorio, agudo..."
             value={formState.diagnostic_tags}
             onChange={(event) => updateField("diagnostic_tags", event.target.value)}
           />
+          {catalogOptions.diagnosticTags.length > 0 ? (
+            <datalist id="diagnostic-tag-suggestions">
+              {catalogOptions.diagnosticTags.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
+            </datalist>
+          ) : null}
         </label>
       </>
     );
@@ -1584,6 +1598,33 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         {medicationMode === "manual" ? (
           <form className="consultation-inline-form" onSubmit={handleAddMedication}>
             <div className="form-grid">
+              {catalogOptions.prescriptionTemplates.length > 0 ? (
+                <label className="field">
+                  <span>Plantilla de prescripción (opcional)</span>
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const selected = catalogOptions.prescriptionTemplates.find(
+                        (item) => item.id === event.target.value,
+                      );
+                      if (selected) {
+                        setMedicationFormState((current) => ({
+                          ...current,
+                          medication_name: selected.name,
+                          instructions: selected.description ?? current.instructions,
+                        }));
+                      }
+                    }}
+                  >
+                    <option value="">Escribir manualmente</option>
+                    {catalogOptions.prescriptionTemplates.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label className="field">
                 <span>Nombre del medicamento</span>
                 <input

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import {
@@ -56,6 +56,48 @@ type AppointmentDetailProps = {
   appointmentId: string;
 };
 
+/** Keeps the appointment's linked service selectable in the edit form even if it
+ * was deactivated since the appointment was created — otherwise the select shows
+ * nothing chosen and a vet could pick a different service by mistake, overwriting
+ * the real one. */
+function withCurrentService(
+  services: ClinicService[],
+  appointment: Appointment | null,
+): ClinicService[] {
+  const currentId = appointment?.service_id;
+  if (!currentId || services.some((service) => service.id === currentId)) {
+    return services;
+  }
+
+  const durationMinutes = Math.max(
+    1,
+    Math.round(
+      (new Date(appointment.end_at).getTime() - new Date(appointment.start_at).getTime()) /
+        60000,
+    ),
+  );
+
+  return [
+    ...services,
+    {
+      id: currentId,
+      tenant_id: appointment.tenant_id,
+      code: "",
+      name: `${appointment.service_name ?? "Servicio"} (inactivo)`,
+      normalized_name: "",
+      description: null,
+      kind: appointment.appointment_type,
+      default_duration_minutes: durationMinutes,
+      calendar_color: appointment.service_calendar_color ?? "#94a3b8",
+      is_bookable: false,
+      sort_order: Number.MAX_SAFE_INTEGER,
+      is_active: false,
+      created_at: appointment.created_at,
+      updated_at: appointment.updated_at,
+    },
+  ];
+}
+
 type AppointmentDetailState = {
   isLoading: boolean;
   isSaving: boolean;
@@ -91,6 +133,10 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [formState, setFormState] = useState<AppointmentFormState | null>(null);
+  const editableServices = useMemo(
+    () => withCurrentService(state.services, state.appointment),
+    [state.services, state.appointment],
+  );
 
   const loadDetail = useCallback(async () => {
     setState((current) => ({
@@ -465,7 +511,7 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
           owners={state.owners}
           patients={state.patients}
           team={state.team}
-          services={state.services}
+          services={editableServices}
           submitLabel="Guardar cambios"
           title="Editar turno"
           onClose={closeEditModal}

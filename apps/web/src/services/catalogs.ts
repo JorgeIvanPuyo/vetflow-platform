@@ -63,6 +63,13 @@ export function deactivateCatalogItem(catalogType: CatalogType, itemId: string) 
   );
 }
 
+export function restoreCatalogDefaults(catalogType: CatalogType) {
+  return api.post<{ data: CatalogItem[]; meta: Record<string, never> }>(
+    `/api/v1/clinic/catalogs/${catalogType}/restore-defaults`,
+    {},
+  );
+}
+
 export function reorderCatalogItems(
   catalogType: CatalogType,
   items: Array<{ id: string; sort_order: number }>,

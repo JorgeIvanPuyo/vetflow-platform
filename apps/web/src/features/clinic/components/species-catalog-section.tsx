@@ -4,9 +4,9 @@ import {
   ChevronDown,
   ChevronUp,
   Pencil,
+  PawPrint,
   Power,
   PowerOff,
-  Stethoscope,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
@@ -24,84 +24,30 @@ import {
 } from "@/services/catalogs";
 import type { CatalogItem, CatalogType } from "@/types/api";
 
-const clinicalCatalogConfigs: Array<{
-  type: CatalogType;
-  label: string;
-  description: string;
-  hasDefaults?: boolean;
-}> = [
-  {
-    type: "mucous_membrane",
-    label: "Mucosas",
-    description: "Opciones del campo Mucosas en el examen clínico.",
-    hasDefaults: true,
-  },
-  {
-    type: "hydration",
-    label: "Hidratación",
-    description: "Opciones del campo Hidratación en el examen clínico.",
-    hasDefaults: true,
-  },
-  {
-    type: "exam_type",
-    label: "Estudios y exámenes",
-    description: "Nombres reutilizables para estudios y exámenes solicitados.",
-    hasDefaults: true,
-  },
-  {
-    type: "preventive_care_type",
-    label: "Prestaciones preventivas",
-    description: "Nombres reutilizables para vacunas y desparasitaciones.",
-    hasDefaults: true,
-  },
-  {
-    type: "document_type",
-    label: "Tipos de archivo clínico",
-    description: "Categorías disponibles al adjuntar archivos de un paciente.",
-    hasDefaults: true,
-  },
-  {
-    type: "follow_up_template",
-    label: "Plantillas de seguimiento",
-    description: "Títulos sugeridos al crear un seguimiento.",
-    hasDefaults: true,
-  },
-  {
-    type: "diagnostic_tag",
-    label: "Etiquetas diagnósticas",
-    description: "Sugerencias para el campo de etiquetas diagnósticas.",
-    hasDefaults: true,
-  },
-  {
-    type: "prescription_template",
-    label: "Plantillas de prescripción",
-    description: "Medicamentos frecuentes sugeridos al indicar tratamiento.",
-  },
-];
-
-const CLINICAL_CATALOG_TYPES = clinicalCatalogConfigs.map((config) => config.type);
+const SPECIES_TYPE: CatalogType = "species";
+const BREED_TYPE: CatalogType = "breed";
 
 type CatalogFormState = {
   id: string | null;
   catalogType: CatalogType;
   name: string;
   description: string;
+  parentId: string;
 };
 
-type ClinicalCatalogsSectionProps = {
+type SpeciesCatalogSectionProps = {
   isExpanded: boolean;
   onToggle: () => void;
 };
 
-export function ClinicalCatalogsSection({
+export function SpeciesCatalogSection({
   isExpanded,
   onToggle,
-}: ClinicalCatalogsSectionProps) {
+}: SpeciesCatalogSectionProps) {
   const { role } = useCurrentUser();
   const canManageCatalog = role === "clinic_admin";
-  const [itemsByType, setItemsByType] = useState<
-    Partial<Record<CatalogType, CatalogItem[]>>
-  >(() => Object.fromEntries(CLINICAL_CATALOG_TYPES.map((type) => [type, []])));
+  const [species, setSpecies] = useState<CatalogItem[]>([]);
+  const [breeds, setBreeds] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -113,22 +59,15 @@ export function ClinicalCatalogsSection({
     async function loadCatalogs() {
       setIsLoading(true);
       try {
-        const responses = await Promise.all(
-          clinicalCatalogConfigs.map((config) =>
-            getCatalogItems(config.type, { include_inactive: true }),
-          ),
-        );
+        const [speciesResponse, breedResponse] = await Promise.all([
+          getCatalogItems(SPECIES_TYPE, { include_inactive: true }),
+          getCatalogItems(BREED_TYPE, { include_inactive: true }),
+        ]);
         if (!isCurrent) {
           return;
         }
-        setItemsByType(
-          Object.fromEntries(
-            clinicalCatalogConfigs.map((config, index) => [
-              config.type,
-              responses[index].data,
-            ]),
-          ),
-        );
+        setSpecies(speciesResponse.data);
+        setBreeds(breedResponse.data);
         setMessage(null);
       } catch (error) {
         if (isCurrent) {
@@ -148,21 +87,36 @@ export function ClinicalCatalogsSection({
     };
   }, []);
 
+  function itemsForType(catalogType: CatalogType): CatalogItem[] {
+    return catalogType === SPECIES_TYPE ? species : breeds;
+  }
+
   function setItemsForType(catalogType: CatalogType, items: CatalogItem[]) {
-    setItemsByType((current) => ({ ...current, [catalogType]: items }));
+    if (catalogType === SPECIES_TYPE) {
+      setSpecies(items);
+    } else {
+      setBreeds(items);
+    }
   }
 
   function replaceItem(item: CatalogItem) {
-    setItemsByType((current) => ({
-      ...current,
-      [item.catalog_type]: (current[item.catalog_type] ?? []).map((existing) =>
+    setItemsForType(
+      item.catalog_type,
+      itemsForType(item.catalog_type).map((existing) =>
         existing.id === item.id ? item : existing,
       ),
-    }));
+    );
+  }
+
+  function speciesName(speciesId: string | null): string | null {
+    if (!speciesId) {
+      return null;
+    }
+    return species.find((item) => item.id === speciesId)?.name ?? null;
   }
 
   function openNewItemForm(catalogType: CatalogType) {
-    setFormState({ id: null, catalogType, name: "", description: "" });
+    setFormState({ id: null, catalogType, name: "", description: "", parentId: "" });
     setMessage(null);
   }
 
@@ -172,6 +126,7 @@ export function ClinicalCatalogsSection({
       catalogType: item.catalog_type,
       name: item.name,
       description: item.description ?? "",
+      parentId: item.parent_id ?? "",
     });
     setMessage(null);
   }
@@ -187,6 +142,10 @@ export function ClinicalCatalogsSection({
       setMessage("Ingresa un nombre para la opción.");
       return;
     }
+    if (formState.catalogType === BREED_TYPE && !formState.parentId) {
+      setMessage("Selecciona la especie a la que pertenece.");
+      return;
+    }
 
     setIsSaving(true);
     setMessage(null);
@@ -195,6 +154,7 @@ export function ClinicalCatalogsSection({
       const payload = {
         name: trimmedName,
         description: formState.description.trim() || null,
+        parent_id: formState.catalogType === BREED_TYPE ? formState.parentId : null,
       };
       if (formState.id) {
         const response = await updateCatalogItem(
@@ -204,7 +164,7 @@ export function ClinicalCatalogsSection({
         );
         replaceItem(response.data);
       } else {
-        const items = itemsByType[formState.catalogType] ?? [];
+        const items = itemsForType(formState.catalogType);
         const nextSortOrder =
           items.reduce((max, item) => Math.max(max, item.sort_order), 0) + 10;
         const response = await createCatalogItem(formState.catalogType, {
@@ -246,7 +206,7 @@ export function ClinicalCatalogsSection({
       return;
     }
 
-    const ordered = [...(itemsByType[item.catalog_type] ?? [])].sort(
+    const ordered = [...itemsForType(item.catalog_type)].sort(
       (a, b) => a.sort_order - b.sort_order,
     );
     const currentIndex = ordered.findIndex((existing) => existing.id === item.id);
@@ -277,7 +237,7 @@ export function ClinicalCatalogsSection({
     }
   }
 
-  async function handleRestoreDefaults(catalogType: CatalogType) {
+  async function handleRestoreDefaults() {
     if (!canManageCatalog) {
       return;
     }
@@ -286,14 +246,33 @@ export function ClinicalCatalogsSection({
     setMessage(null);
 
     try {
-      const response = await restoreCatalogDefaults(catalogType);
-      setItemsForType(catalogType, response.data);
+      const response = await restoreCatalogDefaults(SPECIES_TYPE);
+      setSpecies(response.data);
     } catch (error) {
       setMessage(getApiErrorMessage(error));
     } finally {
       setIsSaving(false);
     }
   }
+
+  const sections: Array<{
+    type: CatalogType;
+    label: string;
+    description: string;
+    hasDefaults?: boolean;
+  }> = [
+    {
+      type: SPECIES_TYPE,
+      label: "Especies",
+      description: "Especies disponibles al registrar un paciente.",
+      hasDefaults: true,
+    },
+    {
+      type: BREED_TYPE,
+      label: "Razas",
+      description: "Razas opcionales, relacionadas con una especie.",
+    },
+  ];
 
   return (
     <section className="panel settings-section-card">
@@ -304,11 +283,11 @@ export function ClinicalCatalogsSection({
         onClick={onToggle}
       >
         <span className="settings-section-card__icon" aria-hidden="true">
-          <Stethoscope size={20} />
+          <PawPrint size={20} />
         </span>
         <span className="settings-section-card__copy">
-          <strong>Catálogos clínicos</strong>
-          <small>Opciones seleccionables usadas durante la consulta.</small>
+          <strong>Especies y razas</strong>
+          <small>Opciones usadas al registrar un paciente.</small>
         </span>
         <ChevronDown aria-hidden="true" size={16} />
       </button>
@@ -318,23 +297,23 @@ export function ClinicalCatalogsSection({
           {message ? <div className="error-state">{message}</div> : null}
 
           {isLoading ? (
-            <div className="empty-state">Cargando catálogos clínicos…</div>
+            <div className="empty-state">Cargando especies y razas…</div>
           ) : (
-            clinicalCatalogConfigs.map((config) => {
-              const items = [...(itemsByType[config.type] ?? [])].sort(
+            sections.map((section) => {
+              const items = [...itemsForType(section.type)].sort(
                 (a, b) => a.sort_order - b.sort_order,
               );
 
               return (
-                <div key={config.type}>
+                <div key={section.type}>
                   <div className="record-card__title-row">
-                    <h3>{config.label}</h3>
+                    <h3>{section.label}</h3>
                     <div className="button-row">
-                      {config.hasDefaults ? (
+                      {section.hasDefaults ? (
                         <button
                           className="secondary-button"
                           disabled={!canManageCatalog || isSaving}
-                          onClick={() => void handleRestoreDefaults(config.type)}
+                          onClick={() => void handleRestoreDefaults()}
                           type="button"
                         >
                           Restaurar predeterminados
@@ -342,24 +321,28 @@ export function ClinicalCatalogsSection({
                       ) : null}
                       <button
                         className="primary-button"
-                        disabled={!canManageCatalog || isSaving}
-                        onClick={() => openNewItemForm(config.type)}
+                        disabled={
+                          !canManageCatalog ||
+                          isSaving ||
+                          (section.type === BREED_TYPE && species.length === 0)
+                        }
+                        onClick={() => openNewItemForm(section.type)}
                         type="button"
                       >
                         Nueva opción
                       </button>
                     </div>
                   </div>
-                  <p>{config.description}</p>
+                  <p>{section.description}</p>
 
                   {items.length === 0 ? (
                     <div className="empty-state">
-                      No hay opciones configuradas para {config.label.toLowerCase()}.
+                      No hay opciones configuradas para {section.label.toLowerCase()}.
                     </div>
                   ) : (
                     <section
                       className="record-card-list"
-                      aria-label={`Opciones de ${config.label}`}
+                      aria-label={`Opciones de ${section.label}`}
                     >
                       {items.map((item, index) => (
                         <article className="record-card clinic-team-card" key={item.id}>
@@ -372,6 +355,9 @@ export function ClinicalCatalogsSection({
                                 {item.is_active ? "Activa" : "Inactiva"}
                               </span>
                             </div>
+                            {item.parent_id ? (
+                              <p>Especie: {speciesName(item.parent_id) ?? "—"}</p>
+                            ) : null}
                             {item.description ? <p>{item.description}</p> : null}
                             <div className="record-card__actions">
                               <button
@@ -434,11 +420,7 @@ export function ClinicalCatalogsSection({
               <div className="record-card__title-row">
                 <h3>
                   {formState.id ? "Editar opción de " : "Nueva opción de "}
-                  {
-                    clinicalCatalogConfigs.find(
-                      (config) => config.type === formState.catalogType,
-                    )?.label
-                  }
+                  {sections.find((section) => section.type === formState.catalogType)?.label}
                 </h3>
                 <button
                   aria-label="Cerrar formulario"
@@ -462,6 +444,29 @@ export function ClinicalCatalogsSection({
                   }
                 />
               </label>
+              {formState.catalogType === BREED_TYPE ? (
+                <label className="field">
+                  <span>Especie</span>
+                  <select
+                    required
+                    value={formState.parentId}
+                    onChange={(event) =>
+                      setFormState((current) =>
+                        current ? { ...current, parentId: event.target.value } : current,
+                      )
+                    }
+                  >
+                    <option value="">Selecciona una especie</option>
+                    {species
+                      .filter((item) => item.is_active)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : null}
               <label className="field">
                 <span>Descripción (opcional)</span>
                 <input

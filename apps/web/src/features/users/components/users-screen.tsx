@@ -233,6 +233,7 @@ export function UsersScreen() {
           onClose={() => setIsCreateTenantOpen(false)}
           onCreated={(createdTenant) => {
             setTenants((current) => [...current, createdTenant]);
+            void loadUsers();
           }}
         />
       ) : null}
