@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import (
     Consultation,
     ConsultationMedication,
@@ -41,6 +42,7 @@ from app.services.ai_service import AIService
 AI_SUMMARY_NOT_ENOUGH_INFORMATION_MESSAGE = (
     "Not enough clinical information to generate an AI summary."
 )
+EXAM_CATALOG_TYPE = "exam_type"
 
 
 class ConsultationService:
@@ -175,6 +177,7 @@ class ConsultationService:
                 consultation_id=follow_up.id,
                 name=study_request.name,
                 study_type=study_request.study_type,
+                exam_catalog_item_id=study_request.exam_catalog_item_id,
                 notes=study_request.notes,
             )
             self.consultation_repository.create_study_request(copied_study_request)
@@ -354,6 +357,10 @@ class ConsultationService:
         payload: ConsultationStudyRequestCreate,
     ) -> ConsultationStudyRequest:
         self.get_consultation(tenant_id, consultation_id)
+        self._validate_optional_exam_catalog_item(
+            tenant_id,
+            payload.exam_catalog_item_id,
+        )
         study_request = ConsultationStudyRequest(
             tenant_id=tenant_id,
             consultation_id=consultation_id,
@@ -441,6 +448,31 @@ class ConsultationService:
                 "Clinic team member not found",
             )
         return user.id
+
+    def _validate_optional_exam_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != EXAM_CATALOG_TYPE:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {EXAM_CATALOG_TYPE}",
+            )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_update_numbers(self, updates: dict) -> None:
         non_negative_fields = {

@@ -36,6 +36,7 @@ class FakeStorage:
         return self.objects[object_path]
 
 
+pytestmark = pytest.mark.usefixtures("allow_supplier_mutations")
 def _headers(tenant) -> dict[str, str]:
     return {"X-Tenant-Id": str(tenant.id)}
 

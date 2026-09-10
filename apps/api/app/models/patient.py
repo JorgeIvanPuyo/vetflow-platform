@@ -33,7 +33,19 @@ class Patient(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     species: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    species_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     breed: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    breed_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     sex: Mapped[str | None] = mapped_column(String(50), nullable=True)
     estimated_age: Mapped[str | None] = mapped_column(String(100), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -54,6 +66,14 @@ class Patient(BaseModel):
     tenant: Mapped[Tenant] = relationship("Tenant")
     owner: Mapped[Owner] = relationship("Owner", back_populates="patients")
     created_by_user: Mapped[User | None] = relationship("User")
+    species_catalog_item: Mapped[CatalogItem | None] = relationship(
+        "CatalogItem",
+        foreign_keys=[species_catalog_item_id],
+    )
+    breed_catalog_item: Mapped[CatalogItem | None] = relationship(
+        "CatalogItem",
+        foreign_keys=[breed_catalog_item_id],
+    )
     consultations: Mapped[list[Consultation]] = relationship(
         "Consultation",
         back_populates="patient",
@@ -83,3 +103,21 @@ class Patient(BaseModel):
         if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
             return None
         return self.created_by_user.email
+
+    @property
+    def species_catalog_item_name(self) -> str | None:
+        if (
+            self.species_catalog_item is None
+            or self.species_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.species_catalog_item.name
+
+    @property
+    def breed_catalog_item_name(self) -> str | None:
+        if (
+            self.breed_catalog_item is None
+            or self.breed_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.breed_catalog_item.name

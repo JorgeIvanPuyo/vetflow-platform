@@ -6721,6 +6721,10 @@ a.purchase-dashboard-metric:focus-visible {
   margin-bottom: 24px;
 }
 
+.app-sidebar__tenant-switcher {
+  margin-bottom: 20px;
+}
+
 .app-sidebar__nav {
   display: grid;
   gap: 4px;
@@ -7887,6 +7891,12 @@ a.purchase-dashboard-metric:focus-visible {
   min-height: 96px;
   padding: 16px;
   border-radius: 18px;
+}
+
+.list-page__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .list-page__header .eyebrow {

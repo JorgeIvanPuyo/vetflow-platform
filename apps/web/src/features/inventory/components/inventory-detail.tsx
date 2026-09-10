@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { InventoryItemForm } from "@/features/inventory/components/inventory-item-form";
 import {
   calculateInventoryEntryUnitCostPreview,
@@ -22,6 +23,7 @@ import {
   formatInventoryPercentage,
   formatInventoryQuantity,
   formatInventorySignedQuantity,
+  getInitialInventoryFormState,
   getInventoryCategoryLabel,
   getInventoryExitReasonLabel,
   getInventoryMovementAmountLabel,
@@ -31,7 +33,6 @@ import {
   getInventoryUnitLabel,
   initialInventoryEntryFormState,
   initialInventoryExitFormState,
-  initialInventoryFormState,
   inventoryEntryFormToPayload,
   inventoryExitFormToPayload,
   inventoryItemToFormState,
@@ -112,6 +113,12 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inventoryReturnTo = getInventoryReturnTo(searchParams.get("return_to"));
+  const { preferences } = useClinic();
+  const moneyPreferences = {
+    currencyCode: preferences?.currency_code ?? "ARS",
+    locale: preferences?.locale ?? "es-AR",
+  };
+  const roundingIncrement = Number(preferences?.money_rounding_increment ?? 10);
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
   const [movementFilter, setMovementFilter] = useState<InventoryMovementFilter>("all");
@@ -119,7 +126,9 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isEntryOpen, setIsEntryOpen] = useState(false);
   const [isExitOpen, setIsExitOpen] = useState(false);
-  const [formState, setFormState] = useState<InventoryFormState>(initialInventoryFormState);
+  const [formState, setFormState] = useState<InventoryFormState>(
+    getInitialInventoryFormState(preferences),
+  );
   const [manualSalePriceOverride, setManualSalePriceOverride] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [entryFormState, setEntryFormState] = useState<InventoryEntryFormState>(
@@ -214,7 +223,9 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
     }
 
     setFormState(inventoryItemToFormState(state.item));
-    setManualSalePriceOverride(isInventorySalePriceManual(state.item));
+    setManualSalePriceOverride(
+      isInventorySalePriceManual(state.item, roundingIncrement),
+    );
     setIsEditOpen(true);
     setState((current) => ({
       ...current,
@@ -225,7 +236,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
   function closeEdit() {
     setIsEditOpen(false);
-    setFormState(initialInventoryFormState);
+    setFormState(getInitialInventoryFormState(preferences));
     setManualSalePriceOverride(false);
     setState((current) => ({
       ...current,
@@ -241,7 +252,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
     setEntryFormState({
       ...initialInventoryEntryFormState,
-      supplier: state.item.supplier ?? "",
+      supplier: state.item.supplier_name ?? state.item.supplier ?? "",
     });
     setIsEntryOpen(true);
     setState((current) => ({
@@ -447,6 +458,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const badges = getInventoryStatusBadges(item);
   const purchasePriceWithTax =
     item.purchase_price_with_tax_ars ?? item.purchase_price_ars;
+  const salePriceWithTax = item.sale_price_with_tax_ars ?? item.sale_price_ars;
 
   return (
     <div className="page-stack inventory-detail-page">
@@ -493,19 +505,19 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <dl className="metric-list inventory-metric-list">
             <div>
               <dt>Stock actual</dt>
-              <dd>{formatInventoryQuantity(item.current_stock, item.unit)}</dd>
+              <dd>{formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</dd>
             </div>
             <div>
               <dt>Stock mínimo</dt>
-              <dd>{formatInventoryQuantity(item.minimum_stock, item.unit)}</dd>
+              <dd>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</dd>
             </div>
             <div>
               <dt>Precio compra sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(item.purchase_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Precio final de venta</dt>
-              <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(salePriceWithTax, moneyPreferences)}</dd>
             </div>
           </dl>
 
@@ -540,33 +552,43 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <dl className="detail-grid">
             <div>
               <dt>Precio compra sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.purchase_price_ars)}</dd>
+              <dd>{formatInventoryCurrency(item.purchase_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>IVA compra</dt>
               <dd>
-                {formatInventoryPercentage(item.purchase_tax_rate_percentage)}
+                {formatInventoryPercentage(item.purchase_tax_rate_percentage, moneyPreferences.locale)}
                 {item.purchase_tax_amount_ars !== undefined &&
                 item.purchase_tax_amount_ars !== null
-                  ? ` · ${formatInventoryCurrency(item.purchase_tax_amount_ars)}`
+                  ? ` · ${formatInventoryCurrency(item.purchase_tax_amount_ars, moneyPreferences)}`
                   : ""}
               </dd>
             </div>
             <div>
               <dt>Costo compra con IVA</dt>
-              <dd>{formatInventoryCurrency(purchasePriceWithTax)}</dd>
+              <dd>{formatInventoryCurrency(purchasePriceWithTax, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Margen de ganancia</dt>
               <dd>{item.profit_margin_percentage}%</dd>
             </div>
             <div>
-              <dt>Precio final de venta</dt>
-              <dd>{formatInventoryCurrency(item.sale_price_ars)}</dd>
+              <dt>Precio de venta sin impuesto</dt>
+              <dd>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
-              <dt>Precio con impuesto de venta legado</dt>
-              <dd>{formatInventoryCurrency(item.sale_price_with_tax_ars ?? item.sale_price_ars)}</dd>
+              <dt>Impuesto de venta</dt>
+              <dd>
+                {formatInventoryPercentage(item.sale_tax_rate_percentage, moneyPreferences.locale)}
+                {item.sale_tax_amount_ars !== undefined &&
+                item.sale_tax_amount_ars !== null
+                  ? ` · ${formatInventoryCurrency(item.sale_tax_amount_ars, moneyPreferences)}`
+                  : ""}
+              </dd>
+            </div>
+            <div>
+              <dt>Precio final de venta</dt>
+              <dd>{formatInventoryCurrency(salePriceWithTax, moneyPreferences)}</dd>
             </div>
             <div>
               <dt>Redondear precio</dt>
@@ -574,7 +596,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             </div>
             <div>
               <dt>Proveedor habitual</dt>
-              <dd>{item.supplier || "No indicado"}</dd>
+              <dd>{item.supplier_name ?? item.supplier ?? "No indicado"}</dd>
             </div>
           </dl>
         </article>
@@ -594,6 +616,12 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
             <dt>Categoría</dt>
             <dd>{getInventoryCategoryLabel(item.category)}</dd>
           </div>
+          {item.category_catalog_item_name ? (
+            <div>
+              <dt>Categoría de la clínica</dt>
+              <dd>{item.category_catalog_item_name}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>Marca</dt>
             <dd>{item.brand || "No indicada"}</dd>
@@ -608,7 +636,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           </div>
           <div>
             <dt>Proveedor</dt>
-            <dd>{item.supplier || "No indicado"}</dd>
+            <dd>{item.supplier_name ?? item.supplier ?? "No indicado"}</dd>
           </div>
           <div>
             <dt>Lote</dt>
@@ -675,7 +703,10 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
           <>
             <div className="inventory-movement-list">
               {movementState.data.map((movement) => {
-                const amountLabel = getInventoryMovementAmountLabel(movement);
+                const amountLabel = getInventoryMovementAmountLabel(
+                  movement,
+                  moneyPreferences,
+                );
                 const direction = getInventoryMovementDirection(movement.movement_type);
                 const iconClass =
                   direction > 0 ? "entry" : direction < 0 ? "exit" : movement.movement_type;
@@ -707,6 +738,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                               movement.quantity,
                               item.unit,
                               movement.movement_type,
+                              moneyPreferences.locale,
                             )}
                           </strong>
                           <p>{getInventoryMovementTypeLabel(movement.movement_type)}</p>
@@ -868,7 +900,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       total_cost_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 
@@ -886,14 +918,14 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       unit_cost_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 
               {entryUnitCostPreview !== null ? (
                 <div className="clinical-section inventory-inline-note">
                   <strong>Costo unitario estimado</strong>
-                  <span>{formatInventoryCurrency(String(entryUnitCostPreview))}</span>
+                  <span>{formatInventoryCurrency(String(entryUnitCostPreview), moneyPreferences)}</span>
                 </div>
               ) : null}
 
@@ -987,7 +1019,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                   }
                 />
                 <small>
-                  Disponible: {formatInventoryQuantity(item.current_stock, item.unit)}
+                  Disponible: {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}
                 </small>
               </label>
 
@@ -1024,7 +1056,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                       unit_sale_price_ars: event.target.value,
                     }))
                   }
-                  placeholder="ARS 0"
+                  placeholder="0"
                 />
               </label>
 

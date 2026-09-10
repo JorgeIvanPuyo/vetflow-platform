@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { getInventoryItems } from "@/services/inventory";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
@@ -18,6 +20,8 @@ type ServiceLine = { key: string; type: "service"; description: string; quantity
 type Line = ProductLine | ServiceLine;
 
 export function SaleFormScreen({ saleId }: { saleId?: string }) {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const router = useRouter();
   const [owners, setOwners] = useState<Owner[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -285,7 +289,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => { if (!isAdded) setActiveProductIndex(index); }}
                 onClick={() => addProduct(item)}
-              ><span><strong>{item.name}</strong><small className="sale-product-selector__metadata"><span>{item.internal_code}</span><span>Stock {item.current_stock} {item.unit}</span></small></span><span className="sale-product-selector__price"><strong>{formatPurchaseCurrency(item.sale_price_ars ?? 0)}</strong>{isAdded ? <small>Ya agregado</small> : <PackagePlus aria-hidden="true" size={17} />}</span></button>;
+              ><span><strong>{item.name}</strong><small className="sale-product-selector__metadata"><span>{item.internal_code}</span><span>Stock {item.current_stock} {item.unit}</span></small></span><span className="sale-product-selector__price"><strong>{formatPurchaseCurrency(item.sale_price_ars ?? 0, moneyPreferences)}</strong>{isAdded ? <small>Ya agregado</small> : <PackagePlus aria-hidden="true" size={17} />}</span></button>;
             })}
           </div>
           {!isSearchingProducts && !productSearchError && productPage < productTotalPages ? <div className="sale-product-selector__footer"><button className="secondary-button" type="button" disabled={isLoadingMoreProducts} onMouseDown={(event) => event.preventDefault()} onClick={() => void loadMoreProducts()}>{isLoadingMoreProducts ? "Cargando..." : "Cargar más"}</button></div> : null}
@@ -295,11 +299,11 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
         <label className="field"><span>Cantidad *</span><input required type="number" min="1" step="1" inputMode="numeric" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} /></label>
         <label className="field"><span>Precio unitario *</span><input required type="number" min="0" step="0.01" value={line.price} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></label>
         <label className="field"><span>Descuento %</span><input required type="number" min="0" max="100" step="0.01" value={line.discount} onChange={(event) => updateLine(line.key, { discount: event.target.value })} /></label>
-        <div className="sale-line__total"><span>Total estimado</span><strong>{formatPurchaseCurrency(lineTotal(line))}</strong></div>
+        <div className="sale-line__total"><span>Total estimado</span><strong>{formatPurchaseCurrency(lineTotal(line), moneyPreferences)}</strong></div>
       </div></article>)}</div>
       {!lines.length ? <p className="empty-state empty-state--compact">Agrega al menos un producto o servicio.</p> : null}
     </section>
-    <section className="panel purchase-summary"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(totals.subtotal)}</strong></div><div><span>Descuentos</span><strong>{formatPurchaseCurrency(totals.discount)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(totals.total)}</strong></div><p>Los importes definitivos se calculan en el backend.</p></section>
+    <section className="panel purchase-summary"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(totals.subtotal, moneyPreferences)}</strong></div><div><span>Descuentos</span><strong>{formatPurchaseCurrency(totals.discount, moneyPreferences)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(totals.total, moneyPreferences)}</strong></div><p>Los importes definitivos se calculan en el backend.</p></section>
     <section className="purchase-form-actions"><Link className="secondary-button" href={saleId ? `/sales/${saleId}` : "/sales"}>Cancelar</Link><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar borrador"}</button></section>
   </form>;
 }

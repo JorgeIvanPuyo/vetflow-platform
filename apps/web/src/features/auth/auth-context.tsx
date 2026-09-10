@@ -18,6 +18,7 @@ import {
 
 import { getFirebaseAuth } from "@/lib/firebase";
 import { setAuthTokenProvider } from "@/lib/api";
+import { setStoredActingTenantId } from "@/lib/acting-tenant";
 
 type AuthContextValue = {
   user: User | null;
@@ -85,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
       },
       async logout() {
+        setStoredActingTenantId(null);
         await signOut(getFirebaseAuth());
       },
       async resetPassword(email: string) {

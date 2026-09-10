@@ -10,6 +10,7 @@ PREVENTIVE_CARE_TYPES = {"vaccine", "deworming", "other"}
 class PreventiveCareBase(BaseModel):
     name: str
     care_type: str
+    catalog_item_id: uuid.UUID | None = None
     applied_at: datetime
     next_due_at: datetime | None = None
     lot_number: str | None = None
@@ -23,6 +24,7 @@ class PreventiveCareCreate(PreventiveCareBase):
 class PreventiveCareUpdate(BaseModel):
     name: str | None = None
     care_type: str | None = None
+    catalog_item_id: uuid.UUID | None = None
     applied_at: datetime | None = None
     next_due_at: datetime | None = None
     lot_number: str | None = None
@@ -35,6 +37,7 @@ class PreventiveCareRead(PreventiveCareBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
+    catalog_item_name: str | None = None
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None

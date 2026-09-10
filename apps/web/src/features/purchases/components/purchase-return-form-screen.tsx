@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency, formatPurchaseDate } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { createPurchaseReturn, getPurchaseReturn, updatePurchaseReturn, uploadPurchaseReturnAttachment } from "@/services/purchase-returns";
 import { getPurchase } from "@/services/purchases";
 import type { Purchase, PurchaseReturnDocumentType, PurchaseReturnWritePayload } from "@/types/api";
@@ -15,6 +17,8 @@ type Props = { purchaseId?: string; returnId?: string };
 type Quantities = Record<string, string>;
 
 export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const router = useRouter();
   const isEditing = Boolean(returnId);
   const [purchase, setPurchase] = useState<Purchase | null>(null);
@@ -151,7 +155,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
       <section className="panel purchase-detail-grid">
         <div><span>Proveedor</span><strong>{purchase.supplier_name}</strong><small>{purchase.supplier_tax_id || "Sin identificación fiscal"}</small></div>
         <div><span>Compra original</span><strong>{formatPurchaseDate(purchase.purchase_date)}</strong><small>{purchase.document_number || "Sin número"}</small></div>
-        <div><span>Total original</span><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong><small>La compra permanece recibida</small></div>
+        <div><span>Total original</span><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong><small>La compra permanece recibida</small></div>
       </section>
 
       <section className="panel purchase-form-section">
@@ -168,11 +172,11 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
         <div className="inventory-table-scroll"><table className="inventory-table purchase-table"><thead><tr><th>Producto</th><th>Comprada</th><th>Ya devuelta</th><th>Disponible</th><th>A devolver</th><th>Total estimado</th></tr></thead><tbody>{purchase.items.map((item) => {
           const quantity = Number(quantities[item.id] || 0);
           const total = quantity * Number(item.unit_price_without_tax_ars) * (1 + Number(item.tax_rate_percentage) / 100);
-          return <tr key={item.id} className="inventory-table__row--static"><td className="purchase-wrap"><strong>{item.description_snapshot}</strong><small>{item.internal_code_snapshot} · {item.unit}</small></td><td>{item.quantity}</td><td>{item.confirmed_returned_quantity}</td><td><strong>{item.returnable_quantity}</strong></td><td><input className="purchase-return-quantity" aria-label={`Cantidad a devolver de ${item.description_snapshot}`} type="number" inputMode="numeric" min="0" max={item.returnable_quantity} step="1" value={quantities[item.id] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} /></td><td>{formatPurchaseCurrency(total)}</td></tr>;
+          return <tr key={item.id} className="inventory-table__row--static"><td className="purchase-wrap"><strong>{item.description_snapshot}</strong><small>{item.internal_code_snapshot} · {item.unit}</small></td><td>{item.quantity}</td><td>{item.confirmed_returned_quantity}</td><td><strong>{item.returnable_quantity}</strong></td><td><input className="purchase-return-quantity" aria-label={`Cantidad a devolver de ${item.description_snapshot}`} type="number" inputMode="numeric" min="0" max={item.returnable_quantity} step="1" value={quantities[item.id] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} /></td><td>{formatPurchaseCurrency(total, moneyPreferences)}</td></tr>;
         })}</tbody></table></div>
       </section>
 
-      <section className="panel purchase-summary"><div><span>Subtotal estimado</span><strong>{formatPurchaseCurrency(estimate.subtotal)}</strong></div><div><span>IVA estimado</span><strong>{formatPurchaseCurrency(estimate.tax)}</strong></div><div><span>Total estimado</span><strong>{formatPurchaseCurrency(estimate.total)}</strong></div><p>El backend recalculará y guardará los importes definitivos con los valores históricos.</p></section>
+      <section className="panel purchase-summary"><div><span>Subtotal estimado</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div><div><span>IVA estimado</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div><div><span>Total estimado</span><strong>{formatPurchaseCurrency(estimate.total, moneyPreferences)}</strong></div><p>El backend recalculará y guardará los importes definitivos con los valores históricos.</p></section>
 
       {!isEditing ? <section className="panel purchase-form-section"><div className="section-heading"><h2>Comprobante opcional</h2><p>PDF, JPEG o PNG de hasta 10 MB. También podrás adjuntarlo después.</p></div><label className="purchase-attachment-picker"><FileUp size={22} /><span>{attachmentFile?.name ?? "Seleccionar archivo"}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)} /></label></section> : null}
 

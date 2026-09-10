@@ -71,7 +71,7 @@ class PurchaseReturnService:
                 reason=payload.reason,
                 document_type=payload.document_type,
                 document_number=payload.document_number,
-                currency="ARS",
+                currency=purchase.currency,
                 created_by_user_id=created_by_user_id,
                 **totals,
             )

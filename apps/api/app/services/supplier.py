@@ -29,7 +29,12 @@ class SupplierService:
     ) -> Supplier:
         self._validate_optional_user(tenant_id, created_by_user_id)
         normalized_name = normalize_name(payload.name)
-        self._ensure_unique(tenant_id, normalized_name, payload.tax_id)
+        self._ensure_unique(
+            tenant_id,
+            normalized_name,
+            payload.tax_id,
+            supplier_is_active=True,
+        )
         supplier = Supplier(
             tenant_id=tenant_id,
             name=payload.name,
@@ -63,7 +68,7 @@ class SupplierService:
         tenant_id: uuid.UUID,
         *,
         search: str | None,
-        is_active: bool,
+        is_active: bool | None,
         page: int,
         page_size: int,
         sort_by: str,
@@ -86,11 +91,15 @@ class SupplierService:
         }
 
     def update(
-        self, tenant_id: uuid.UUID, supplier_id: uuid.UUID, payload: SupplierUpdate
+        self,
+        tenant_id: uuid.UUID,
+        supplier_id: uuid.UUID,
+        payload: SupplierUpdate,
     ) -> Supplier:
         supplier = self.repository.get_by_id(tenant_id, supplier_id, for_update=True)
         if supplier is None:
             raise AppError(404, "supplier_not_found", "Proveedor no encontrado")
+
         updates = payload.model_dump(exclude_unset=True)
         if "name" in updates:
             if updates["name"] is None:
@@ -98,12 +107,16 @@ class SupplierService:
             updates["normalized_name"] = normalize_name(updates["name"])
         if "is_active" in updates and updates["is_active"] is None:
             raise AppError(422, "validation_error", "is_active cannot be null")
+
+        resulting_is_active = updates.get("is_active", supplier.is_active)
         self._ensure_unique(
             tenant_id,
             updates.get("normalized_name", supplier.normalized_name),
             updates.get("tax_id", supplier.tax_id),
+            supplier_is_active=resulting_is_active,
             exclude_id=supplier.id,
         )
+
         for field_name, value in updates.items():
             setattr(supplier, field_name, value)
         supplier.updated_at = datetime.now(UTC)
@@ -111,19 +124,39 @@ class SupplierService:
         self._commit_with_conflict_handling()
         return self.get(tenant_id, supplier_id)
 
+    def set_active(
+        self,
+        tenant_id: uuid.UUID,
+        supplier_id: uuid.UUID,
+        is_active: bool,
+    ) -> Supplier:
+        return self.update(
+            tenant_id,
+            supplier_id,
+            SupplierUpdate(is_active=is_active),
+        )
+
     def _ensure_unique(
         self,
         tenant_id: uuid.UUID,
         normalized_name: str,
         tax_id: str | None,
         *,
+        supplier_is_active: bool,
         exclude_id: uuid.UUID | None = None,
     ) -> None:
-        by_name = self.repository.get_by_normalized_name(tenant_id, normalized_name)
-        if by_name is not None and by_name.id != exclude_id:
-            raise AppError(
-                409, "supplier_name_conflict", "Ya existe un proveedor con ese nombre"
+        if supplier_is_active:
+            by_name = self.repository.get_active_by_normalized_name(
+                tenant_id,
+                normalized_name,
             )
+            if by_name is not None and by_name.id != exclude_id:
+                raise AppError(
+                    409,
+                    "supplier_name_conflict",
+                    "Ya existe un proveedor activo con ese nombre",
+                )
+
         if tax_id is not None:
             by_tax = self.repository.get_by_tax_id(tenant_id, tax_id)
             if by_tax is not None and by_tax.id != exclude_id:
@@ -134,9 +167,13 @@ class SupplierService:
                 )
 
     def _validate_optional_user(
-        self, tenant_id: uuid.UUID, user_id: uuid.UUID | None
+        self,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID | None,
     ) -> None:
-        if user_id is not None and self.user_repository.get_by_id(tenant_id, user_id) is None:
+        if user_id is None:
+            return
+        if self.user_repository.get_by_id(tenant_id, user_id) is None:
             raise AppError(404, "user_not_found", "Usuario no encontrado")
 
     def _commit_with_conflict_handling(self) -> None:
@@ -157,10 +194,13 @@ class SupplierService:
                 "supplier_tax_id_conflict",
                 "Ya existe un proveedor con esa identificación fiscal",
             ) from exc
-        if constraint == "uq_suppliers_tenant_normalized_name":
+        if constraint in {
+            "uq_suppliers_tenant_normalized_name",
+            "ux_suppliers_tenant_normalized_name_active",
+        }:
             raise AppError(
                 409,
                 "supplier_name_conflict",
-                "Ya existe un proveedor con ese nombre",
+                "Ya existe un proveedor activo con ese nombre",
             ) from exc
         raise exc

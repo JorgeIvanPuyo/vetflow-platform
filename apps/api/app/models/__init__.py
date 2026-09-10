@@ -1,4 +1,5 @@
 from app.models.appointment import Appointment
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
@@ -25,12 +26,18 @@ from app.models.sale_fiscal import (
     SaleFiscalDocument,
     SaleFiscalDocumentFileVersion,
 )
+from app.models.service import Service
 from app.models.supplier import Supplier
 from app.models.tenant import Tenant
+from app.models.tenant_preference import TenantPreference
 from app.models.user import User
 
 __all__ = [
     "Tenant",
+    "TenantPreference",
+    "Service",
+    "CatalogItem",
+    "Supplier",
     "User",
     "Owner",
     "Patient",
@@ -60,5 +67,4 @@ __all__ = [
     "FiscalIssuer",
     "SaleFiscalDocument",
     "SaleFiscalDocumentFileVersion",
-    "Supplier",
 ]

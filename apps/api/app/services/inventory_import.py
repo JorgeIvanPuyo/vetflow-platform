@@ -17,9 +17,11 @@ from sqlalchemy.orm import Session
 from app.core.errors import AppError
 from app.models.inventory_import import InventoryImport, InventoryImportRow
 from app.models.inventory_item import InventoryItem
+from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.schemas.inventory import InventoryImportConfirmCreate
 from app.services.inventory import INVENTORY_CATEGORY_PREFIXES, InventoryService, ZERO
+from app.services.regional_settings import resolve_operational_money_settings
 
 MAX_IMPORT_FILE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMPORT_ROWS = 2000
@@ -111,7 +113,8 @@ class InventoryImportService:
         self.inventory_repository = InventoryRepository(db)
         self.inventory_service = InventoryService(db)
 
-    def build_template(self) -> bytes:
+    def build_template(self, tenant_id: uuid.UUID) -> bytes:
+        settings = resolve_operational_money_settings(ClinicRepository(self.db), tenant_id)
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Inventario"
@@ -126,8 +129,8 @@ class InventoryImportService:
                 "Proveedor Uno",
                 "tablet",
                 "1000",
-                "21",
-                "35",
+                str(settings.default_purchase_tax_rate),
+                str(settings.default_profit_margin),
                 "",
                 "3",
                 "10",
@@ -146,7 +149,7 @@ class InventoryImportService:
             "Categorías: medication, vaccine, supply, food, accessory, other.",
             "Unidades: " + ", ".join(sorted(UNITS)) + ".",
             "Usa decimales con punto o coma. Evita valores ambiguos como 1,234.",
-            "IVA de compra vacío en nuevos productos usa 21; vacío en actualizaciones conserva el valor actual.",
+            f"IVA de compra vacío en nuevos productos usa el default de la clínica ({settings.default_purchase_tax_rate}%); vacío en actualizaciones conserva el valor actual.",
             "sale_price_ars es precio final al público; no se agrega IVA de venta.",
             "initial_load concilia el stock hasta el valor objetivo de stock.",
             "catalog_update ignora la columna stock y no modifica existencias.",
@@ -155,7 +158,7 @@ class InventoryImportService:
             instructions.append([line])
 
         catalogs = workbook.create_sheet("Catálogos")
-        add_inventory_catalog_rows(catalogs)
+        add_inventory_catalog_rows(catalogs, settings.default_purchase_tax_rate)
 
         output = BytesIO()
         workbook.save(output)
@@ -523,7 +526,7 @@ class InventoryImportService:
         created_by_user_id: uuid.UUID | None,
     ) -> InventoryItem:
         if action == "create":
-            item_data = self._item_create_data(data)
+            item_data = self._item_create_data(tenant_id, data)
             item_data["internal_code"] = self.inventory_repository.get_next_internal_code(
                 tenant_id,
                 item_data["category"],
@@ -616,13 +619,16 @@ class InventoryImportService:
             actions[selection.row_id] = selection.action
         return actions
 
-    def _item_create_data(self, data: dict[str, Any]) -> dict[str, Any]:
+    def _item_create_data(
+        self, tenant_id: uuid.UUID, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        defaults = self.inventory_service._resolve_pricing_defaults(tenant_id)
         purchase_tax = data.get("purchase_tax_rate_percentage")
         if purchase_tax is None:
-            purchase_tax = Decimal("21")
+            purchase_tax = defaults["purchase_tax_rate"]
         profit_margin = data.get("profit_margin_percentage")
         if profit_margin is None:
-            profit_margin = Decimal("35")
+            profit_margin = defaults["profit_margin"]
         item_data = {
             "name": data["name"],
             "category": data["category"],
@@ -635,7 +641,7 @@ class InventoryImportService:
             "purchase_tax_rate_percentage": purchase_tax,
             "profit_margin_percentage": profit_margin,
             "sale_price_ars": data.get("sale_price_ars"),
-            "sale_tax_rate_percentage": ZERO,
+            "sale_tax_rate_percentage": defaults["sale_tax_rate"],
             "round_sale_price": False,
             "notes": data.get("notes"),
             "is_active": True if data.get("is_active") is None else data["is_active"],
@@ -647,6 +653,7 @@ class InventoryImportService:
             profit_margin_percentage=item_data["profit_margin_percentage"],
             round_sale_price=False,
             manual_sale_price_ars=data.get("sale_price_ars"),
+            rounding_increment=defaults["rounding_increment"],
         )
         return item_data
 
@@ -681,6 +688,9 @@ class InventoryImportService:
                 ),
                 round_sale_price=item.round_sale_price,
                 manual_sale_price_ars=updates.get("sale_price_ars"),
+                rounding_increment=self.inventory_service._resolve_pricing_defaults(
+                    item.tenant_id
+                )["rounding_increment"],
             )
         return updates
 
@@ -953,13 +963,16 @@ class InventoryImportService:
         return value
 
 
-def add_inventory_catalog_rows(sheet) -> None:
+def add_inventory_catalog_rows(sheet, default_purchase_tax_rate: Decimal) -> None:
     sheet.append(["category", "unit", "boolean", "purchase_tax_rate_percentage"])
     for cell in sheet[1]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill("solid", fgColor="DDEAF7")
     catalog_rows = max(len(INVENTORY_CATEGORY_PREFIXES), len(UNITS), len(BOOL_ALIASES), 3)
-    tax_values = ["21", "0", "personalizado"]
+    tax_values: list[str] = []
+    for value in (str(default_purchase_tax_rate), "0", "21", "personalizado"):
+        if value not in tax_values:
+            tax_values.append(value)
     for index in range(catalog_rows):
         sheet.append(
             [

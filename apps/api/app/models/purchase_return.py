@@ -40,7 +40,7 @@ class PurchaseReturn(BaseModel):
             "('credit_note', 'return_delivery_note', 'other')",
             name="ck_purchase_returns_document_type",
         ),
-        CheckConstraint("currency = 'ARS'", name="ck_purchase_returns_currency"),
+        CheckConstraint("length(currency) = 3 AND currency = upper(currency)", name="ck_purchase_returns_currency"),
         CheckConstraint(
             "subtotal_ars >= 0 AND tax_total_ars >= 0 AND total_ars >= 0",
             name="ck_purchase_returns_totals_non_negative",
@@ -99,9 +99,7 @@ class PurchaseReturn(BaseModel):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     document_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     document_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    currency: Mapped[str] = mapped_column(
-        String(3), nullable=False, default="ARS", server_default="ARS"
-    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     subtotal_ars: Mapped[Decimal] = mapped_column(
         Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0"
     )

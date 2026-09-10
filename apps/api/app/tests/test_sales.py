@@ -81,7 +81,7 @@ def test_create_storefront_sale_snapshots_calculates_actor_and_never_touches_inv
     response = client.post("/api/v1/sales", headers=_auth_headers(user.email), json=_payload(product["id"]))
     assert response.status_code == 201
     sale = response.json()["data"]
-    assert sale["tenant_id"] == str(tenant.id) and sale["status"] == "draft" and sale["currency"] == "ARS"
+    assert sale["tenant_id"] == str(tenant.id) and sale["status"] == "draft" and sale["currency"] == "USD"
     assert sale["owner_id"] is None and sale["patient_id"] is None
     assert sale["created_by_user_id"] == str(user.id) and sale["created_by_user_name"] == "Vendedor"
     assert sale["subtotal_ars"] == "250.00" and sale["discount_total_ars"] == "20.00" and sale["total_ars"] == "230.00"

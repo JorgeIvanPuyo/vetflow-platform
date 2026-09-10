@@ -18,6 +18,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import {
   formatPurchaseCurrency,
   formatPurchaseDate,
@@ -27,6 +28,7 @@ import {
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { getPurchaseDashboard, getPurchaseFilterOptions } from "@/services/purchases";
 import { getSuppliers } from "@/services/suppliers";
 import type {
@@ -48,6 +50,8 @@ type DashboardQuery = {
 };
 
 export function PurchaseDashboardScreen() {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -165,12 +169,12 @@ export function PurchaseDashboardScreen() {
 
       {data ? <>
         <section className="purchase-dashboard-metrics" aria-label="Métricas de compras">
-          <DashboardMetric href={listHref()} label="Total registrado" value={formatPurchaseCurrency(data.summary.registered_total_ars)} icon={<ReceiptText size={19} />} />
-          <DashboardMetric href={listHref({ status: "received" })} label="Total recibido" value={formatPurchaseCurrency(data.summary.received_total_ars)} icon={<CheckCircle2 size={19} />} />
-          <DashboardMetric label="Total devuelto" value={formatPurchaseCurrency(data.summary.returned_total_ars)} tone="info" icon={<PackageMinus size={19} />} />
-          <DashboardMetric label="Neto recibido" value={formatPurchaseCurrency(data.summary.net_received_total_ars)} icon={<ShoppingCart size={19} />} />
+          <DashboardMetric href={listHref()} label="Total registrado" value={formatPurchaseCurrency(data.summary.registered_total_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
+          <DashboardMetric href={listHref({ status: "received" })} label="Total recibido" value={formatPurchaseCurrency(data.summary.received_total_ars, moneyPreferences)} icon={<CheckCircle2 size={19} />} />
+          <DashboardMetric label="Total devuelto" value={formatPurchaseCurrency(data.summary.returned_total_ars, moneyPreferences)} tone="info" icon={<PackageMinus size={19} />} />
+          <DashboardMetric label="Neto recibido" value={formatPurchaseCurrency(data.summary.net_received_total_ars, moneyPreferences)} icon={<ShoppingCart size={19} />} />
           <DashboardMetric label="Devoluciones confirmadas" value={data.summary.confirmed_return_count} icon={<PackageMinus size={19} />} />
-          <DashboardMetric label="IVA registrado" value={formatPurchaseCurrency(data.summary.registered_tax_total_ars)} icon={<ReceiptText size={19} />} />
+          <DashboardMetric label="IVA registrado" value={formatPurchaseCurrency(data.summary.registered_tax_total_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
           <DashboardMetric href={listHref({ status: "draft" })} label="Borradores" value={data.summary.draft_count} icon={<ClipboardList size={19} />} />
           <DashboardMetric href={listHref({ status: "received" })} label="Recibidas" value={data.summary.received_count} icon={<CheckCircle2 size={19} />} />
           <DashboardMetric href={listHref({ attachment_status: "pending" })} label="Pendientes de comprobante" value={data.summary.attachment_pending_count} tone="warning" icon={<FileWarning size={19} />} />
@@ -180,7 +184,7 @@ export function PurchaseDashboardScreen() {
 
         <section className="panel purchase-dashboard-attention">
           <div className="section-heading-inline"><div><h2>Requieren atención</h2><p>Condiciones documentales y operativas derivadas.</p></div><Link href={listHref({ attachment_status: "pending" })}>Ver pendientes</Link></div>
-          {data.attention.length === 0 ? <p className="empty-state empty-state--compact">No hay compras que requieran atención en este período.</p> : <div className="purchase-dashboard-attention-list">{data.attention.map((item) => <AttentionRow item={item} key={item.id} />)}</div>}
+          {data.attention.length === 0 ? <p className="empty-state empty-state--compact">No hay compras que requieran atención en este período.</p> : <div className="purchase-dashboard-attention-list">{data.attention.map((item) => <AttentionRow item={item} moneyPreferences={moneyPreferences} key={item.id} />)}</div>}
         </section>
 
         <section className="purchase-dashboard-columns">
@@ -191,7 +195,7 @@ export function PurchaseDashboardScreen() {
               return <Link href={`/purchases/${purchase.id}`} className="purchase-dashboard-recent-row" key={purchase.id} aria-label={`Abrir compra de ${purchase.supplier_name}`}>
                 <span className="purchase-dashboard-recent-heading">
                   <strong className="purchase-dashboard-recent-supplier" title={purchase.supplier_name}>{purchase.supplier_name}</strong>
-                  <strong className="purchase-dashboard-recent-total">{formatPurchaseCurrency(purchase.total_ars)}</strong>
+                  <strong className="purchase-dashboard-recent-total">{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong>
                 </span>
                 <span className="purchase-dashboard-recent-meta">
                   <span className="purchase-dashboard-recent-date-status">
@@ -210,7 +214,7 @@ export function PurchaseDashboardScreen() {
               const useReceived = data.top_suppliers.some((item) => Number(item.received_total_ars) > 0);
               const amount = Number(useReceived ? supplier.received_total_ars : supplier.registered_total_ars);
               const maximum = Math.max(...data.top_suppliers.map((item) => Number(useReceived ? item.received_total_ars : item.registered_total_ars)), 1);
-              return <Link href={listHref({ supplier_id: supplier.supplier_id })} className="purchase-dashboard-supplier-row" key={supplier.supplier_id}><span><strong>{supplier.supplier_name}</strong><small>{supplier.purchase_count} compra{supplier.purchase_count === 1 ? "" : "s"} · {useReceived ? "recibido" : "registrado"}</small></span><strong>{formatPurchaseCurrency(amount)}</strong><span className="purchase-dashboard-supplier-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, amount / maximum * 100)}%` }} /></span></Link>;
+              return <Link href={listHref({ supplier_id: supplier.supplier_id })} className="purchase-dashboard-supplier-row" key={supplier.supplier_id}><span><strong>{supplier.supplier_name}</strong><small>{supplier.purchase_count} compra{supplier.purchase_count === 1 ? "" : "s"} · {useReceived ? "recibido" : "registrado"}</small></span><strong>{formatPurchaseCurrency(amount, moneyPreferences)}</strong><span className="purchase-dashboard-supplier-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, amount / maximum * 100)}%` }} /></span></Link>;
             })}</div>}
           </section>
         </section>
@@ -225,8 +229,8 @@ function DashboardMetric({ label, value, href, icon, tone }: { label: string; va
   return href ? <Link className={className} href={href}>{content}</Link> : <article className={className}>{content}</article>;
 }
 
-function AttentionRow({ item }: { item: PurchaseDashboardAttention }) {
-  return <Link href={`/purchases/${item.id}`} className={`purchase-dashboard-attention-row purchase-dashboard-attention-row--${item.priority}`}><AlertTriangle size={18} /><span><strong>{item.supplier_name}</strong><small>{formatPurchaseDate(item.purchase_date)} · {item.document_number || "Sin número"}</small></span><span className="purchase-dashboard-alert-labels">{item.alerts.map((alert) => <small key={alert}>{attentionLabel(alert)}</small>)}</span><strong>{formatPurchaseCurrency(item.total_ars)}</strong></Link>;
+function AttentionRow({ item, moneyPreferences }: { item: PurchaseDashboardAttention; moneyPreferences: ReturnType<typeof resolveMoneyPreferences> }) {
+  return <Link href={`/purchases/${item.id}`} className={`purchase-dashboard-attention-row purchase-dashboard-attention-row--${item.priority}`}><AlertTriangle size={18} /><span><strong>{item.supplier_name}</strong><small>{formatPurchaseDate(item.purchase_date)} · {item.document_number || "Sin número"}</small></span><span className="purchase-dashboard-alert-labels">{item.alerts.map((alert) => <small key={alert}>{attentionLabel(alert)}</small>)}</span><strong>{formatPurchaseCurrency(item.total_ars, moneyPreferences)}</strong></Link>;
 }
 
 function attentionLabel(alert: PurchaseDashboardAttention["alerts"][number]) {

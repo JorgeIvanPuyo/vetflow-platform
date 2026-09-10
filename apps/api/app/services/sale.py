@@ -11,6 +11,7 @@ from app.core.errors import AppError
 from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.sale import Sale, SaleItem
+from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
@@ -18,6 +19,7 @@ from app.repositories.sale import SaleRepository
 from app.repositories.user import UserRepository
 from app.schemas.sale import SaleCreate, SaleProductItemInput, SaleUpdate
 from app.services.inventory import InventoryService
+from app.services.regional_settings import ensure_operational_money_settings
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -28,6 +30,7 @@ class SaleService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repository = SaleRepository(db)
+        self.clinic_repository = ClinicRepository(db)
         self.owner_repository = OwnerRepository(db)
         self.patient_repository = PatientRepository(db)
         self.user_repository = UserRepository(db)
@@ -38,6 +41,9 @@ class SaleService:
         self._validate_user(tenant_id, created_by_user_id)
         try:
             owner, patient = self._resolve_parties(tenant_id, payload.owner_id, payload.patient_id)
+            money_settings = ensure_operational_money_settings(
+                self.clinic_repository, tenant_id
+            )
             items, totals = self._build_items(tenant_id, payload.items)
             sale = Sale(
                 tenant_id=tenant_id,
@@ -49,7 +55,7 @@ class SaleService:
                 patient_name_snapshot=patient.name if patient else None,
                 patient_species_snapshot=patient.species if patient else None,
                 sale_date=payload.sale_date,
-                currency="ARS",
+                currency=money_settings.currency_code,
                 notes=payload.notes,
                 status="draft",
                 created_by_user_id=created_by_user_id,

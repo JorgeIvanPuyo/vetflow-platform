@@ -37,7 +37,9 @@ class ConsultationRepository:
             selectinload(Consultation.medications).selectinload(
                 ConsultationMedication.inventory_movement,
             ),
-            selectinload(Consultation.study_requests),
+            selectinload(Consultation.study_requests).selectinload(
+                ConsultationStudyRequest.exam_catalog_item,
+            ),
         )
         return self.db.scalar(statement)
 
@@ -59,7 +61,9 @@ class ConsultationRepository:
                 selectinload(Consultation.medications).selectinload(
                     ConsultationMedication.inventory_movement,
                 ),
-                selectinload(Consultation.study_requests),
+                selectinload(Consultation.study_requests).selectinload(
+                ConsultationStudyRequest.exam_catalog_item,
+            ),
             )
             .order_by(Consultation.visit_date.desc())
         )

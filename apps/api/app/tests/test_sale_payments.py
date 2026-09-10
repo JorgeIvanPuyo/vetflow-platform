@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import delete
 
 from app.core.errors import AppError
-from app.db.session import SessionLocal, engine
 from app.models.payment import PaymentMethod, SalePayment
 from app.models.sale import Sale, SaleItem
 from app.models.tenant import Tenant
@@ -131,8 +130,8 @@ def test_list_payment_filters_and_non_applicable_status(client, tenant):
     assert [item["id"] for item in client.get("/api/v1/sales?payment_status=partial", headers=_headers(tenant)).json()["data"]] == [partial["id"]]
 
 
-@pytest.mark.skipif(engine.dialect.name != "postgresql", reason="Requires PostgreSQL row locks")
-def test_concurrent_payments_cannot_overpay():
+def test_concurrent_payments_cannot_overpay(postgres_test_session_factory):
+    SessionLocal = postgres_test_session_factory
     setup = SessionLocal()
     tenant = Tenant(id=uuid.uuid4(), name=f"Payment concurrency {uuid.uuid4()}")
     method = PaymentMethod(tenant_id=tenant.id, label="Efectivo", normalized_label="efectivo", type="cash", is_active=True, sort_order=0)

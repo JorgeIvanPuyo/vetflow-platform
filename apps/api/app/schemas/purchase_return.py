@@ -216,7 +216,7 @@ class PurchaseReturnDetailRead(BaseModel):
     reason: str
     document_type: PurchaseReturnDocumentType | None = None
     document_number: str | None = None
-    currency: Literal["ARS"]
+    currency: Literal["USD", "ARS"]
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal

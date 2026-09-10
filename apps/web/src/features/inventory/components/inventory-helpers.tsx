@@ -6,6 +6,7 @@ import {
   Syringe,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { formatCurrency, formatPercentage, type MoneyPreferences } from "@/lib/money";
 import type {
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
@@ -21,6 +22,7 @@ import type {
   InventoryStockStatus,
   InventoryStatusFilter,
   InventoryUnit,
+  TenantPreferences,
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
@@ -140,10 +142,12 @@ export type InventoryFormState = {
   internal_code: string;
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id: string;
   subcategory: string;
   brand: string;
   unit: InventoryUnit;
   supplier: string;
+  supplier_id: string;
   lot_number: string;
   expiration_date: string;
   current_stock: string;
@@ -193,27 +197,34 @@ export const initialInventoryFilterState: InventoryFilterState = {
   sort_direction: "asc",
 };
 
-export const initialInventoryFormState: InventoryFormState = {
-  internal_code: "",
-  name: "",
-  category: "medication",
-  subcategory: "",
-  brand: "",
-  unit: "unit",
-  supplier: "",
-  lot_number: "",
-  expiration_date: "",
-  current_stock: "0",
-  minimum_stock: "0",
-  purchase_tax_mode: "standard",
-  purchase_price_ars: "",
-  purchase_tax_rate_percentage: "21",
-  profit_margin_percentage: "35",
-  sale_price_ars: "",
-  sale_tax_rate_percentage: "0",
-  round_sale_price: false,
-  notes: "",
-};
+export function getInitialInventoryFormState(
+  preferences?: TenantPreferences | null,
+): InventoryFormState {
+  const defaultPurchaseTaxRate = preferences?.default_purchase_tax_rate ?? "21";
+  return {
+    internal_code: "",
+    name: "",
+    category: "medication",
+    category_catalog_item_id: "",
+    subcategory: "",
+    brand: "",
+    unit: "unit",
+    supplier: "",
+    supplier_id: "",
+    lot_number: "",
+    expiration_date: "",
+    current_stock: "0",
+    minimum_stock: "0",
+    purchase_tax_mode: getPurchaseTaxMode(defaultPurchaseTaxRate, defaultPurchaseTaxRate),
+    purchase_price_ars: "",
+    purchase_tax_rate_percentage: defaultPurchaseTaxRate,
+    profit_margin_percentage: preferences?.default_profit_margin ?? "35",
+    sale_price_ars: "",
+    sale_tax_rate_percentage: preferences?.default_sale_tax_rate ?? "0",
+    round_sale_price: false,
+    notes: "",
+  };
+}
 
 export const initialInventoryEntryFormState: InventoryEntryFormState = {
   quantity: "",
@@ -259,30 +270,23 @@ export function getInventoryCategoryIcon(category: InventoryCategory): ReactNode
   return <Box size={20} />;
 }
 
-export function formatInventoryCurrency(value?: string | number | null) {
-  if (value === undefined || value === null || value === "") {
-    return "ARS -";
-  }
+const legacyMoneyPreferences: MoneyPreferences = {
+  currencyCode: "ARS",
+  locale: "es-AR",
+};
 
-  const numericValue = Number(value);
-  if (Number.isNaN(numericValue)) {
-    return "ARS -";
-  }
-
-  return `ARS ${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}`;
+export function formatInventoryCurrency(
+  value: string | number | null | undefined,
+  preferences: MoneyPreferences = legacyMoneyPreferences,
+) {
+  return formatCurrency(value, preferences);
 }
 
-export function formatInventoryPercentage(value?: string | number | null) {
-  const numericValue = Number(value ?? 0);
-  if (Number.isNaN(numericValue)) {
-    return "0%";
-  }
-
-  return `${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}%`;
+export function formatInventoryPercentage(
+  value: string | number | null | undefined,
+  locale: string,
+) {
+  return formatPercentage(value, locale);
 }
 
 export function formatInventoryDate(value?: string | null) {
@@ -308,11 +312,15 @@ export function formatInventoryDateCompact(value?: string | null) {
   }).format(new Date(value));
 }
 
-export function formatInventoryQuantity(value: string, unit: InventoryUnit) {
+export function formatInventoryQuantity(
+  value: string,
+  unit: InventoryUnit,
+  locale = legacyMoneyPreferences.locale,
+) {
   const numericValue = Number(value);
   const formatted = Number.isInteger(numericValue)
-    ? new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(numericValue)
-    : new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(numericValue);
+    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(numericValue)
+    : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(numericValue);
   return `${formatted} ${getInventoryUnitLabel(unit)}`;
 }
 
@@ -320,13 +328,11 @@ export function formatInventorySignedQuantity(
   quantity: string,
   unit: InventoryUnit,
   movementType: InventoryMovementType,
+  locale = legacyMoneyPreferences.locale,
 ) {
-  const sign = getInventoryMovementDirection(movementType) > 0
-    ? "+"
-    : getInventoryMovementDirection(movementType) < 0
-      ? "-"
-      : "";
-  return `${sign}${formatInventoryQuantity(quantity, unit)}`;
+  const direction = getInventoryMovementDirection(movementType);
+  const sign = direction > 0 ? "+" : direction < 0 ? "-" : "";
+  return `${sign}${formatInventoryQuantity(quantity, unit, locale)}`;
 }
 
 export function formatInventoryDateTime(value?: string | null) {
@@ -454,24 +460,35 @@ export function getInventoryExitReasonLabel(reason?: string | null) {
   );
 }
 
-export function getInventoryMovementAmountLabel(movement: InventoryMovement) {
+export function getInventoryMovementAmountLabel(
+  movement: InventoryMovement,
+  preferences: MoneyPreferences = legacyMoneyPreferences,
+) {
   if (
-    (movement.movement_type === "entry" ||
-      movement.movement_type === "manual_entry" ||
-      movement.movement_type === "purchase") &&
+    ["entry", "manual_entry", "purchase", "customer_return", "adjustment_in", "transfer_in"].includes(
+      movement.movement_type,
+    ) &&
     movement.total_cost_ars
   ) {
-    return formatInventoryCurrency(movement.total_cost_ars);
+    return formatInventoryCurrency(movement.total_cost_ars, preferences);
   }
 
   if (
-    (movement.movement_type === "exit" ||
-      movement.movement_type === "manual_exit" ||
-      movement.movement_type === "sale" ||
-      movement.movement_type === "clinical_consumption") &&
+    [
+      "exit",
+      "manual_exit",
+      "sale",
+      "clinical_consumption",
+      "supplier_return",
+      "adjustment_out",
+      "expiration",
+      "loss",
+      "breakage",
+      "transfer_out",
+    ].includes(movement.movement_type) &&
     movement.total_sale_price_ars
   ) {
-    return formatInventoryCurrency(movement.total_sale_price_ars);
+    return formatInventoryCurrency(movement.total_sale_price_ars, preferences);
   }
 
   return null;
@@ -573,20 +590,30 @@ export function validateInventoryForm(
     return "El precio de venta no puede ser negativo.";
   }
 
+  const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
+  if (Number.isNaN(saleTaxRate) || saleTaxRate < 0 || saleTaxRate > 100) {
+    return "El impuesto de venta debe estar entre 0 y 100.";
+  }
+
   return null;
 }
 
-export function calculateSalePricePreview(formState: InventoryFormState) {
-  return calculateInventoryPricePreview(formState, false).saleWithoutTax;
+export function calculateSalePricePreview(
+  formState: InventoryFormState,
+  roundingIncrement = 10,
+) {
+  return calculateInventoryPricePreview(formState, false, roundingIncrement).saleWithoutTax;
 }
 
 export function calculateInventoryPricePreview(
   formState: InventoryFormState,
   manualSalePriceOverride: boolean,
+  roundingIncrement = 10,
 ) {
   const purchasePrice = parseOptionalNonNegativeNumber(formState.purchase_price_ars);
   const purchaseTaxRate = parseTaxRate(formState.purchase_tax_rate_percentage);
   const margin = parseOptionalNonNegativeNumber(formState.profit_margin_percentage);
+  const saleTaxRate = parseTaxRate(formState.sale_tax_rate_percentage);
 
   const purchaseTaxAmount =
     purchasePrice !== null && purchaseTaxRate !== null
@@ -602,13 +629,22 @@ export function calculateInventoryPricePreview(
     saleWithoutTax = parseOptionalNonNegativeNumber(formState.sale_price_ars);
   } else if (purchaseWithTax !== null && margin !== null) {
     const calculatedPrice = roundMoney(purchaseWithTax * (1 + margin / 100));
+    const safeIncrement = Number.isFinite(roundingIncrement) && roundingIncrement > 0
+      ? roundingIncrement
+      : 10;
     saleWithoutTax = formState.round_sale_price
-      ? Math.round(calculatedPrice / 10) * 10
+      ? roundMoney(Math.round(calculatedPrice / safeIncrement) * safeIncrement)
       : calculatedPrice;
   }
 
-  const saleTaxAmount = saleWithoutTax !== null ? 0 : null;
-  const saleWithTax = saleWithoutTax;
+  const saleTaxAmount =
+    saleWithoutTax !== null && saleTaxRate !== null
+      ? roundMoney(saleWithoutTax * saleTaxRate / 100)
+      : null;
+  const saleWithTax =
+    saleWithoutTax !== null && saleTaxAmount !== null
+      ? roundMoney(saleWithoutTax + saleTaxAmount)
+      : null;
 
   return {
     purchaseTaxAmount,
@@ -652,7 +688,7 @@ export function inventoryFormToCreatePayload(
       formState.purchase_tax_rate_percentage || "0",
     ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
-    sale_tax_rate_percentage: 0,
+    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
     is_active: true,
   };
@@ -665,6 +701,12 @@ export function inventoryFormToCreatePayload(
   }
   if (formState.supplier.trim()) {
     payload.supplier = formState.supplier.trim();
+  }
+  if (formState.supplier_id) {
+    payload.supplier_id = formState.supplier_id;
+  }
+  if (formState.category_catalog_item_id) {
+    payload.category_catalog_item_id = formState.category_catalog_item_id;
   }
   if (formState.lot_number.trim()) {
     payload.lot_number = formState.lot_number.trim();
@@ -698,13 +740,15 @@ export function inventoryFormToUpdatePayload(
       formState.purchase_tax_rate_percentage || "0",
     ),
     profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
-    sale_tax_rate_percentage: 0,
+    sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
   };
 
   payload.subcategory = formState.subcategory.trim() || null;
   payload.brand = formState.brand.trim() || null;
   payload.supplier = formState.supplier.trim() || null;
+  payload.supplier_id = formState.supplier_id || null;
+  payload.category_catalog_item_id = formState.category_catalog_item_id || null;
   payload.lot_number = formState.lot_number.trim() || null;
   payload.expiration_date = formState.expiration_date || null;
   payload.purchase_price_ars = formState.purchase_price_ars.trim()
@@ -724,10 +768,12 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
     internal_code: item.internal_code,
     name: item.name,
     category: item.category,
+    category_catalog_item_id: item.category_catalog_item_id ?? "",
     subcategory: item.subcategory ?? "",
     brand: item.brand ?? "",
     unit: item.unit,
     supplier: item.supplier ?? "",
+    supplier_id: item.supplier_id ?? "",
     lot_number: item.lot_number ?? "",
     expiration_date: item.expiration_date ?? "",
     current_stock: item.current_stock,
@@ -743,24 +789,35 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
   };
 }
 
-function getPurchaseTaxMode(value?: string | number | null): InventoryFormState["purchase_tax_mode"] {
+function getPurchaseTaxMode(
+  value?: string | number | null,
+  standardRate: string | number = 21,
+): InventoryFormState["purchase_tax_mode"] {
   const numericValue = Number(value ?? 0);
-  if (Number.isFinite(numericValue) && Math.abs(numericValue - 21) < 0.005) {
-    return "standard";
-  }
+  const numericStandardRate = Number(standardRate);
   if (Number.isFinite(numericValue) && Math.abs(numericValue) < 0.005) {
     return "none";
+  }
+  if (
+    Number.isFinite(numericValue) &&
+    Number.isFinite(numericStandardRate) &&
+    Math.abs(numericValue - numericStandardRate) < 0.005
+  ) {
+    return "standard";
   }
   return "custom";
 }
 
-export function isInventorySalePriceManual(item: InventoryItem) {
+export function isInventorySalePriceManual(
+  item: InventoryItem,
+  roundingIncrement = 10,
+) {
   if (!item.sale_price_ars) {
     return false;
   }
 
   const comparableFormState = inventoryItemToFormState(item);
-  const calculatedValue = calculateSalePricePreview(comparableFormState);
+  const calculatedValue = calculateSalePricePreview(comparableFormState, roundingIncrement);
   if (calculatedValue === null) {
     return true;
   }

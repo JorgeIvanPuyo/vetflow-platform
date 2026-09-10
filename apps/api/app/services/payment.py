@@ -115,7 +115,7 @@ class SalePaymentService:
             paid_total = self.repository.active_total(tenant_id, sale.id)
             balance = sale.total_ars - paid_total
             if payload.amount_ars > balance:
-                raise AppError(409, "sale_payment_exceeds_balance", f"El cobro supera el saldo pendiente de ARS {balance:.2f}")
+                raise AppError(409, "sale_payment_exceeds_balance", f"El cobro supera el saldo pendiente de {sale.currency} {balance:.2f}")
             payment = SalePayment(
                 tenant_id=tenant_id, sale_id=sale.id, payment_method_id=method.id,
                 payment_method_label_snapshot=method.label, payment_method_type_snapshot=method.type,

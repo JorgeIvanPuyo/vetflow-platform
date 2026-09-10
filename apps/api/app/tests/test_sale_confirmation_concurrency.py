@@ -8,18 +8,11 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from app.core.errors import AppError
-from app.db.session import SessionLocal, engine
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 from app.models.sale import Sale, SaleItem
 from app.models.tenant import Tenant
 from app.services.sale import SaleService
-
-
-pytestmark = pytest.mark.skipif(
-    engine.dialect.name != "postgresql",
-    reason="Requires PostgreSQL row-level locks",
-)
 
 
 def _sale(tenant_id: uuid.UUID, item: InventoryItem, quantity: Decimal) -> Sale:
@@ -53,11 +46,15 @@ def _sale(tenant_id: uuid.UUID, item: InventoryItem, quantity: Decimal) -> Sale:
     return sale
 
 
-def _confirm_concurrently(tenant_id: uuid.UUID, sale_ids: list[uuid.UUID]):
+def _confirm_concurrently(
+    session_factory,
+    tenant_id: uuid.UUID,
+    sale_ids: list[uuid.UUID],
+):
     barrier = Barrier(len(sale_ids))
 
     def confirm(sale_id: uuid.UUID):
-        session = SessionLocal()
+        session = session_factory()
         try:
             barrier.wait(timeout=10)
             result = SaleService(session).confirm(
@@ -73,7 +70,10 @@ def _confirm_concurrently(tenant_id: uuid.UUID, sale_ids: list[uuid.UUID]):
         return list(executor.map(confirm, sale_ids))
 
 
-def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation():
+def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation(
+    postgres_test_session_factory,
+):
+    SessionLocal = postgres_test_session_factory
     setup = SessionLocal()
     tenant = Tenant(id=uuid.uuid4(), name=f"Concurrency {uuid.uuid4()}")
     first_item = InventoryItem(
@@ -84,7 +84,10 @@ def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation():
         unit="unit",
         current_stock=Decimal("5"),
         minimum_stock=Decimal("0"),
+        purchase_tax_rate_percentage=Decimal("21"),
+        profit_margin_percentage=Decimal("35"),
         sale_price_ars=Decimal("10"),
+        sale_tax_rate_percentage=Decimal("0"),
         is_active=True,
     )
     duplicate_item = InventoryItem(
@@ -95,7 +98,10 @@ def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation():
         unit="unit",
         current_stock=Decimal("4"),
         minimum_stock=Decimal("0"),
+        purchase_tax_rate_percentage=Decimal("21"),
+        profit_margin_percentage=Decimal("35"),
         sale_price_ars=Decimal("10"),
+        sale_tax_rate_percentage=Decimal("0"),
         is_active=True,
     )
     setup.add_all([tenant, first_item, duplicate_item])
@@ -115,9 +121,11 @@ def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation():
     setup.close()
 
     try:
-        competing_results = _confirm_concurrently(tenant_id, competing_ids)
+        competing_results = _confirm_concurrently(
+            SessionLocal, tenant_id, competing_ids
+        )
         duplicate_results = _confirm_concurrently(
-            tenant_id, [single_sale_id, single_sale_id]
+            SessionLocal, tenant_id, [single_sale_id, single_sale_id]
         )
 
         check = SessionLocal()

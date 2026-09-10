@@ -12,6 +12,7 @@ from app.models.purchase import Purchase, PurchaseItem
 from app.models.user import User
 
 
+pytestmark = pytest.mark.usefixtures("allow_supplier_mutations")
 def _headers(tenant) -> dict[str, str]:
     return {"X-Tenant-Id": str(tenant.id)}
 
@@ -145,7 +146,7 @@ def test_create_purchase_calculates_snapshots_traceability_and_does_not_touch_st
     purchase = response.json()["data"]
     assert purchase["tenant_id"] == str(tenant.id)
     assert purchase["status"] == "draft"
-    assert purchase["currency"] == "ARS"
+    assert purchase["currency"] == "USD"
     assert purchase["supplier_name"] == "Proveedor Uno"
     assert purchase["supplier_tax_id"] == "30-12345678-9"
     assert purchase["purchase_date"] == "2026-08-09"
@@ -240,15 +241,15 @@ def test_tax_default_zero_custom_and_rounding(client, tenant):
         ],
     )
 
-    assert purchase["items"][0]["tax_rate_percentage"] == "21.00"
+    assert purchase["items"][0]["tax_rate_percentage"] == "0.00"
     assert purchase["items"][0]["line_subtotal_ars"] == "0.15"
-    assert purchase["items"][0]["line_tax_ars"] == "0.03"
+    assert purchase["items"][0]["line_tax_ars"] == "0.00"
     assert purchase["items"][1]["line_tax_ars"] == "0.00"
     assert purchase["items"][2]["line_subtotal_ars"] == "100.00"
     assert purchase["items"][2]["line_tax_ars"] == "10.50"
     assert purchase["subtotal_ars"] == "300.15"
-    assert purchase["tax_total_ars"] == "10.53"
-    assert purchase["total_ars"] == "310.68"
+    assert purchase["tax_total_ars"] == "10.50"
+    assert purchase["total_ars"] == "310.65"
 
 
 def test_product_snapshot_is_historical(client, db_session, tenant):

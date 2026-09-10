@@ -29,12 +29,14 @@ import {
 
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/features/auth/auth-context";
+import { useClinic } from "@/features/clinic/clinic-context";
 import { AiConsultationSummaryCard } from "@/features/consultations/components/ai-consultation-summary-card";
 import {
   AiClinicalRewriteAction,
   AiConsultationSummaryAction,
 } from "@/features/consultations/components/ai-clinical-assist";
 import { getTraceableUserName } from "@/lib/user-traceability";
+import type { MoneyPreferences } from "@/lib/money";
 import {
   formatInventoryCurrency,
   formatInventoryQuantity,
@@ -52,10 +54,11 @@ import {
   updateConsultation,
   updateConsultationStep,
 } from "@/services/consultations";
-import { getClinicTeam } from "@/services/clinic";
+import { getClinicConfiguration, getClinicTeam } from "@/services/clinic";
 import { searchInventoryMedications } from "@/services/inventory";
 import { getPatientClinicalHistory } from "@/services/patients";
 import type {
+  CatalogItem,
   Consultation,
   ConsultationAiSummaryResponse,
   ConsultationMedication,
@@ -128,6 +131,7 @@ type ClinicalTextField =
 type StudyFormState = {
   name: string;
   study_type: ConsultationStudyRequestType;
+  exam_catalog_item_id: string;
   notes: string;
 };
 
@@ -195,6 +199,7 @@ const initialFormState: FormState = {
 const initialStudyFormState: StudyFormState = {
   name: "",
   study_type: "laboratory",
+  exam_catalog_item_id: "",
   notes: "",
 };
 
@@ -211,7 +216,7 @@ const initialInventoryMedicationFormState: InventoryMedicationFormState = {
   instructions: "",
 };
 
-const mucousMembraneOptions = [
+const fallbackMucousMembraneOptions = [
   "Rosas",
   "Rosas pálidas",
   "Pálidas",
@@ -219,7 +224,23 @@ const mucousMembraneOptions = [
   "Cianóticas",
   "Ictéricas",
 ];
-const hydrationOptions = ["Normal", "Leve deshidratación", "Moderada", "Severa"];
+const fallbackHydrationOptions = ["Normal", "Leve deshidratación", "Moderada", "Severa"];
+
+type ClinicalCatalogOptions = {
+  mucousMembrane: string[];
+  hydration: string[];
+  examTypes: CatalogItem[];
+  diagnosticTags: string[];
+  prescriptionTemplates: CatalogItem[];
+};
+
+const fallbackClinicalCatalogOptions: ClinicalCatalogOptions = {
+  mucousMembrane: fallbackMucousMembraneOptions,
+  hydration: fallbackHydrationOptions,
+  examTypes: [],
+  diagnosticTags: [],
+  prescriptionTemplates: [],
+};
 
 function getStepIcon(stepId: (typeof steps)[number]["id"]) {
   switch (stepId) {
@@ -240,6 +261,11 @@ function getStepIcon(stepId: (typeof steps)[number]["id"]) {
 
 export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const { user } = useAuth();
+  const { preferences } = useClinic();
+  const moneyPreferences = {
+    currencyCode: preferences?.currency_code ?? "USD",
+    locale: preferences?.locale ?? "es-PA",
+  };
   const router = useRouter();
   const hasStartedRef = useRef(false);
   const previousStepRef = useRef<number | null>(null);
@@ -252,6 +278,9 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [teamMembers, setTeamMembers] = useState<ClinicTeamMember[]>([]);
+  const [catalogOptions, setCatalogOptions] = useState<ClinicalCatalogOptions>(
+    fallbackClinicalCatalogOptions,
+  );
   const [isTeamLoading, setIsTeamLoading] = useState(true);
   const [teamLoadMessage, setTeamLoadMessage] = useState<string | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -390,6 +419,40 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     }
 
     void loadTeam();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadClinicalCatalogs() {
+      try {
+        const response = await getClinicConfiguration("catalogs");
+        if (!isCurrent) {
+          return;
+        }
+        const catalogs = response.data.catalogs;
+        setCatalogOptions({
+          mucousMembrane:
+            catalogs?.mucous_membrane?.map((item) => item.name) ??
+            fallbackMucousMembraneOptions,
+          hydration:
+            catalogs?.hydration?.map((item) => item.name) ?? fallbackHydrationOptions,
+          examTypes: catalogs?.exam_type ?? [],
+          diagnosticTags: catalogs?.diagnostic_tag?.map((item) => item.name) ?? [],
+          prescriptionTemplates: catalogs?.prescription_template ?? [],
+        });
+      } catch {
+        if (isCurrent) {
+          setCatalogOptions(fallbackClinicalCatalogOptions);
+        }
+      }
+    }
+
+    void loadClinicalCatalogs();
 
     return () => {
       isCurrent = false;
@@ -689,6 +752,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
     const payload: CreateStudyRequestPayload = {
       name: studyFormState.name.trim(),
       study_type: studyFormState.study_type,
+      exam_catalog_item_id: studyFormState.exam_catalog_item_id || null,
       notes: studyFormState.notes.trim() || null,
     };
 
@@ -1235,8 +1299,13 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
   }
 
   function renderExamStep() {
-    const renderedMucousMembraneOptions = getMucousMembraneOptions(
+    const renderedMucousMembraneOptions = withCurrentValue(
+      catalogOptions.mucousMembrane,
       formState.mucous_membranes,
+    );
+    const renderedHydrationOptions = withCurrentValue(
+      catalogOptions.hydration,
+      formState.hydration,
     );
 
     return (
@@ -1293,7 +1362,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
               onChange={(event) => updateField("hydration", event.target.value)}
             >
               <option value="">Seleccionar</option>
-              {hydrationOptions.map((option) => (
+              {renderedHydrationOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -1345,10 +1414,18 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         <label className="field">
           <span>Etiquetas diagnósticas</span>
           <input
+            list="diagnostic-tag-suggestions"
             placeholder="Separar con comas: respiratorio, agudo..."
             value={formState.diagnostic_tags}
             onChange={(event) => updateField("diagnostic_tags", event.target.value)}
           />
+          {catalogOptions.diagnosticTags.length > 0 ? (
+            <datalist id="diagnostic-tag-suggestions">
+              {catalogOptions.diagnosticTags.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
+            </datalist>
+          ) : null}
         </label>
       </>
     );
@@ -1365,6 +1442,31 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         />
         <form className="consultation-inline-form" onSubmit={handleAddStudy}>
           <div className="form-grid">
+            {catalogOptions.examTypes.length > 0 ? (
+              <label className="field">
+                <span>Estudio del catálogo (opcional)</span>
+                <select
+                  value={studyFormState.exam_catalog_item_id}
+                  onChange={(event) => {
+                    const selected = catalogOptions.examTypes.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    setStudyFormState((current) => ({
+                      ...current,
+                      exam_catalog_item_id: event.target.value,
+                      name: selected?.name ?? current.name,
+                    }));
+                  }}
+                >
+                  <option value="">Escribir manualmente</option>
+                  {catalogOptions.examTypes.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Estudio</span>
               <input
@@ -1496,6 +1598,33 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
         {medicationMode === "manual" ? (
           <form className="consultation-inline-form" onSubmit={handleAddMedication}>
             <div className="form-grid">
+              {catalogOptions.prescriptionTemplates.length > 0 ? (
+                <label className="field">
+                  <span>Plantilla de prescripción (opcional)</span>
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      const selected = catalogOptions.prescriptionTemplates.find(
+                        (item) => item.id === event.target.value,
+                      );
+                      if (selected) {
+                        setMedicationFormState((current) => ({
+                          ...current,
+                          medication_name: selected.name,
+                          instructions: selected.description ?? current.instructions,
+                        }));
+                      }
+                    }}
+                  >
+                    <option value="">Escribir manualmente</option>
+                    {catalogOptions.prescriptionTemplates.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <label className="field">
                 <span>Nombre del medicamento</span>
                 <input
@@ -1589,9 +1718,9 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
                           <strong>{item.name}</strong>
                           <span>
                             {getInventoryCategoryLabel(item.category)} ·{" "}
-                            {formatInventoryQuantity(item.current_stock, item.unit)}
+                            {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}
                           </span>
-                          <span>{formatInventoryCurrency(item.sale_price_ars)}</span>
+                          <span>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</span>
                         </span>
                         <span className="timeline-card__badges">
                           {isOutOfStock ? (
@@ -1614,6 +1743,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
                   {formatInventoryQuantity(
                     selectedInventoryItem.current_stock,
                     selectedInventoryItem.unit,
+                    moneyPreferences.locale,
                   )}
                 </span>
               </div>
@@ -1640,6 +1770,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
                     ? `Disponible: ${formatInventoryQuantity(
                         selectedInventoryItem.current_stock,
                         selectedInventoryItem.unit,
+                        moneyPreferences.locale,
                       )}`
                     : "Selecciona un medicamento para ver stock disponible."}
                 </small>
@@ -1686,7 +1817,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
             <RecordRow
               key={medication.id}
               title={medication.medication_name}
-              subtitle={getMedicationSubtitle(medication)}
+              subtitle={getMedicationSubtitle(medication, moneyPreferences)}
               badge={medication.supplied_by_clinic ? "Inventario" : "Manual"}
               warning={
                 medication.supplied_by_clinic
@@ -1952,7 +2083,10 @@ function FieldLabelWithAiAction({
   );
 }
 
-function getMedicationSubtitle(medication: ConsultationMedication) {
+function getMedicationSubtitle(
+  medication: ConsultationMedication,
+  moneyPreferences: MoneyPreferences,
+) {
   const detailParts = [medication.dose_or_quantity, medication.instructions].filter(Boolean);
 
   if (!medication.supplied_by_clinic) {
@@ -1964,7 +2098,7 @@ function getMedicationSubtitle(medication: ConsultationMedication) {
       ? `${medication.quantity_used} ${getInventoryUnitLabel(medication.inventory_unit)}`
       : null,
     medication.total_sale_price_ars
-      ? `Total: ${formatInventoryCurrency(medication.total_sale_price_ars)}`
+      ? `Total: ${formatInventoryCurrency(medication.total_sale_price_ars, moneyPreferences)}`
       : null,
     ...detailParts,
   ].filter(Boolean);
@@ -2462,11 +2596,11 @@ function hasClinicalText(value: string | null | undefined) {
   return Boolean(value?.trim());
 }
 
-function getMucousMembraneOptions(currentValue: string) {
+function withCurrentValue(options: string[], currentValue: string) {
   const currentText = currentValue.trim();
-  if (!currentText || mucousMembraneOptions.includes(currentText)) {
-    return mucousMembraneOptions;
+  if (!currentText || options.includes(currentText)) {
+    return options;
   }
 
-  return [...mucousMembraneOptions, currentText];
+  return [...options, currentText];
 }

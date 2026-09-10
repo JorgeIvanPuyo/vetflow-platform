@@ -135,6 +135,15 @@ def _create_raw_item(db_session, tenant, **overrides) -> InventoryItem:
         name=overrides.pop("name", "Item histórico"),
         category=overrides.pop("category", "medication"),
         unit=overrides.pop("unit", "unit"),
+        purchase_tax_rate_percentage=overrides.pop(
+            "purchase_tax_rate_percentage", Decimal("21")
+        ),
+        profit_margin_percentage=overrides.pop(
+            "profit_margin_percentage", Decimal("35")
+        ),
+        sale_tax_rate_percentage=overrides.pop(
+            "sale_tax_rate_percentage", Decimal("0")
+        ),
         **overrides,
     )
     db_session.add(item)
@@ -157,13 +166,13 @@ def test_create_inventory_item(client, tenant):
     assert item["name"] == "Amoxicilina 50mg"
     assert item["brand"] is None
     assert item["current_stock"] == "0.00"
-    assert item["purchase_tax_rate_percentage"] == "21.00"
+    assert item["purchase_tax_rate_percentage"] == "0.00"
     assert item["sale_tax_rate_percentage"] == "0.00"
-    assert item["purchase_tax_amount_ars"] == "210.00"
-    assert item["purchase_price_with_tax_ars"] == "1210.00"
-    assert item["sale_price_ars"] == "1633.50"
+    assert item["purchase_tax_amount_ars"] == "0.00"
+    assert item["purchase_price_with_tax_ars"] == "1000.00"
+    assert item["sale_price_ars"] == "1350.00"
     assert item["sale_tax_amount_ars"] == "0.00"
-    assert item["sale_price_with_tax_ars"] == "1633.50"
+    assert item["sale_price_with_tax_ars"] == "1350.00"
     assert item["is_low_stock"] is True
     assert item["created_at"] is not None
     assert item["updated_at"] is not None
@@ -724,7 +733,7 @@ def test_inventory_pagination_and_page_size_limit(client, tenant):
     [
         {"category": "invalid"},
         {"stock_status": "expired"},
-        {"sort_by": "created_at"},
+        {"sort_by": "unknown"},
         {"sort_direction": "sideways"},
     ],
 )
@@ -852,7 +861,7 @@ def test_update_item_and_recalculate_sale_price(client, tenant):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["purchase_price_ars"] == "2000.00"
-    assert data["sale_price_ars"] == "3630.00"
+    assert data["sale_price_ars"] == "3000.00"
     assert data["updated_at"] >= original_updated_at
     assert data["updated_at"] != original_updated_at
 
@@ -895,7 +904,146 @@ def test_round_sale_price_to_nearest_10(client, tenant):
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["sale_price_ars"] == "1650.00"
+    assert response.json()["data"]["sale_price_ars"] == "1370.00"
+
+
+def _user_headers(email: str) -> dict[str, str]:
+    return {"X-User-Email": email}
+
+
+def _create_admin(db_session, tenant, email: str, full_name: str) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email=email,
+        full_name=full_name,
+        role="clinic_admin",
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+def test_create_item_without_explicit_pricing_uses_tenant_preferences(
+    client, db_session, tenant, other_tenant
+):
+    admin = _create_admin(db_session, tenant, "pref-admin@example.com", "Admin")
+    client.patch(
+        "/api/v1/clinic/preferences",
+        headers=_user_headers(admin.email),
+        json={"default_profit_margin": 50, "money_rounding_increment": 20},
+    )
+
+    item = _create_item(
+        client,
+        tenant,
+        purchase_price_ars="1000",
+        profit_margin_percentage=None,
+        round_sale_price=True,
+    )
+    other_tenant_item = _create_item(
+        client,
+        other_tenant,
+        purchase_price_ars="1000",
+        profit_margin_percentage=None,
+        round_sale_price=True,
+    )
+
+    assert item["profit_margin_percentage"] == "50.00"
+    assert item["sale_price_ars"] == "1500.00"
+    assert other_tenant_item["profit_margin_percentage"] == "35.00"
+    assert other_tenant_item["sale_price_ars"] == "1350.00"
+
+
+def test_update_item_with_explicit_null_margin_falls_back_to_preferences(
+    client, db_session, tenant
+):
+    admin = _create_admin(db_session, tenant, "pref-admin2@example.com", "Admin")
+    client.patch(
+        "/api/v1/clinic/preferences",
+        headers=_user_headers(admin.email),
+        json={"default_profit_margin": 60},
+    )
+    item = _create_item(client, tenant, purchase_price_ars="1000", profit_margin_percentage="35")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"profit_margin_percentage": None},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["profit_margin_percentage"] == "60.00"
+
+
+def _create_supplier(client, admin, name: str = "Distribuidora Test") -> dict:
+    response = client.post(
+        "/api/v1/suppliers",
+        headers=_user_headers(admin.email),
+        json={"name": name},
+    )
+    assert response.status_code == 201
+    return response.json()["data"]
+
+
+def test_create_item_with_supplier_id_resolves_supplier_name(client, db_session, tenant):
+    admin = _create_admin(db_session, tenant, "sup-item-admin@example.com", "Admin")
+    supplier = _create_supplier(client, admin)
+
+    item = _create_item(client, tenant, supplier_id=supplier["id"])
+
+    assert item["supplier_id"] == supplier["id"]
+    assert item["supplier_name"] == "Distribuidora Test"
+
+
+def test_create_item_with_cross_tenant_supplier_is_rejected(
+    client, db_session, tenant, other_tenant
+):
+    other_admin = _create_admin(
+        db_session, other_tenant, "sup-item-admin2@example.com", "Admin"
+    )
+    foreign_supplier = _create_supplier(client, other_admin, name="Proveedor Ajeno")
+
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=foreign_supplier["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invalid_cross_tenant_access"
+
+
+def test_create_item_with_unknown_supplier_id_returns_404(client, tenant):
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=str(uuid.uuid4())),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "supplier_not_found"
+
+
+def test_create_item_with_inactive_supplier_is_rejected(client, db_session, tenant):
+    admin = _create_admin(db_session, tenant, "sup-item-admin3@example.com", "Admin")
+    supplier = _create_supplier(client, admin, name="Proveedor Descontinuado")
+    deactivate = client.post(
+        f"/api/v1/suppliers/{supplier['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(supplier_id=supplier["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inactive_supplier"
 
 
 def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
@@ -992,9 +1140,9 @@ def test_update_sale_tax_changes_totals_without_changing_sale_price(client, tena
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["sale_price_ars"] == "1633.50"
-    assert data["sale_tax_amount_ars"] == "343.04"
-    assert data["sale_price_with_tax_ars"] == "1976.54"
+    assert data["sale_price_ars"] == "1350.00"
+    assert data["sale_tax_amount_ars"] == "283.50"
+    assert data["sale_price_with_tax_ars"] == "1633.50"
 
 
 def test_update_manual_sale_price_preserves_value_and_calculates_tax(client, tenant):

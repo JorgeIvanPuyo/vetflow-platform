@@ -137,7 +137,7 @@ class SaleSummaryRead(BaseModel):
     owner_name_snapshot: str | None = None
     patient_name_snapshot: str | None = None
     sale_date: date
-    currency: Literal["ARS"]
+    currency: Literal["USD", "ARS"]
     subtotal_ars: Decimal
     discount_total_ars: Decimal
     total_ars: Decimal
@@ -171,7 +171,7 @@ class SaleDetailRead(BaseModel):
     patient_name_snapshot: str | None = None
     patient_species_snapshot: str | None = None
     sale_date: date
-    currency: Literal["ARS"]
+    currency: Literal["USD", "ARS"]
     subtotal_ars: Decimal
     discount_total_ars: Decimal
     total_ars: Decimal

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import {
   formatPurchaseCurrency,
   formatPurchaseDate,
@@ -12,6 +13,7 @@ import {
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { getPurchaseFilterOptions, getPurchases } from "@/services/purchases";
 import { getSuppliers } from "@/services/suppliers";
 import type { PurchaseCreatorOption, PurchaseDocumentType, PurchaseListFilters, PurchaseListSummary, PurchaseSummary, SupplierSummary } from "@/types/api";
@@ -26,6 +28,8 @@ const EMPTY_SUMMARY: PurchaseListSummary = {
 
 
 export function PurchasesScreen() {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -232,9 +236,9 @@ export function PurchasesScreen() {
       {!isLoading && !errorMessage ? (
         <section className="purchase-list-summary" aria-label="Resumen de compras filtradas">
           <div><span>Compras</span><strong>{meta.summary.purchase_count}</strong></div>
-          <div><span>Subtotal</span><strong>{formatPurchaseCurrency(meta.summary.subtotal_ars)}</strong></div>
-          <div><span>IVA</span><strong>{formatPurchaseCurrency(meta.summary.tax_total_ars)}</strong></div>
-          <div><span>Total</span><strong>{formatPurchaseCurrency(meta.summary.total_ars)}</strong></div>
+          <div><span>Subtotal</span><strong>{formatPurchaseCurrency(meta.summary.subtotal_ars, moneyPreferences)}</strong></div>
+          <div><span>IVA</span><strong>{formatPurchaseCurrency(meta.summary.tax_total_ars, moneyPreferences)}</strong></div>
+          <div><span>Total</span><strong>{formatPurchaseCurrency(meta.summary.total_ars, moneyPreferences)}</strong></div>
         </section>
       ) : null}
 
@@ -278,9 +282,9 @@ export function PurchasesScreen() {
                       <td className="purchase-cell-text purchase-cell--supplier"><strong className="purchase-clamp-two" title={purchase.supplier_name}>{purchase.supplier_name}</strong><small className="purchase-ellipsis" title={purchase.supplier_tax_id || "Sin identificación fiscal"}>{purchase.supplier_tax_id || "Sin identificación fiscal"}</small></td>
                       <td className="purchase-cell-text purchase-cell--document"><strong>{labelPurchaseDocumentType(purchase.document_type)}</strong><small className="purchase-ellipsis" title={purchase.document_number || "Sin número"}>{purchase.document_number || "Sin número"}</small><span className={`badge purchase-attachment-status purchase-attachment-status--${purchase.attachment_status}`}>{purchase.attachment_status === "attached" ? "Cargado" : "Pendiente"}</span></td>
                       <td className="purchase-cell--number">{purchase.item_count}</td>
-                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars)}</td>
-                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars)}</td>
-                      <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars, moneyPreferences)}</td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars, moneyPreferences)}</td>
+                      <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong></td>
                       <td className="purchase-cell--status"><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span>{purchase.return_status !== "none" ? <small className={`badge purchase-return-indicator purchase-return-indicator--${purchase.return_status}`}>{purchase.return_status === "full" ? "Devolución total" : "Devolución parcial"}</small> : null}</td>
                       <td className="purchase-cell-text purchase-cell--user"><strong className="purchase-clamp-two" title={purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}>{purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}</strong>{purchase.created_by_user_name && purchase.created_by_user_email ? <small className="purchase-ellipsis" title={purchase.created_by_user_email}>{purchase.created_by_user_email}</small> : null}</td>
                     </tr>

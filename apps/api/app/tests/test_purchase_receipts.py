@@ -11,6 +11,7 @@ from app.models.purchase import Purchase, PurchaseItem
 from app.models.user import User
 
 
+pytestmark = pytest.mark.usefixtures("allow_supplier_mutations")
 def _headers(tenant) -> dict[str, str]:
     return {"X-Tenant-Id": str(tenant.id)}
 

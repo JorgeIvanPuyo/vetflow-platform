@@ -16,14 +16,22 @@ class SupplierRepository:
     def create(self, supplier: Supplier) -> Supplier:
         self.db.add(supplier)
         self.db.flush()
+        self.db.refresh(supplier)
         return supplier
 
     def get_by_id(
-        self, tenant_id: uuid.UUID, supplier_id: uuid.UUID, *, for_update: bool = False
+        self,
+        tenant_id: uuid.UUID,
+        supplier_id: uuid.UUID,
+        *,
+        for_update: bool = False,
     ) -> Supplier | None:
         statement = (
             select(Supplier)
-            .where(Supplier.tenant_id == tenant_id, Supplier.id == supplier_id)
+            .where(
+                Supplier.tenant_id == tenant_id,
+                Supplier.id == supplier_id,
+            )
             .options(
                 selectinload(
                     Supplier.created_by_user.and_(User.tenant_id == tenant_id)
@@ -35,13 +43,31 @@ class SupplierRepository:
         return self.db.scalar(statement)
 
     def get_by_normalized_name(
-        self, tenant_id: uuid.UUID, normalized_name: str
+        self,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
+        *,
+        active_only: bool = False,
     ) -> Supplier | None:
-        return self.db.scalar(
-            select(Supplier).where(
-                Supplier.tenant_id == tenant_id,
-                Supplier.normalized_name == normalized_name,
-            )
+        statement = select(Supplier).where(
+            Supplier.tenant_id == tenant_id,
+            Supplier.normalized_name == normalized_name,
+        )
+        if active_only:
+            statement = statement.where(Supplier.is_active.is_(True))
+        return self.db.scalars(
+            statement.order_by(Supplier.is_active.desc(), Supplier.updated_at.desc())
+        ).first()
+
+    def get_active_by_normalized_name(
+        self,
+        tenant_id: uuid.UUID,
+        normalized_name: str,
+    ) -> Supplier | None:
+        return self.get_by_normalized_name(
+            tenant_id,
+            normalized_name,
+            active_only=True,
         )
 
     def get_by_tax_id(self, tenant_id: uuid.UUID, tax_id: str) -> Supplier | None:
@@ -57,13 +83,15 @@ class SupplierRepository:
         tenant_id: uuid.UUID,
         *,
         search: str | None,
-        is_active: bool,
+        is_active: bool | None,
         page: int,
         page_size: int,
         sort_by: str,
         sort_direction: str,
     ) -> tuple[list[Supplier], int]:
-        filters = [Supplier.tenant_id == tenant_id, Supplier.is_active == is_active]
+        filters = [Supplier.tenant_id == tenant_id]
+        if is_active is not None:
+            filters.append(Supplier.is_active == is_active)
         if search:
             pattern = f"%{search}%"
             filters.append(
@@ -73,18 +101,23 @@ class SupplierRepository:
                     Supplier.email.ilike(pattern),
                 )
             )
+
         sort_column = Supplier.name if sort_by == "name" else Supplier.updated_at
         order = asc(sort_column) if sort_direction == "asc" else desc(sort_column)
-        rows = list(
-            self.db.scalars(
-                select(Supplier)
-                .where(*filters)
-                .order_by(order, Supplier.id.asc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            ).all()
+        statement = (
+            select(Supplier)
+            .where(*filters)
+            .options(
+                selectinload(
+                    Supplier.created_by_user.and_(User.tenant_id == tenant_id)
+                )
+            )
+            .order_by(order, Supplier.id.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        total = self.db.scalar(
-            select(func.count()).select_from(Supplier).where(*filters)
-        ) or 0
+        rows = list(self.db.scalars(statement).all())
+        total = int(
+            self.db.scalar(select(func.count()).select_from(Supplier).where(*filters)) or 0
+        )
         return rows, total

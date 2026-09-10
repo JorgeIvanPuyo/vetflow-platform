@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.purchase import Purchase, PurchaseItem
+from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.purchase import PurchaseRepository
 from app.repositories.supplier import SupplierRepository
@@ -20,6 +21,7 @@ from app.schemas.purchase import (
     PurchaseUpdate,
 )
 from app.services.inventory import InventoryService
+from app.services.regional_settings import ensure_operational_money_settings
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -40,6 +42,7 @@ class PurchaseService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.repository = PurchaseRepository(db)
+        self.clinic_repository = ClinicRepository(db)
         self.inventory_repository = InventoryRepository(db)
         self.inventory_service = InventoryService(db)
         self.supplier_repository = SupplierRepository(db)
@@ -54,7 +57,14 @@ class PurchaseService:
     ) -> Purchase:
         self._validate_optional_user(tenant_id, created_by_user_id)
         supplier = self._get_active_supplier(tenant_id, payload.supplier_id)
-        items, totals = self._build_items(tenant_id, payload.items)
+        money_settings = ensure_operational_money_settings(
+            self.clinic_repository, tenant_id
+        )
+        items, totals = self._build_items(
+            tenant_id,
+            payload.items,
+            default_tax_rate=money_settings.default_purchase_tax_rate,
+        )
         purchase = Purchase(
             tenant_id=tenant_id,
             supplier_id=supplier.id,
@@ -63,7 +73,7 @@ class PurchaseService:
             purchase_date=payload.purchase_date,
             document_type=payload.document_type,
             document_number=payload.document_number,
-            currency="ARS",
+            currency=money_settings.currency_code,
             notes=payload.notes,
             status="draft",
             created_by_user_id=created_by_user_id,
@@ -188,7 +198,14 @@ class PurchaseService:
         for field_name, value in updates.items():
             setattr(purchase, field_name, value)
         if "items" in payload.model_fields_set:
-            items, totals = self._build_items(tenant_id, payload.items or [])
+            money_settings = ensure_operational_money_settings(
+                self.clinic_repository, tenant_id
+            )
+            items, totals = self._build_items(
+                tenant_id,
+                payload.items or [],
+                default_tax_rate=money_settings.default_purchase_tax_rate,
+            )
             self.repository.replace_items(purchase, items)
             for field_name, value in totals.items():
                 setattr(purchase, field_name, value)
@@ -431,7 +448,13 @@ class PurchaseService:
             raise
         return self.get(tenant_id, purchase_id)
 
-    def _build_items(self, tenant_id: uuid.UUID, payload_items) -> tuple[list[PurchaseItem], dict]:
+    def _build_items(
+        self,
+        tenant_id: uuid.UUID,
+        payload_items,
+        *,
+        default_tax_rate: Decimal,
+    ) -> tuple[list[PurchaseItem], dict]:
         if not payload_items:
             raise AppError(422, "purchase_items_required", "La compra requiere al menos una línea")
         item_ids = [item.inventory_item_id for item in payload_items]
@@ -452,7 +475,12 @@ class PurchaseService:
             if quantity <= 0:
                 raise AppError(422, "invalid_purchase_quantity", "La cantidad debe ser mayor que cero")
             unit_price = self._money(payload_item.unit_price_without_tax_ars)
-            tax_rate = payload_item.tax_rate_percentage.quantize(
+            source_tax_rate = (
+                payload_item.tax_rate_percentage
+                if payload_item.tax_rate_percentage is not None
+                else default_tax_rate
+            )
+            tax_rate = source_tax_rate.quantize(
                 MONEY_QUANTUM, rounding=ROUND_HALF_UP
             )
             line_subtotal = self._money(quantity * unit_price)

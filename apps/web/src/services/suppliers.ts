@@ -7,7 +7,6 @@ import type {
   SupplierWritePayload,
 } from "@/types/api";
 
-
 export type SupplierListResponse = {
   data: SupplierSummary[];
   meta: {
@@ -44,4 +43,18 @@ export function updateSupplier(
   payload: Partial<SupplierWritePayload> & { is_active?: boolean },
 ) {
   return api.patch<ApiItemResponse<Supplier>>(`/api/v1/suppliers/${supplierId}`, payload);
+}
+
+export function activateSupplier(supplierId: string) {
+  return api.post<ApiItemResponse<Supplier>>(
+    `/api/v1/suppliers/${supplierId}/activate`,
+    {},
+  );
+}
+
+export function deactivateSupplier(supplierId: string) {
+  return api.post<ApiItemResponse<Supplier>>(
+    `/api/v1/suppliers/${supplierId}/deactivate`,
+    {},
+  );
 }

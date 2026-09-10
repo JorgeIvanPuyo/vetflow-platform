@@ -69,7 +69,11 @@ class InventoryRepository:
                 InventoryItem.id == item_id,
                 InventoryItem.tenant_id == tenant_id,
             )
-            .options(selectinload(InventoryItem.created_by_user))
+            .options(
+                selectinload(InventoryItem.created_by_user),
+                selectinload(InventoryItem.supplier_record),
+                selectinload(InventoryItem.category_catalog_item),
+            )
         )
         return self.db.scalar(statement)
 
@@ -153,7 +157,7 @@ class InventoryRepository:
             is_active=is_active,
             sort_by=sort_by,
             sort_direction=sort_direction,
-        ).options(selectinload(InventoryItem.created_by_user))
+        )
         count_statement = self._build_item_count_statement(
             tenant_id,
             search=search,
@@ -216,9 +220,17 @@ class InventoryRepository:
     ) -> list[InventoryItem]:
         if not item_ids:
             return []
-        statement = select(InventoryItem).where(
-            InventoryItem.tenant_id == tenant_id,
-            InventoryItem.id.in_(item_ids),
+        statement = (
+            select(InventoryItem)
+            .where(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.id.in_(item_ids),
+            )
+            .options(
+                selectinload(InventoryItem.created_by_user),
+                selectinload(InventoryItem.supplier_record),
+                selectinload(InventoryItem.category_catalog_item),
+            )
         )
         items_by_id = {item.id: item for item in self.db.scalars(statement).all()}
         return [items_by_id[item_id] for item_id in item_ids if item_id in items_by_id]
@@ -729,6 +741,18 @@ class InventoryRepository:
     def update_item(self, item: InventoryItem, updates: dict) -> InventoryItem:
         for field, value in updates.items():
             setattr(item, field, value)
+
+        # Keep optimistic-concurrency snapshots monotonic even when the database
+        # clock has coarse precision (SQLite) or moves slightly backwards.
+        previous_updated_at = item.updated_at
+        if previous_updated_at is not None and previous_updated_at.tzinfo is not None:
+            next_updated_at = datetime.now(previous_updated_at.tzinfo)
+        else:
+            next_updated_at = datetime.now()
+        if previous_updated_at is not None and next_updated_at <= previous_updated_at:
+            next_updated_at = previous_updated_at + timedelta(microseconds=1)
+        item.updated_at = next_updated_at
+
         self.db.add(item)
         self.db.flush()
         self.db.refresh(item)
@@ -1082,8 +1106,14 @@ class InventoryRepository:
         sort_by: str,
         sort_direction: str,
     ):
-        statement: Select[tuple[InventoryItem]] = select(InventoryItem).where(
-            InventoryItem.tenant_id == tenant_id,
+        statement: Select[tuple[InventoryItem]] = (
+            select(InventoryItem)
+            .where(InventoryItem.tenant_id == tenant_id)
+            .options(
+                selectinload(InventoryItem.created_by_user),
+                selectinload(InventoryItem.supplier_record),
+                selectinload(InventoryItem.category_catalog_item),
+            )
         )
         statement = self._apply_item_filters(
             statement,
@@ -1281,6 +1311,7 @@ class InventoryRepository:
             "sale_price_ars": InventoryItem.sale_price_ars,
             "updated_at": InventoryItem.updated_at,
             "created_at": InventoryItem.created_at,
+            "expiration_date": InventoryItem.expiration_date,
             "id": InventoryItem.id,
         }
         return mapping[sort_by]

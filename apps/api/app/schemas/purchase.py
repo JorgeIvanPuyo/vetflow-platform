@@ -30,7 +30,7 @@ class PurchaseItemInput(BaseModel):
     inventory_item_id: uuid.UUID
     quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
     unit_price_without_tax_ars: Decimal = Field(ge=0)
-    tax_rate_percentage: Decimal = Field(default=Decimal("21"), ge=0, le=100)
+    tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
 
 
 class PurchaseCreate(BaseModel):
@@ -179,7 +179,7 @@ class PurchaseSummaryRead(BaseModel):
     purchase_date: date
     document_type: PurchaseDocumentType
     document_number: str | None = None
-    currency: Literal["ARS"]
+    currency: Literal["USD", "ARS"]
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
@@ -226,7 +226,7 @@ class PurchaseDetailRead(BaseModel):
     purchase_date: date
     document_type: PurchaseDocumentType
     document_number: str | None = None
-    currency: Literal["ARS"]
+    currency: Literal["USD", "ARS"]
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal

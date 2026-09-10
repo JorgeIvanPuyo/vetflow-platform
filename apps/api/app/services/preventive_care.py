@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.patient import Patient
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.patient import PatientRepository
@@ -12,6 +13,9 @@ from app.schemas.preventive_care import (
     PreventiveCareCreate,
     PreventiveCareUpdate,
 )
+
+
+PREVENTIVE_CARE_CATALOG_TYPE = "preventive_care_type"
 
 
 class PreventiveCareService:
@@ -30,6 +34,7 @@ class PreventiveCareService:
     ) -> PatientPreventiveCare:
         self._get_patient_for_tenant(tenant_id, patient_id)
         self._validate_care_type(payload.care_type)
+        self._validate_optional_catalog_item(tenant_id, payload.catalog_item_id)
 
         record = PatientPreventiveCare(
             tenant_id=tenant_id,
@@ -77,6 +82,8 @@ class PreventiveCareService:
             self._validate_care_type(updates["care_type"])
         if "applied_at" in updates and updates["applied_at"] is None:
             raise AppError(422, "validation_error", "applied_at cannot be null")
+        if "catalog_item_id" in updates:
+            self._validate_optional_catalog_item(tenant_id, updates["catalog_item_id"])
 
         updated_record = self.preventive_care_repository.update(record, updates)
         self.db.commit()
@@ -107,6 +114,31 @@ class PreventiveCareService:
                 )
             raise AppError(404, "patient_not_found", "Patient not found")
         return patient
+
+    def _validate_optional_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != PREVENTIVE_CARE_CATALOG_TYPE:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {PREVENTIVE_CARE_CATALOG_TYPE}",
+            )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_care_type(self, care_type: str | None) -> None:
         if care_type is None:

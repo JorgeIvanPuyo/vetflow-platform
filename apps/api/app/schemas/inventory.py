@@ -39,6 +39,8 @@ InventorySortBy = Literal[
     "internal_code",
     "current_stock",
     "sale_price_ars",
+    "expiration_date",
+    "created_at",
     "updated_at",
 ]
 SortOrder = Literal["asc", "desc"]
@@ -122,26 +124,20 @@ class InventoryItemWriteBase(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     category: InventoryCategory
+    category_catalog_item_id: uuid.UUID | None = None
     subcategory: str | None = Field(default=None, max_length=100)
     brand: str | None = Field(default=None, max_length=150)
     unit: InventoryUnit
     supplier: str | None = Field(default=None, max_length=255)
+    supplier_id: uuid.UUID | None = None
     lot_number: str | None = Field(default=None, max_length=120)
     expiration_date: date | None = None
     minimum_stock: Decimal = Field(default=Decimal("0"), ge=0)
     purchase_price_ars: Decimal | None = Field(default=None, ge=0)
-    purchase_tax_rate_percentage: Decimal = Field(
-        default=Decimal("21"),
-        ge=0,
-        le=100,
-    )
-    profit_margin_percentage: Decimal = Field(default=Decimal("35"), ge=0)
+    purchase_tax_rate_percentage: Decimal = Field(ge=0, le=100)
+    profit_margin_percentage: Decimal = Field(ge=0)
     sale_price_ars: Decimal | None = Field(default=None, ge=0)
-    sale_tax_rate_percentage: Decimal = Field(
-        default=Decimal("0"),
-        ge=0,
-        le=100,
-    )
+    sale_tax_rate_percentage: Decimal = Field(ge=0, le=100)
     round_sale_price: bool = False
     notes: str | None = None
     is_active: bool = True
@@ -166,7 +162,11 @@ class InventoryItemWriteBase(BaseModel):
 
 
 class InventoryItemCreate(InventoryItemWriteBase):
-    pass
+    # Creation defaults come from tenant preferences in InventoryService.
+    # Read models still expose concrete persisted values through InventoryItemWriteBase.
+    purchase_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
+    profit_margin_percentage: Decimal | None = Field(default=None, ge=0)
+    sale_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
 
 
 class InventoryItemUpdate(BaseModel):
@@ -174,10 +174,12 @@ class InventoryItemUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     category: InventoryCategory | None = None
+    category_catalog_item_id: uuid.UUID | None = None
     subcategory: str | None = Field(default=None, max_length=100)
     brand: str | None = Field(default=None, max_length=150)
     unit: InventoryUnit | None = None
     supplier: str | None = Field(default=None, max_length=255)
+    supplier_id: uuid.UUID | None = None
     lot_number: str | None = Field(default=None, max_length=120)
     expiration_date: date | None = None
     minimum_stock: Decimal | None = Field(default=None, ge=0)
@@ -219,6 +221,8 @@ class InventoryItemRead(InventoryItemWriteBase):
     internal_code: str
     current_stock: Decimal
     created_by_user_id: uuid.UUID | None = None
+    supplier_name: str | None = None
+    category_catalog_item_name: str | None = None
     purchase_tax_amount_ars: Decimal | None = None
     purchase_price_with_tax_ars: Decimal | None = None
     sale_tax_amount_ars: Decimal | None = None

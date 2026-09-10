@@ -4,12 +4,16 @@ import { AlertTriangle, Download, Eye, FileCheck2, FileUp, Settings2, X } from "
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency, formatPurchaseDate, formatPurchaseDateTime, formatPurchaseUser } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { createSaleFiscalDocument, getFiscalIssuers, getSaleFiscalDocumentFile, updateSaleFiscalDocument } from "@/services/sales";
 import type { FiscalDocumentType, FiscalIssuer, Sale } from "@/types/api";
 
 export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpdated: () => Promise<void> }) {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const document = sale.fiscal_document;
   const [issuers, setIssuers] = useState<FiscalIssuer[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -96,7 +100,7 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
       <div className="purchase-attachment-metadata fiscal-document-metadata">
         <div><span>Emisor</span><strong>{document.issuer_name_snapshot}</strong><small>{document.issuer_tax_id_snapshot}</small></div>
         <div><span>Comprobante</span><strong>{labelDocumentType(document.document_type)} {document.document_code}</strong><small>N.º {document.document_number}</small></div>
-        <div><span>Fecha y total</span><strong>{formatPurchaseDate(document.issue_date)}</strong><small>{formatPurchaseCurrency(document.total_ars_snapshot)}</small></div>
+        <div><span>Fecha y total</span><strong>{formatPurchaseDate(document.issue_date)}</strong><small>{formatPurchaseCurrency(document.total_ars_snapshot, moneyPreferences)}</small></div>
         <div><span>Archivo</span><strong>{document.original_filename}</strong><small>{formatFileSize(document.size_bytes)} · {labelFileType(document.content_type)}</small></div>
         <div><span>Cargado por</span><strong>{formatPurchaseUser(document.uploaded_by_user_name, document.uploaded_by_user_email)}</strong><small>{formatPurchaseDateTime(document.uploaded_at)}</small></div>
       </div>
@@ -106,7 +110,7 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
     {error && !showForm ? <div className="error-state" role="alert">{error}</div> : null}
     {showForm ? <form className="sale-fiscal-form" onSubmit={submit}>
       <div className="section-heading"><div><h3>{document ? "Corregir comprobante" : "Registrar comprobante"}</h3><p>El total se toma de la venta y no puede editarse.</p></div><button className="icon-button" type="button" aria-label="Cerrar formulario fiscal" onClick={() => setShowForm(false)}><X size={17} /></button></div>
-      <div className="fiscal-document-form-grid"><label className="field"><span>Emisor *</span><select required value={issuerId} onChange={(event) => setIssuerId(event.target.value)}><option value="">Seleccionar</option>{eligible.map((issuer) => <option key={issuer.id} value={issuer.id}>{issuer.display_name} · {issuer.tax_id}{issuer.is_active ? "" : " (inactivo, documento actual)"}</option>)}</select></label><label className="field"><span>Tipo permitido</span><input readOnly value={selectedPair ? `${labelDocumentType(selectedPair[0])} · ${selectedPair[1]}` : "Sin tipo compatible"} /></label><label className="field"><span>Número *</span><input required maxLength={120} value={number} onChange={(event) => setNumber(event.target.value)} /></label><label className="field"><span>Fecha de emisión *</span><input required type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} /></label><label className="field"><span>Total</span><input readOnly value={formatPurchaseCurrency(sale.total_ars)} /></label></div>
+      <div className="fiscal-document-form-grid"><label className="field"><span>Emisor *</span><select required value={issuerId} onChange={(event) => setIssuerId(event.target.value)}><option value="">Seleccionar</option>{eligible.map((issuer) => <option key={issuer.id} value={issuer.id}>{issuer.display_name} · {issuer.tax_id}{issuer.is_active ? "" : " (inactivo, documento actual)"}</option>)}</select></label><label className="field"><span>Tipo permitido</span><input readOnly value={selectedPair ? `${labelDocumentType(selectedPair[0])} · ${selectedPair[1]}` : "Sin tipo compatible"} /></label><label className="field"><span>Número *</span><input required maxLength={120} value={number} onChange={(event) => setNumber(event.target.value)} /></label><label className="field"><span>Fecha de emisión *</span><input required type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} /></label><label className="field"><span>Total</span><input readOnly value={formatPurchaseCurrency(sale.total_ars, moneyPreferences)} /></label></div>
       <label className="purchase-attachment-picker"><FileUp size={20} /><span>{file?.name ?? (document ? "Conservar archivo actual o seleccionar reemplazo" : "Seleccionar PDF, JPEG o PNG *")}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
       {file ? <small>{formatFileSize(file.size)}</small> : null}{error ? <div className="error-state" role="alert">{error}</div> : null}
       <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isSaving} onClick={() => setShowForm(false)}>Cancelar</button><button className="primary-button" type="submit" disabled={isSaving || (!document && !file)}><FileUp size={17} /> {isSaving ? "Guardando..." : document ? "Guardar corrección" : "Registrar comprobante"}</button></div>

@@ -16,6 +16,7 @@ from app.core.errors import AppError
 from app.core.tenant import TenantContext
 from app.models.inventory_item import InventoryItem
 from app.models.tenant import Tenant
+from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.schemas.inventory import InventoryExportCreate, InventoryExportFilters
 from app.services.inventory import (
@@ -25,6 +26,7 @@ from app.services.inventory import (
     ZERO,
 )
 from app.services.inventory_import import CANONICAL_HEADERS, add_inventory_catalog_rows
+from app.services.regional_settings import resolve_operational_money_settings
 
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,7 @@ class InventoryExportService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.inventory_repository = InventoryRepository(db)
+        self.clinic_repository = ClinicRepository(db)
 
     def export_inventory(
         self,
@@ -201,7 +204,14 @@ class InventoryExportService:
         )
 
         catalogs = workbook.create_sheet("Catálogos")
-        add_inventory_catalog_rows(catalogs)
+        money_settings = resolve_operational_money_settings(
+            self.clinic_repository,
+            tenant.tenant_id,
+        )
+        add_inventory_catalog_rows(
+            catalogs,
+            money_settings.default_purchase_tax_rate,
+        )
         self._set_catalog_widths(catalogs)
         return workbook
 

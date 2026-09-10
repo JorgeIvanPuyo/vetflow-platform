@@ -38,6 +38,24 @@ def test_me_returns_role_from_database(client, db_session, tenant, monkeypatch):
     assert data["tenant_name"] == tenant.name
 
 
+def test_me_returns_clinic_admin_role(client, db_session, tenant, monkeypatch):
+    import app.core.tenant as tenant_core
+
+    user = _create_user(
+        db_session,
+        tenant,
+        "clinic-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": token})
+
+    response = client.get("/api/v1/auth/me", headers=_auth_headers(user.email))
+
+    assert response.status_code == 200
+    assert response.json()["data"]["role"] == "clinic_admin"
+
+
 def test_me_defaults_existing_users_to_medico_veterinario(
     client, db_session, tenant, monkeypatch
 ):

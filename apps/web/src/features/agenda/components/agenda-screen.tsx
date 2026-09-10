@@ -28,10 +28,12 @@ import {
 } from "@/services/follow-ups";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
+import { getServices } from "@/services/services";
 import type {
   Appointment,
   AppointmentStatus,
   AppointmentType,
+  ClinicService,
   ClinicTeamMember,
   CreateAppointmentPayload,
   FollowUp,
@@ -86,6 +88,7 @@ type AgendaState = {
   patients: Patient[];
   owners: Owner[];
   team: ClinicTeamMember[];
+  services: ClinicService[];
   errorMessage: string | null;
   flowMessage: string | null;
   successMessage: string | null;
@@ -99,6 +102,7 @@ const initialState: AgendaState = {
   patients: [],
   owners: [],
   team: [],
+  services: [],
   errorMessage: null,
   flowMessage: null,
   successMessage: null,
@@ -153,6 +157,7 @@ export function AgendaScreen({
         patientsResponse,
         ownersResponse,
         teamResponse,
+        servicesResponse,
       ] =
         await Promise.all([
           getAppointments(getDayRange(dateValue)),
@@ -160,6 +165,7 @@ export function AgendaScreen({
           getPatients(),
           getOwners(),
           getClinicTeam(),
+          getServices({ bookable_only: true }),
         ]);
 
       setState((current) => ({
@@ -170,6 +176,7 @@ export function AgendaScreen({
         patients: patientsResponse.data,
         owners: ownersResponse.data,
         team: teamResponse.data,
+        services: servicesResponse.data,
       }));
     } catch (error) {
       setState((current) => ({
@@ -229,6 +236,12 @@ export function AgendaScreen({
       date: selectedDate,
       assigned_user_id:
         current.assigned_user_id || getDefaultAssignedUserId(state.team, user?.email),
+      ...getDefaultAppointmentServiceState(
+        state.services,
+        current.service_id,
+        selectedDate,
+        current.start_time,
+      ),
     }));
     setIsCreateOpen(true);
   }, [
@@ -236,6 +249,7 @@ export function AgendaScreen({
     requestedTab,
     selectedDate,
     state.patients,
+    state.services,
     state.team,
     user?.email,
   ]);
@@ -246,6 +260,12 @@ export function AgendaScreen({
       ...nextFormState,
       date: selectedDate,
       assigned_user_id: getDefaultAssignedUserId(state.team, user?.email),
+      ...getDefaultAppointmentServiceState(
+        state.services,
+        nextFormState.service_id,
+        selectedDate,
+        nextFormState.start_time,
+      ),
     });
     setState((current) => ({
       ...current,
@@ -304,6 +324,18 @@ export function AgendaScreen({
     }));
   }
 
+  function handleServiceChange(serviceId: string) {
+    const service = state.services.find((item) => item.id === serviceId);
+    setFormState((current) => ({
+      ...current,
+      service_id: serviceId,
+      appointment_type: service?.kind ?? current.appointment_type,
+      end_time: service
+        ? getEndTimeForDuration(current.date, current.start_time, service.default_duration_minutes)
+        : current.end_time,
+    }));
+  }
+
   function handleFollowUpPatientChange(patientId: string) {
     setFollowUpFormState((current) => ({
       ...current,
@@ -315,7 +347,9 @@ export function AgendaScreen({
   async function handleCreateAppointment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const validationMessage = validateAppointmentForm(formState);
+    const validationMessage = validateAppointmentForm(formState, {
+      serviceRequired: state.services.length > 0,
+    });
     if (validationMessage) {
       setState((current) => ({ ...current, flowMessage: validationMessage }));
       return;
@@ -717,10 +751,12 @@ export function AgendaScreen({
           owners={state.owners}
           patients={state.patients}
           team={state.team}
+          services={state.services}
           submitLabel="Crear turno"
           title="Nuevo turno"
           onClose={closeCreateModal}
           onPatientChange={handlePatientChange}
+          onServiceChange={handleServiceChange}
           onSubmit={handleCreateAppointment}
           onUpdateForm={setFormState}
         />
@@ -773,7 +809,7 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
         <div className="appointment-card__title-row">
           <h2>{appointment.title}</h2>
           <span className={getTypeBadgeClass(appointment.appointment_type)}>
-            {getAppointmentTypeLabel(appointment.appointment_type)}
+            {appointment.service_name ?? getAppointmentTypeLabel(appointment.appointment_type)}
           </span>
           <span className={getStatusBadgeClass(appointment.status)}>
             {getAppointmentStatusLabel(appointment.status)}
@@ -944,12 +980,15 @@ type AppointmentFormModalProps = {
   patients: Patient[];
   owners: Owner[];
   team: ClinicTeamMember[];
+  services: ClinicService[];
   isSubmitting: boolean;
   flowMessage: string | null;
+  allowLegacyType?: boolean;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (nextState: AppointmentFormState) => void;
   onPatientChange: (patientId: string) => void;
+  onServiceChange: (serviceId: string) => void;
 };
 
 export function AppointmentFormModal({
@@ -959,14 +998,19 @@ export function AppointmentFormModal({
   patients,
   owners,
   team,
+  services,
   isSubmitting,
   flowMessage,
+  allowLegacyType = false,
   onClose,
   onSubmit,
   onUpdateForm,
   onPatientChange,
+  onServiceChange,
 }: AppointmentFormModalProps) {
   const selectedOwner = owners.find((owner) => owner.id === formState.owner_id);
+  const showServiceSelector =
+    services.length > 0 && !(allowLegacyType && !formState.service_id);
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -1059,25 +1103,43 @@ export function AppointmentFormModal({
           ) : null}
 
           <div className="form-grid">
-            <label className="field">
-              <span>Tipo *</span>
-              <select
-                required
-                value={formState.appointment_type}
-                onChange={(event) =>
-                  onUpdateForm({
-                    ...formState,
-                    appointment_type: event.target.value as AppointmentType,
-                  })
-                }
-              >
-                {appointmentTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {showServiceSelector ? (
+              <label className="field">
+                <span>Servicio *</span>
+                <select
+                  required
+                  value={formState.service_id}
+                  onChange={(event) => onServiceChange(event.target.value)}
+                >
+                  <option value="">Selecciona un servicio</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} · {service.default_duration_minutes} min
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="field">
+                <span>Tipo *</span>
+                <select
+                  required
+                  value={formState.appointment_type}
+                  onChange={(event) =>
+                    onUpdateForm({
+                      ...formState,
+                      appointment_type: event.target.value as AppointmentType,
+                    })
+                  }
+                >
+                  {appointmentTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="field">
               <span>Estado</span>
@@ -1114,9 +1176,22 @@ export function AppointmentFormModal({
                 required
                 type="time"
                 value={formState.start_time}
-                onChange={(event) =>
-                  onUpdateForm({ ...formState, start_time: event.target.value })
-                }
+                onChange={(event) => {
+                  const selectedService = services.find(
+                    (service) => service.id === formState.service_id,
+                  );
+                  onUpdateForm({
+                    ...formState,
+                    start_time: event.target.value,
+                    end_time: selectedService
+                      ? getEndTimeForDuration(
+                          formState.date,
+                          event.target.value,
+                          selectedService.default_duration_minutes,
+                        )
+                      : formState.end_time,
+                  });
+                }}
               />
             </label>
 
@@ -1165,12 +1240,18 @@ export function AppointmentFormModal({
   );
 }
 
-export function validateAppointmentForm(form: AppointmentFormState) {
+export function validateAppointmentForm(
+  form: AppointmentFormState,
+  options: { serviceRequired?: boolean } = {},
+) {
   if (!form.title.trim()) {
     return "Escribe un título para el turno.";
   }
+  if (options.serviceRequired && !form.service_id) {
+    return "Selecciona el servicio del turno.";
+  }
   if (!form.appointment_type || !form.date || !form.start_time || !form.end_time) {
-    return "Completa tipo, fecha, hora de inicio y hora de fin.";
+    return "Completa servicio, fecha, hora de inicio y hora de fin.";
   }
   if (!form.assigned_user_id) {
     return "Selecciona el veterinario asignado para el turno.";
@@ -1193,6 +1274,7 @@ export function buildAppointmentPayload(
     patient_id: form.patient_id || null,
     owner_id: form.owner_id || null,
     assigned_user_id: form.assigned_user_id,
+    service_id: form.service_id || null,
     title: form.title.trim(),
     reason: form.reason.trim() || null,
     appointment_type: form.appointment_type,
@@ -1213,6 +1295,33 @@ function getDefaultAssignedUserId(team: ClinicTeamMember[], email?: string | nul
     team[0]?.id ??
     ""
   );
+}
+
+function getDefaultAppointmentServiceState(
+  services: ClinicService[],
+  currentServiceId: string,
+  date: string,
+  startTime: string,
+) {
+  const service =
+    services.find((item) => item.id === currentServiceId) ?? services[0] ?? null;
+  return service
+    ? {
+        service_id: service.id,
+        appointment_type: service.kind,
+        end_time: getEndTimeForDuration(date, startTime, service.default_duration_minutes),
+      }
+    : {};
+}
+
+export function getEndTimeForDuration(
+  date: string,
+  startTime: string,
+  durationMinutes: number,
+) {
+  const endAt = buildAppointmentDateTime(date, startTime);
+  endAt.setMinutes(endAt.getMinutes() + durationMinutes);
+  return `${endAt.getHours()}`.padStart(2, "0") + `:${endAt.getMinutes()}`.padStart(2, "0");
 }
 
 function formatDateTimeCompact(value: string) {

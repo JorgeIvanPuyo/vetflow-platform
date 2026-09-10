@@ -14,7 +14,7 @@ class Sale(BaseModel):
     __tablename__ = "sales"
     __table_args__ = (
         CheckConstraint("status IN ('draft', 'cancelled', 'confirmed', 'invoiced', 'reversed')", name="ck_sales_status"),
-        CheckConstraint("currency = 'ARS'", name="ck_sales_currency"),
+        CheckConstraint("length(currency) = 3 AND currency = upper(currency)", name="ck_sales_currency"),
         CheckConstraint("subtotal_ars >= 0 AND discount_total_ars >= 0 AND total_ars >= 0", name="ck_sales_totals_non_negative"),
         Index("ix_sales_tenant_sale_date", "tenant_id", "sale_date"),
         Index("ix_sales_tenant_status_sale_date", "tenant_id", "status", "sale_date"),
@@ -34,7 +34,7 @@ class Sale(BaseModel):
     patient_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     patient_species_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sale_date: Mapped[date] = mapped_column(Date, nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="ARS", server_default="ARS")
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     subtotal_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0")
     discount_total_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0")
     total_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0")

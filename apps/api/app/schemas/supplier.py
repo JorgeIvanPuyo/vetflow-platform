@@ -94,6 +94,7 @@ class SupplierRead(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
+    normalized_name: str
     tax_id: str | None = None
     phone: str | None = None
     email: str | None = None
@@ -117,9 +118,14 @@ class SupplierSummaryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    tenant_id: uuid.UUID
     name: str
+    normalized_name: str
     tax_id: str | None = None
     phone: str | None = None
     email: str | None = None
     is_active: bool
+    created_by_user_id: uuid.UUID | None = None
+    created_by_user_name: str | None = None
+    created_by_user_email: str | None = None
     updated_at: datetime

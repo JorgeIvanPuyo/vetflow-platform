@@ -51,7 +51,18 @@ class InventoryBulkOperationService:
             tenant.tenant_id,
             payload.selection,
         )
-        rows = [self._build_preview_row(tenant.tenant_id, item, payload) for item in items]
+        rounding_increment = self.inventory_service._resolve_pricing_defaults(
+            tenant.tenant_id
+        )["rounding_increment"]
+        rows = [
+            self._build_preview_row(
+                tenant.tenant_id,
+                item,
+                payload,
+                rounding_increment=rounding_increment,
+            )
+            for item in items
+        ]
         counts = self._count_rows(rows, excluded_count=excluded_count)
         operation = InventoryBulkOperation(
             tenant_id=tenant.tenant_id,
@@ -314,8 +325,14 @@ class InventoryBulkOperationService:
         tenant_id: uuid.UUID,
         item: InventoryItem,
         payload: InventoryBulkOperationPreviewCreate,
+        *,
+        rounding_increment: Decimal,
     ) -> dict:
-        field_name, old_value, new_value, error = self._calculate_change(item, payload)
+        field_name, old_value, new_value, error = self._calculate_change(
+            item,
+            payload,
+            rounding_increment=rounding_increment,
+        )
         status = "invalid" if error else "unchanged" if self._values_equal(old_value, new_value) else "pending"
         return {
             "tenant_id": tenant_id,
@@ -332,6 +349,8 @@ class InventoryBulkOperationService:
         self,
         item: InventoryItem,
         payload: InventoryBulkOperationPreviewCreate,
+        *,
+        rounding_increment: Decimal,
     ) -> tuple[str, Any, Any, str | None]:
         operation = payload.operation
         operation_type = operation.operation_type
@@ -360,6 +379,7 @@ class InventoryBulkOperationService:
                 profit_margin_percentage=margin,
                 round_sale_price=item.round_sale_price,
                 manual_sale_price_ars=None,
+                rounding_increment=rounding_increment,
             )
             return (
                 "profit_margin_percentage",

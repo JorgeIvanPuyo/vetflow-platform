@@ -6,24 +6,26 @@ from app.api.ai import router as ai_router
 from app.api.appointments import router as appointments_router
 from app.api.auth import router as auth_router
 from app.api.clinic import router as clinic_router
+from app.api.clinic_catalogs import router as clinic_catalogs_router
 from app.api.consultations import router as consultations_router
 from app.api.dashboard import router as dashboard_router
 from app.api.debug import router as debug_router
 from app.api.exams import router as exams_router
-from app.api.follow_ups import router as follow_ups_router
-from app.api.fiscal_issuers import router as fiscal_issuers_router
 from app.api.file_references import router as file_references_router
+from app.api.fiscal_issuers import router as fiscal_issuers_router
+from app.api.follow_ups import router as follow_ups_router
 from app.api.health import router as health_router
 from app.api.inventory import router as inventory_router
 from app.api.owners import router as owners_router
-from app.api.payments import router as payments_router
 from app.api.patients import router as patients_router
+from app.api.payments import router as payments_router
 from app.api.preventive_care import router as preventive_care_router
-from app.api.purchases import router as purchases_router
 from app.api.purchase_returns import router as purchase_returns_router
-from app.api.suppliers import router as suppliers_router
-from app.api.search import router as search_router
+from app.api.purchases import router as purchases_router
 from app.api.sales import router as sales_router
+from app.api.search import router as search_router
+from app.api.services import router as services_router
+from app.api.suppliers import router as suppliers_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 
@@ -58,14 +60,16 @@ api_v1_router.include_router(preventive_care_router)
 api_v1_router.include_router(file_references_router)
 api_v1_router.include_router(search_router)
 api_v1_router.include_router(appointments_router)
+api_v1_router.include_router(services_router)
+api_v1_router.include_router(clinic_catalogs_router)
 api_v1_router.include_router(clinic_router)
 api_v1_router.include_router(inventory_router)
+api_v1_router.include_router(suppliers_router)
 api_v1_router.include_router(purchases_router)
 api_v1_router.include_router(purchase_returns_router)
 api_v1_router.include_router(fiscal_issuers_router)
 api_v1_router.include_router(payments_router)
 api_v1_router.include_router(sales_router)
-api_v1_router.include_router(suppliers_router)
 api_v1_router.include_router(ai_router)
 
 app.include_router(health_router)

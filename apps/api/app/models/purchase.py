@@ -41,7 +41,7 @@ class Purchase(BaseModel):
             "status IN ('draft', 'cancelled', 'received', 'partially_received', 'returned', 'reversed')",
             name="ck_purchases_status",
         ),
-        CheckConstraint("currency = 'ARS'", name="ck_purchases_currency"),
+        CheckConstraint("length(currency) = 3 AND currency = upper(currency)", name="ck_purchases_currency"),
         CheckConstraint("subtotal_ars >= 0", name="ck_purchases_subtotal_non_negative"),
         CheckConstraint("tax_total_ars >= 0", name="ck_purchases_tax_total_non_negative"),
         CheckConstraint("total_ars >= 0", name="ck_purchases_total_non_negative"),
@@ -74,9 +74,7 @@ class Purchase(BaseModel):
     purchase_date: Mapped[date] = mapped_column(Date, nullable=False)
     document_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     document_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    currency: Mapped[str] = mapped_column(
-        String(3), nullable=False, default="ARS", server_default="ARS"
-    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
     subtotal_ars: Mapped[Decimal] = mapped_column(
         Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0"
     )
@@ -305,9 +303,7 @@ class PurchaseItem(BaseModel):
     unit: Mapped[str] = mapped_column(String(50), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     unit_price_without_tax_ars: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    tax_rate_percentage: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2), nullable=False, default=Decimal("21"), server_default="21"
-    )
+    tax_rate_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     unit_price_with_tax_ars: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     line_subtotal_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     line_tax_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)

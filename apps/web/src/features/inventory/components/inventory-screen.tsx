@@ -19,6 +19,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import {
   buildInventoryListFilters,
   formatInventoryCurrency,
@@ -144,6 +145,11 @@ const initialState: InventoryScreenState = {
 
 export function InventoryScreen() {
   const pathname = usePathname();
+  const { preferences } = useClinic();
+  const moneyPreferences = {
+    currencyCode: preferences?.currency_code ?? "ARS",
+    locale: preferences?.locale ?? "es-AR",
+  };
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
@@ -828,14 +834,16 @@ export function InventoryScreen() {
                       <ChevronRight size={18} className="inventory-card__chevron" />
                     </div>
                     <p className="inventory-card__meta">
-                      {item.internal_code} · {getInventoryCategoryLabel(item.category)}
+                      {item.internal_code} · {item.category_catalog_item_name ?? getInventoryCategoryLabel(item.category)}
                       {item.brand ? ` · ${item.brand}` : ""}
-                      {item.supplier ? ` · ${item.supplier}` : ""}
+                      {item.supplier_name || item.supplier
+                        ? ` · ${item.supplier_name ?? item.supplier}`
+                        : ""}
                     </p>
                     <div className="inventory-card__stats">
-                      <span>Stock: {formatInventoryQuantity(item.current_stock, item.unit)}</span>
-                      <span>Mínimo: {formatInventoryQuantity(item.minimum_stock, item.unit)}</span>
-                      <span>Venta: {formatInventoryCurrency(item.sale_price_ars)}</span>
+                      <span>Stock: {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</span>
+                      <span>Mínimo: {formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</span>
+                      <span>Venta: {formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</span>
                     </div>
                     <div className="timeline-card__badges">
                       {getInventoryStatusBadges(item).map((badge) => (
@@ -915,16 +923,19 @@ export function InventoryScreen() {
                           </td>
                           <td>
                             <span className="inventory-table__secondary">
-                              <strong>{getInventoryCategoryLabel(item.category)}</strong>
+                              <strong>
+                                {item.category_catalog_item_name ?? getInventoryCategoryLabel(item.category)}
+                              </strong>
                               <small>
-                                {[item.brand, item.supplier].filter(Boolean).join(" · ") ||
-                                  "Sin marca/proveedor"}
+                                {[item.brand, item.supplier_name ?? item.supplier]
+                                  .filter(Boolean)
+                                  .join(" · ") || "Sin marca/proveedor"}
                               </small>
                             </span>
                           </td>
-                          <td>{formatInventoryQuantity(item.current_stock, item.unit)}</td>
-                          <td>{formatInventoryQuantity(item.minimum_stock, item.unit)}</td>
-                          <td>{formatInventoryCurrency(item.sale_price_ars)}</td>
+                          <td>{formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</td>
+                          <td>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</td>
+                          <td>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</td>
                           <td>
                             <span className="inventory-table__badges">
                               {statusBadges.map((badge) => (

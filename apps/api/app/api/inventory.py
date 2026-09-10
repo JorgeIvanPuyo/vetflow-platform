@@ -261,8 +261,7 @@ def download_inventory_import_template(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    _ = tenant
-    content = InventoryImportService(db).build_template()
+    content = InventoryImportService(db).build_template(tenant.tenant_id)
     return StreamingResponse(
         BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

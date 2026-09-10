@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import {
   formatPurchaseCurrency,
   formatPurchaseDate,
@@ -15,6 +16,7 @@ import {
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { cancelPurchase, getPurchase, getPurchaseAttachment, receivePurchase, reversePurchaseReceipt, uploadPurchaseAttachment } from "@/services/purchases";
 import type { Purchase } from "@/types/api";
 
@@ -22,6 +24,8 @@ import type { Purchase } from "@/types/api";
 type Props = { purchaseId: string };
 
 export function PurchaseDetailScreen({ purchaseId }: Props) {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const searchParams = useSearchParams();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [reason, setReason] = useState("");
@@ -250,10 +254,10 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
                     <tr key={line.id} className="inventory-table__row--static">
                       <td className="purchase-wrap"><strong>{line.description_snapshot}</strong><small>{line.internal_code_snapshot}</small></td>
                       <td>{line.quantity}</td><td>{line.unit}</td>
-                      <td>{formatPurchaseCurrency(line.unit_price_without_tax_ars)}</td>
-                      <td>{line.tax_rate_percentage}% · {formatPurchaseCurrency(line.line_tax_ars)}</td>
-                      <td>{formatPurchaseCurrency(line.line_subtotal_ars)}</td>
-                      <td><strong>{formatPurchaseCurrency(line.line_total_ars)}</strong></td>
+                      <td>{formatPurchaseCurrency(line.unit_price_without_tax_ars, moneyPreferences)}</td>
+                      <td>{line.tax_rate_percentage}% · {formatPurchaseCurrency(line.line_tax_ars, moneyPreferences)}</td>
+                      <td>{formatPurchaseCurrency(line.line_subtotal_ars, moneyPreferences)}</td>
+                      <td><strong>{formatPurchaseCurrency(line.line_total_ars, moneyPreferences)}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,15 +266,15 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
           </section>
 
           <section className="panel purchase-summary" aria-label="Totales de compra">
-            <div><span>Subtotal</span><strong>{formatPurchaseCurrency(purchase.subtotal_ars)}</strong></div>
-            <div><span>IVA</span><strong>{formatPurchaseCurrency(purchase.tax_total_ars)}</strong></div>
-            <div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></div>
+            <div><span>Subtotal</span><strong>{formatPurchaseCurrency(purchase.subtotal_ars, moneyPreferences)}</strong></div>
+            <div><span>IVA</span><strong>{formatPurchaseCurrency(purchase.tax_total_ars, moneyPreferences)}</strong></div>
+            <div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong></div>
           </section>
 
           <section className="panel purchase-returns-panel">
             <div className="section-heading-inline"><div><h2>Devoluciones</h2><p>{labelReturnAggregation(purchase.return_status)}</p></div>{purchase.status === "received" && purchase.can_register_return ? <Link className="secondary-button" href={`/purchases/${purchase.id}/returns/new`}><PackageMinus size={17} /> Registrar devolución</Link> : null}</div>
-            <div className="purchase-return-overview"><div><span>Total confirmado devuelto</span><strong>{formatPurchaseCurrency(purchase.returned_total_ars)}</strong></div><div><span>Devoluciones confirmadas</span><strong>{purchase.confirmed_return_count}</strong></div><div><span>Estado derivado</span><strong>{labelReturnAggregation(purchase.return_status)}</strong></div></div>
-            {purchase.returns.length === 0 ? <p>No hay devoluciones registradas para esta compra.</p> : <div className="purchase-return-list">{purchase.returns.map((item) => <Link href={`/purchase-returns/${item.id}`} key={item.id}><span><strong>{formatPurchaseDate(item.return_date)}</strong><small>{item.reason}</small></span><span><span className={`badge purchase-return-status purchase-return-status--${item.status}`}>{item.status === "draft" ? "Borrador" : item.status === "confirmed" ? "Confirmada" : "Cancelada"}</span><strong>{formatPurchaseCurrency(item.total_ars)}</strong></span></Link>)}</div>}
+            <div className="purchase-return-overview"><div><span>Total confirmado devuelto</span><strong>{formatPurchaseCurrency(purchase.returned_total_ars, moneyPreferences)}</strong></div><div><span>Devoluciones confirmadas</span><strong>{purchase.confirmed_return_count}</strong></div><div><span>Estado derivado</span><strong>{labelReturnAggregation(purchase.return_status)}</strong></div></div>
+            {purchase.returns.length === 0 ? <p>No hay devoluciones registradas para esta compra.</p> : <div className="purchase-return-list">{purchase.returns.map((item) => <Link href={`/purchase-returns/${item.id}`} key={item.id}><span><strong>{formatPurchaseDate(item.return_date)}</strong><small>{item.reason}</small></span><span><span className={`badge purchase-return-status purchase-return-status--${item.status}`}>{item.status === "draft" ? "Borrador" : item.status === "confirmed" ? "Confirmada" : "Cancelada"}</span><strong>{formatPurchaseCurrency(item.total_ars, moneyPreferences)}</strong></span></Link>)}</div>}
           </section>
 
           <section className="panel purchase-traceability">
@@ -332,8 +336,8 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
             <button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar confirmación" disabled={isReceiving} onClick={() => { setShowReceiveConfirmation(false); setReceiveErrorMessage(null); }}><X size={18} /></button>
             <div className="section-heading"><h2 id="receive-title">Confirmar recepción</h2><p id="receive-description">Se aplicarán exactamente las líneas guardadas en esta compra.</p></div>
             <ul className="purchase-receive-effects"><li>Aumentará el stock de cada producto.</li><li>Actualizará el último costo de compra y su IVA.</li><li>No cambiará el precio de venta ni el margen.</li><li>La compra quedará inmutable después de recibirla.</li></ul>
-            <div className="purchase-receive-summary"><div><span>Proveedor</span><strong>{purchase.supplier_name}</strong></div><div><span>Líneas</span><strong>{purchase.items.length}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars)}</strong></div></div>
-            <div className="purchase-modal-lines">{purchase.items.map((line) => <div key={line.id}><span><strong>{line.description_snapshot}</strong><small>{line.quantity} {line.unit}</small></span><strong>{formatPurchaseCurrency(line.line_total_ars)}</strong></div>)}</div>
+            <div className="purchase-receive-summary"><div><span>Proveedor</span><strong>{purchase.supplier_name}</strong></div><div><span>Líneas</span><strong>{purchase.items.length}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong></div></div>
+            <div className="purchase-modal-lines">{purchase.items.map((line) => <div key={line.id}><span><strong>{line.description_snapshot}</strong><small>{line.quantity} {line.unit}</small></span><strong>{formatPurchaseCurrency(line.line_total_ars, moneyPreferences)}</strong></div>)}</div>
             {receiveErrorMessage ? <div className="error-state" role="alert">{receiveErrorMessage}</div> : null}
             <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isReceiving} onClick={() => { setShowReceiveConfirmation(false); setReceiveErrorMessage(null); }}>Volver</button><button className="primary-button" type="button" disabled={isReceiving} onClick={() => void handleReceive()}><CheckCircle2 size={17} /> {isReceiving ? "Recibiendo..." : "Confirmar recepción"}</button></div>
           </section>

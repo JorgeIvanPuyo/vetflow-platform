@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
+import { resolveMoneyPreferences } from "@/lib/money";
 import { getInventoryItems } from "@/services/inventory";
 import { createPurchase, getPurchase, updatePurchase, uploadPurchaseAttachment } from "@/services/purchases";
 import { createSupplier, getSuppliers } from "@/services/suppliers";
@@ -29,6 +31,8 @@ type EditableLine = {
 type Props = { purchaseId?: string };
 
 export function PurchaseFormScreen({ purchaseId }: Props) {
+  const { preferences } = useClinic();
+  const moneyPreferences = resolveMoneyPreferences(preferences);
   const router = useRouter();
   const isEditing = Boolean(purchaseId);
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
@@ -193,6 +197,17 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       setErrorMessage("Ese producto ya está agregado a la compra.");
       return;
     }
+    const taxRate = String(
+      item.purchase_tax_rate_percentage
+        ?? preferences?.default_purchase_tax_rate
+        ?? 0,
+    );
+    const numericTaxRate = Number(taxRate);
+    const taxMode: EditableLine["taxMode"] = numericTaxRate === 21
+      ? "21"
+      : numericTaxRate === 0
+        ? "0"
+        : "other";
     setLines((current) => [...current, {
       inventoryItemId: item.id,
       name: item.name,
@@ -201,8 +216,8 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       referenceCost: item.purchase_price_ars,
       quantity: "1",
       unitPrice: item.purchase_price_ars ?? "0",
-      taxMode: "21",
-      taxRate: "21",
+      taxMode,
+      taxRate,
     }]);
     setErrorMessage(null);
   }
@@ -364,7 +379,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
             {productResults.map((item) => (
               <button key={item.id} type="button" onClick={() => addProduct(item)} disabled={lines.some((line) => line.inventoryItemId === item.id)}>
                 <span><strong>{item.name}</strong><small>{item.internal_code} · {item.unit}</small></span>
-                <span><small>Costo actual</small><strong>{formatPurchaseCurrency(item.purchase_price_ars)}</strong></span>
+                <span><small>Costo actual</small><strong>{formatPurchaseCurrency(item.purchase_price_ars, moneyPreferences)}</strong></span>
                 <Plus size={17} />
               </button>
             ))}
@@ -379,14 +394,14 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
               const total = subtotal + tax;
               return (
                 <article className="purchase-line" key={line.inventoryItemId}>
-                  <div className="purchase-line__product"><strong>{line.name}</strong><small>{line.internalCode} · {line.unit}</small><small>Referencia: {formatPurchaseCurrency(line.referenceCost)}</small></div>
+                  <div className="purchase-line__product"><strong>{line.name}</strong><small>{line.internalCode} · {line.unit}</small><small>Referencia: {formatPurchaseCurrency(line.referenceCost, moneyPreferences)}</small></div>
                   <div className="purchase-line__fields">
                     <label className="field"><span>Cantidad</span><input min="1" step="1" inputMode="numeric" type="number" value={line.quantity} onKeyDown={preventFractionalQuantityInput} onChange={(event) => updateLine(index, { quantity: event.target.value })} onBlur={() => { const value = Number(line.quantity); if (Number.isInteger(value) && value > 0) updateLine(index, { quantity: String(value) }); }} /></label>
                     <label className="field"><span>Costo sin IVA</span><input min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} /></label>
                     <label className="field"><span>IVA</span><select value={line.taxMode} onChange={(event) => changeTaxMode(index, event.target.value as EditableLine["taxMode"])}><option value="21">21%</option><option value="0">Sin IVA</option><option value="other">Otro porcentaje</option></select></label>
                   </div>
                   {line.taxMode === "other" ? <label className="field purchase-line__custom-tax"><span>IVA personalizado (%)</span><input min="0" max="100" step="0.01" type="number" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: event.target.value })} /></label> : null}
-                  <div className="purchase-line__totals"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(subtotal)}</strong></div><div><span>IVA</span><strong>{formatPurchaseCurrency(tax)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(total)}</strong></div></div>
+                  <div className="purchase-line__totals"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(subtotal, moneyPreferences)}</strong></div><div><span>IVA</span><strong>{formatPurchaseCurrency(tax, moneyPreferences)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(total, moneyPreferences)}</strong></div></div>
                   <button className="secondary-button purchase-line__remove" type="button" aria-label={`Eliminar ${line.name}`} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><Trash2 size={17} /> Eliminar línea</button>
                 </article>
               );
@@ -396,9 +411,9 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       </section>
 
       <section className="panel purchase-summary" aria-label="Resumen estimativo">
-        <div><span>Subtotal</span><strong>{formatPurchaseCurrency(estimate.subtotal)}</strong></div>
-        <div><span>IVA</span><strong>{formatPurchaseCurrency(estimate.tax)}</strong></div>
-        <div><span>Total</span><strong>{formatPurchaseCurrency(estimate.total)}</strong></div>
+        <div><span>Subtotal</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div>
+        <div><span>IVA</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div>
+        <div><span>Total</span><strong>{formatPurchaseCurrency(estimate.total, moneyPreferences)}</strong></div>
         <p>Estimación visual. El backend recalcula y persiste los importes definitivos.</p>
       </section>
 

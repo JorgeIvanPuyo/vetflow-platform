@@ -1,13 +1,17 @@
+import { formatCurrency, type MoneyPreferences } from "@/lib/money";
 import type { PurchaseDocumentType, PurchaseStatus } from "@/types/api";
 
 
-export function formatPurchaseCurrency(value: string | number | null | undefined) {
-  const amount = Number(value ?? 0);
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(amount) ? amount : 0);
+const LEGACY_MONEY_PREFERENCES: MoneyPreferences = {
+  currencyCode: "ARS",
+  locale: "es-AR",
+};
+
+export function formatPurchaseCurrency(
+  value: string | number | null | undefined,
+  preferences: MoneyPreferences = LEGACY_MONEY_PREFERENCES,
+) {
+  return formatCurrency(value ?? 0, preferences);
 }
 
 export function formatPurchaseDate(value: string) {

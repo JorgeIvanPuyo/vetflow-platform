@@ -37,6 +37,12 @@ class Exam(BaseModel):
         index=True,
     )
     exam_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    exam_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     requested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -58,6 +64,16 @@ class Exam(BaseModel):
         back_populates="exams",
     )
     requested_by_user: Mapped[User | None] = relationship("User")
+    exam_catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
+
+    @property
+    def exam_catalog_item_name(self) -> str | None:
+        if (
+            self.exam_catalog_item is None
+            or self.exam_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.exam_catalog_item.name
 
     @property
     def requested_by_user_name(self) -> str | None:

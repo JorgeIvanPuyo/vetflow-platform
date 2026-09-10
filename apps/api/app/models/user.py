@@ -13,7 +13,7 @@ class User(BaseModel):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
-            "role IN ('superadmin', 'medico_veterinario', 'contador')",
+            "role IN ('superadmin', 'clinic_admin', 'medico_veterinario', 'contador')",
             name="ck_users_role",
         ),
     )

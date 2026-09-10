@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, field_serializer
 class PatientBase(BaseModel):
     name: str
     species: str
+    species_catalog_item_id: uuid.UUID | None = None
     breed: str | None = None
+    breed_catalog_item_id: uuid.UUID | None = None
     sex: str | None = None
     estimated_age: str | None = None
     birth_date: date | None = None
@@ -26,7 +28,9 @@ class PatientUpdate(BaseModel):
     owner_id: uuid.UUID | None = None
     name: str | None = None
     species: str | None = None
+    species_catalog_item_id: uuid.UUID | None = None
     breed: str | None = None
+    breed_catalog_item_id: uuid.UUID | None = None
     sex: str | None = None
     estimated_age: str | None = None
     birth_date: date | None = None
@@ -41,6 +45,8 @@ class PatientRead(PatientBase):
     id: uuid.UUID
     tenant_id: uuid.UUID
     owner_id: uuid.UUID
+    species_catalog_item_name: str | None = None
+    breed_catalog_item_name: str | None = None
     created_by_user_id: uuid.UUID | None
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
