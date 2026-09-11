@@ -42,6 +42,12 @@ class Appointment(BaseModel):
         nullable=True,
         index=True,
     )
+    service_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("services.id"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     appointment_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
@@ -70,6 +76,10 @@ class Appointment(BaseModel):
     created_by_user: Mapped[User | None] = relationship(
         "User",
         foreign_keys=[created_by_user_id],
+    )
+    service: Mapped[Service | None] = relationship(
+        "Service",
+        back_populates="appointments",
     )
 
     @property
@@ -107,3 +117,15 @@ class Appointment(BaseModel):
         if self.created_by_user is None or self.created_by_user.tenant_id != self.tenant_id:
             return None
         return self.created_by_user.email
+
+    @property
+    def service_name(self) -> str | None:
+        if self.service is None or self.service.tenant_id != self.tenant_id:
+            return None
+        return self.service.name
+
+    @property
+    def service_calendar_color(self) -> str | None:
+        if self.service is None or self.service.tenant_id != self.tenant_id:
+            return None
+        return self.service.calendar_color

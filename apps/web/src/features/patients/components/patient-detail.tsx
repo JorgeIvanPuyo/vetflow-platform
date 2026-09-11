@@ -64,6 +64,7 @@ import {
   exportClinicalHistoryPdf,
   previewPatientClinicalHistoryPdf,
 } from "@/services/clinical-history-export";
+import { getCatalogItems } from "@/services/catalogs";
 import { getClinicTeam } from "@/services/clinic";
 import { createFollowUpConsultation } from "@/services/consultations";
 import {
@@ -85,6 +86,7 @@ import {
 } from "@/services/patients";
 import { getPatientPreventiveCare } from "@/services/preventive-care";
 import type {
+  CatalogItem,
   ClinicTeamMember,
   ClinicalHistory,
   ClinicalHistoryPdfExportPayload,
@@ -136,6 +138,7 @@ type TimelineFilter =
 type FileReferenceFormState = {
   name: string;
   file_type: string;
+  file_type_catalog_item_id: string;
   description: string;
   external_url: string;
 };
@@ -143,6 +146,7 @@ type FileReferenceFormState = {
 type FileUploadFormState = {
   name: string;
   file_type: string;
+  file_type_catalog_item_id: string;
   description: string;
   file: File | null;
 };
@@ -178,6 +182,7 @@ type SpeciesOption = "Canino" | "Felino" | "Otro" | "";
 const initialFileReferenceFormState: FileReferenceFormState = {
   name: "",
   file_type: "radiography",
+  file_type_catalog_item_id: "",
   description: "",
   external_url: "",
 };
@@ -185,6 +190,7 @@ const initialFileReferenceFormState: FileReferenceFormState = {
 const initialFileUploadFormState: FileUploadFormState = {
   name: "",
   file_type: "laboratory",
+  file_type_catalog_item_id: "",
   description: "",
   file: null,
 };
@@ -264,6 +270,19 @@ const fileTypeOptions = [
   { value: "other", label: "Otro" },
 ];
 
+type FileTypeSelectOption = { value: string; label: string; catalogItemId: string | null };
+
+function getFileTypeSelectOptions(catalogItems: CatalogItem[]): FileTypeSelectOption[] {
+  if (catalogItems.length === 0) {
+    return fileTypeOptions.map((option) => ({ ...option, catalogItemId: null }));
+  }
+  return catalogItems.map((item) => ({
+    value: item.code ?? item.name,
+    label: item.name,
+    catalogItemId: item.id,
+  }));
+}
+
 const allowedClinicalFileExtensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"];
 const allowedClinicalFileTypes = [
   "application/pdf",
@@ -332,6 +351,11 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const [fileFormState, setFileFormState] = useState<FileReferenceFormState>(initialFileReferenceFormState);
   const [fileUploadFormState, setFileUploadFormState] =
     useState<FileUploadFormState>(initialFileUploadFormState);
+  const [documentTypeCatalogItems, setDocumentTypeCatalogItems] = useState<CatalogItem[]>(
+    [],
+  );
+  const [speciesCatalog, setSpeciesCatalog] = useState<CatalogItem[]>([]);
+  const [breedCatalog, setBreedCatalog] = useState<CatalogItem[]>([]);
   const [pdfExportFormState, setPdfExportFormState] =
     useState<PdfExportFormState>(initialPdfExportFormState);
   const [isPatientEditOpen, setIsPatientEditOpen] = useState(false);
@@ -429,6 +453,59 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   useEffect(() => {
     void loadPatientDetail();
   }, [loadPatientDetail]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadDocumentTypeCatalog() {
+      try {
+        const response = await getCatalogItems("document_type", {
+          include_inactive: false,
+        });
+        if (isCurrent) {
+          setDocumentTypeCatalogItems(response.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setDocumentTypeCatalogItems([]);
+        }
+      }
+    }
+
+    void loadDocumentTypeCatalog();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadSpeciesAndBreedCatalogs() {
+      try {
+        const [speciesResponse, breedResponse] = await Promise.all([
+          getCatalogItems("species", { include_inactive: false }),
+          getCatalogItems("breed", { include_inactive: false }),
+        ]);
+        if (isCurrent) {
+          setSpeciesCatalog(speciesResponse.data);
+          setBreedCatalog(breedResponse.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setSpeciesCatalog([]);
+          setBreedCatalog([]);
+        }
+      }
+    }
+
+    void loadSpeciesAndBreedCatalogs();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!editPhotoFile) {
@@ -617,6 +694,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     const payload: CreatePatientFileReferencePayload = {
       name: fileFormState.name.trim(),
       file_type: fileFormState.file_type,
+      file_type_catalog_item_id: fileFormState.file_type_catalog_item_id || null,
       description: fileFormState.description.trim() || null,
       external_url: fileFormState.external_url.trim() || null,
     };
@@ -686,6 +764,12 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     formData.append("file", selectedFile);
     formData.append("name", name);
     formData.append("file_type", fileUploadFormState.file_type);
+    if (fileUploadFormState.file_type_catalog_item_id) {
+      formData.append(
+        "file_type_catalog_item_id",
+        fileUploadFormState.file_type_catalog_item_id,
+      );
+    }
 
     const description = fileUploadFormState.description.trim();
     if (description) {
@@ -1065,6 +1149,24 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       allergies: editHasNoKnownAllergies ? null : allergies,
       chronic_conditions: editHasNoKnownChronicConditions ? null : chronicConditions,
     };
+
+    const matchedSpecies = speciesCatalog.find(
+      (item) => item.name.trim().toLowerCase() === species.toLowerCase(),
+    );
+    if (matchedSpecies) {
+      payload.species_catalog_item_id = matchedSpecies.id;
+    }
+    const breedValue = patientEditFormState.breed.trim();
+    if (breedValue) {
+      const matchedBreed = breedCatalog.find(
+        (item) =>
+          item.parent_id === (matchedSpecies?.id ?? null) &&
+          item.name.trim().toLowerCase() === breedValue.toLowerCase(),
+      );
+      if (matchedBreed) {
+        payload.breed_catalog_item_id = matchedBreed.id;
+      }
+    }
 
     payload.weight_kg = patientEditFormState.weight_kg.trim()
       ? Number(patientEditFormState.weight_kg)
@@ -2310,9 +2412,22 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 <span>Tipo</span>
                 <select
                   value={fileUploadFormState.file_type}
-                  onChange={(event) => setFileUploadFormState((current) => ({ ...current, file_type: event.target.value }))}
+                  onChange={(event) => {
+                    const selected = getFileTypeSelectOptions(documentTypeCatalogItems).find(
+                      (option) => option.value === event.target.value,
+                    );
+                    setFileUploadFormState((current) => ({
+                      ...current,
+                      file_type: event.target.value,
+                      file_type_catalog_item_id: selected?.catalogItemId ?? "",
+                    }));
+                  }}
                 >
-                  {fileTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  {getFileTypeSelectOptions(documentTypeCatalogItems).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -2372,8 +2487,24 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               </label>
               <label className="field">
                 <span>Tipo</span>
-                <select value={fileFormState.file_type} onChange={(event) => setFileFormState((current) => ({ ...current, file_type: event.target.value }))}>
-                  {fileTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                <select
+                  value={fileFormState.file_type}
+                  onChange={(event) => {
+                    const selected = getFileTypeSelectOptions(documentTypeCatalogItems).find(
+                      (option) => option.value === event.target.value,
+                    );
+                    setFileFormState((current) => ({
+                      ...current,
+                      file_type: event.target.value,
+                      file_type_catalog_item_id: selected?.catalogItemId ?? "",
+                    }));
+                  }}
+                >
+                  {getFileTypeSelectOptions(documentTypeCatalogItems).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

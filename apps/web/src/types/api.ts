@@ -54,7 +54,11 @@ export type Patient = {
   created_by_user_email?: string | null;
   name: string;
   species: string;
+  species_catalog_item_id?: string | null;
+  species_catalog_item_name?: string | null;
   breed: string | null;
+  breed_catalog_item_id?: string | null;
+  breed_catalog_item_name?: string | null;
   sex: string | null;
   estimated_age: string | null;
   birth_date: string | null;
@@ -100,6 +104,8 @@ export type ConsultationStudyRequest = {
   consultation_id: string;
   name: string;
   study_type: ConsultationStudyRequestType;
+  exam_catalog_item_id?: string | null;
+  exam_catalog_item_name?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -189,6 +195,8 @@ export type Exam = {
   requested_by_user_name?: string | null;
   requested_by_user_email?: string | null;
   exam_type: string;
+  exam_catalog_item_id?: string | null;
+  exam_catalog_item_name?: string | null;
   status: ExamStatus;
   requested_at: string;
   performed_at: string | null;
@@ -207,6 +215,8 @@ export type PreventiveCare = {
   patient_id: string;
   name: string;
   care_type: PreventiveCareType;
+  catalog_item_id?: string | null;
+  catalog_item_name?: string | null;
   applied_at: string;
   next_due_at: string | null;
   lot_number: string | null;
@@ -224,6 +234,8 @@ export type PatientFileReference = {
   patient_id: string;
   name: string;
   file_type: string;
+  file_type_catalog_item_id?: string | null;
+  file_type_catalog_item_name?: string | null;
   description: string | null;
   external_url: string | null;
   created_by_user_id?: string | null;
@@ -377,6 +389,123 @@ export type UpdateClinicTeamMemberPayload = {
   full_name: string;
 };
 
+export type TenantPreferences = {
+  id: string;
+  tenant_id: string;
+  currency_code: "USD" | "ARS";
+  locale: "es-PA" | "es-AR";
+  default_appointment_duration_minutes: number;
+  appointment_duration_options: number[];
+  catalog_template_version: string;
+  default_purchase_tax_rate: string;
+  default_sale_tax_rate: string;
+  default_profit_margin: string;
+  money_rounding_increment: string;
+};
+
+export type UpdateTenantPreferencesPayload = Partial<{
+  currency_code: "USD" | "ARS";
+  locale: "es-PA" | "es-AR";
+  default_appointment_duration_minutes: number;
+  appointment_duration_options: number[];
+  default_purchase_tax_rate: number;
+  default_sale_tax_rate: number;
+  default_profit_margin: number;
+  money_rounding_increment: number;
+}>;
+
+export type ClinicServiceKind =
+  | "consultation"
+  | "follow_up"
+  | "vaccine"
+  | "deworming"
+  | "exam"
+  | "procedure"
+  | "other";
+
+export type ClinicService = {
+  price: string | null;
+  id: string;
+  tenant_id: string;
+  code: string;
+  name: string;
+  normalized_name: string;
+  description: string | null;
+  kind: ClinicServiceKind;
+  default_duration_minutes: number;
+  calendar_color: string;
+  is_bookable: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateClinicServicePayload = {
+  price?: string | null;
+  code: string;
+  name: string;
+  description?: string | null;
+  kind: ClinicServiceKind;
+  default_duration_minutes: number;
+  calendar_color?: string;
+  is_bookable?: boolean;
+  sort_order?: number;
+};
+
+export type UpdateClinicServicePayload = Partial<CreateClinicServicePayload>;
+
+export type CatalogType =
+  | "mucous_membrane"
+  | "hydration"
+  | "inventory_category"
+  | "inventory_subcategory"
+  | "exam_type"
+  | "preventive_care_type"
+  | "document_type"
+  | "follow_up_template"
+  | "species"
+  | "breed"
+  | "diagnostic_tag"
+  | "prescription_template";
+
+export type CatalogItem = {
+  id: string;
+  tenant_id: string;
+  catalog_type: CatalogType;
+  name: string;
+  normalized_name: string;
+  description: string | null;
+  code: string | null;
+  parent_id: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateCatalogItemPayload = {
+  name: string;
+  description?: string | null;
+  code?: string | null;
+  parent_id?: string | null;
+  sort_order?: number;
+};
+
+export type UpdateCatalogItemPayload = Partial<CreateCatalogItemPayload>;
+
+export type ClinicConfiguration = {
+  preferences?: TenantPreferences | null;
+  services?: ClinicService[] | null;
+  catalogs?: Partial<Record<CatalogType, CatalogItem[]>> | null;
+};
+
 export type DashboardPeriod = {
   date_from: string;
   date_to: string;
@@ -478,6 +607,7 @@ export type InventoryCategory =
   | "vaccine"
   | "supply"
   | "food"
+  | "accessory"
   | "other";
 
 export type InventoryUnit =
@@ -506,11 +636,17 @@ export type InventoryStatusFilter =
   | "active"
   | "inactive";
 
+export type InventoryStockStatus =
+  | "in_stock"
+  | "low_stock"
+  | "out_of_stock"
+  | "negative";
+
 export type InventorySortBy =
   | "name"
   | "current_stock"
-  | "expiration_date"
-  | "created_at"
+  | "internal_code"
+  | "sale_price_ars"
   | "updated_at";
 
 export type InventorySortOrder = "asc" | "desc";
@@ -518,11 +654,17 @@ export type InventorySortOrder = "asc" | "desc";
 export type InventoryItem = {
   id: string;
   tenant_id: string;
+  internal_code: string;
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id?: string | null;
+  category_catalog_item_name?: string | null;
   subcategory: string | null;
+  brand: string | null;
   unit: InventoryUnit;
   supplier: string | null;
+  supplier_id?: string | null;
+  supplier_name?: string | null;
   lot_number: string | null;
   expiration_date: string | null;
   current_stock: string;
@@ -555,15 +697,100 @@ export type InventorySummary = {
   expired_count: number;
 };
 
+export type InventoryDashboardAlertType =
+  | "negative_stock"
+  | "out_of_stock"
+  | "low_stock"
+  | "inactive_with_stock"
+  | "missing_purchase_cost"
+  | "missing_sale_price"
+  | "missing_brand"
+  | "missing_supplier";
+
+export type InventoryDashboardAlertPriority = "critical" | "high" | "medium" | "info";
+
+export type InventoryDashboardFilters = {
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  is_active?: boolean | null;
+  date_from?: string | null;
+  date_to?: string | null;
+};
+
+export type InventoryDashboard = {
+  generated_at: string;
+  filters: {
+    category: InventoryCategory | null;
+    brand: string | null;
+    supplier: string | null;
+    is_active: boolean | null;
+    date_from: string;
+    date_to: string;
+  };
+  indicators: {
+    total_products: number;
+    active_products: number;
+    inactive_products: number;
+    in_stock_products: number;
+    low_stock_products: number;
+    out_of_stock_products: number;
+    negative_stock_products: number;
+  };
+  valuation: {
+    estimated_cost_value_ars: string;
+    estimated_sale_value_ars: string;
+    includes_negative_stock: boolean;
+    disclaimer: string;
+  };
+  movement_metrics: {
+    total_movements: number;
+    entry_movements: number;
+    exit_movements: number;
+    adjustment_movements: number;
+    reversal_movements: number;
+    clinical_consumption_movements: number;
+  };
+  alerts: Array<{
+    alert_type: InventoryDashboardAlertType;
+    priority: InventoryDashboardAlertPriority;
+    count: number;
+    label: string;
+  }>;
+  attention_items: Array<{
+    id: string;
+    internal_code: string;
+    name: string;
+    category: InventoryCategory;
+    current_stock: string;
+    minimum_stock: string;
+    sale_price_ars: string | null;
+    alerts: InventoryDashboardAlertType[];
+    priority: InventoryDashboardAlertPriority;
+  }>;
+  activity: {
+    recent_movements: InventoryMovement[];
+    recent_imports: InventoryImportListItem[];
+    recent_bulk_operations: InventoryBulkOperationListItem[];
+  };
+};
+
+export type InventoryFilterOptions = {
+  brands: string[];
+  suppliers: string[];
+};
+
 export type CreateInventoryItemPayload = {
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id?: string | null;
   subcategory?: string | null;
+  brand?: string | null;
   unit: InventoryUnit;
   supplier?: string | null;
+  supplier_id?: string | null;
   lot_number?: string | null;
   expiration_date?: string | null;
-  current_stock?: number;
   minimum_stock?: number;
   purchase_price_ars?: number | null;
   purchase_tax_rate_percentage?: number;
@@ -575,22 +802,46 @@ export type CreateInventoryItemPayload = {
   is_active?: boolean;
 };
 
-export type UpdateInventoryItemPayload = Partial<
-  Omit<CreateInventoryItemPayload, "current_stock">
->;
+export type UpdateInventoryItemPayload = Partial<CreateInventoryItemPayload>;
 
 export type InventoryListFilters = {
+  search?: string;
   q?: string;
   category?: InventoryCategory;
+  brand?: string;
   supplier?: string;
   status?: InventoryStatusFilter;
+  stock_status?: InventoryStockStatus;
+  is_active?: boolean;
   page?: number;
   page_size?: number;
   sort_by?: InventorySortBy;
+  sort_direction?: InventorySortOrder;
   sort_order?: InventorySortOrder;
 };
 
-export type InventoryMovementType = "entry" | "exit" | "adjustment";
+export type InventoryMovementType =
+  | "initial_stock"
+  | "manual_entry"
+  | "manual_exit"
+  | "purchase"
+  | "sale"
+  | "clinical_consumption"
+  | "customer_return"
+  | "supplier_return"
+  | "adjustment_in"
+  | "adjustment_out"
+  | "expiration"
+  | "loss"
+  | "breakage"
+  | "transfer_in"
+  | "transfer_out"
+  | "reversal"
+  | "entry"
+  | "exit"
+  | "adjustment";
+
+export type InventoryReversalStatus = "all" | "active" | "reversed" | "reversal";
 
 export type InventoryExitReason =
   | "sale"
@@ -603,9 +854,20 @@ export type InventoryExitReason =
 export type InventoryMovement = {
   id: string;
   inventory_item_id: string;
+  inventory_item_name?: string | null;
+  inventory_item_internal_code?: string | null;
   movement_type: InventoryMovementType;
-  reason: InventoryExitReason | null;
+  reason: string | null;
   quantity: string;
+  unit: InventoryUnit | string | null;
+  stock_before: string | null;
+  stock_after: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  operation_id: string | null;
+  reverses_movement_id: string | null;
+  reversed_by_movement_id: string | null;
+  reversal_status: InventoryReversalStatus;
   unit_cost_ars: string | null;
   total_cost_ars: string | null;
   unit_sale_price_ars: string | null;
@@ -617,6 +879,11 @@ export type InventoryMovement = {
   created_by_user_name?: string | null;
   created_by_user_email?: string | null;
   created_at: string;
+};
+
+export type InventoryMovementDetail = InventoryMovement & {
+  can_be_reversed: boolean;
+  reversal_block_reason: string | null;
 };
 
 export type CreateInventoryEntryPayload = {
@@ -639,7 +906,242 @@ export type CreateInventoryExitPayload = {
 export type InventoryMovementsFilters = {
   page?: number;
   page_size?: number;
-  movement_type?: Extract<InventoryMovementType, "entry" | "exit">;
+  search?: string;
+  inventory_item_id?: string;
+  movement_type?: InventoryMovementType;
+  created_by_user_id?: string;
+  source_type?: string;
+  source_id?: string;
+  operation_id?: string;
+  reversal_status?: InventoryReversalStatus;
+  date_from?: string;
+  date_to?: string;
+  sort_direction?: InventorySortOrder;
+};
+
+export type ReverseInventoryMovementPayload = {
+  reason: string;
+  notes?: string | null;
+};
+
+export type InventoryExportMode = "all" | "filtered" | "selected";
+
+export type InventoryExportFilters = {
+  search?: string | null;
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  stock_status?: InventoryStockStatus | null;
+  is_active?: boolean | null;
+  sort_by?: InventorySortBy | null;
+  sort_direction?: InventorySortOrder | null;
+};
+
+export type InventoryExportPayload = {
+  mode: InventoryExportMode;
+  filters?: InventoryExportFilters | null;
+  selected_ids?: string[];
+};
+
+export type InventoryBulkOperationType =
+  | "increase_sale_price_percentage"
+  | "decrease_sale_price_percentage"
+  | "set_profit_margin_percentage"
+  | "set_sale_price"
+  | "set_brand"
+  | "set_supplier"
+  | "set_minimum_stock"
+  | "activate"
+  | "deactivate";
+export type InventoryBulkSelectionMode = "selected" | "filtered";
+export type InventoryBulkOperationStatus =
+  | "preview"
+  | "confirmed"
+  | "partially_reversed"
+  | "reversed"
+  | "failed"
+  | "expired";
+export type InventoryBulkOperationItemStatus =
+  | "pending"
+  | "changed"
+  | "unchanged"
+  | "invalid"
+  | "conflict"
+  | "reverted"
+  | "excluded";
+
+export type InventoryBulkOperationFilters = {
+  search?: string | null;
+  category?: InventoryCategory | null;
+  brand?: string | null;
+  supplier?: string | null;
+  stock_status?: InventoryStockStatus | null;
+  is_active?: boolean | null;
+};
+
+export type InventoryBulkSelectionPayload = {
+  selection_mode: InventoryBulkSelectionMode;
+  selected_ids?: string[];
+  filters?: InventoryBulkOperationFilters | null;
+  excluded_ids?: string[];
+};
+
+export type InventoryBulkOperationValuePayload = {
+  operation_type: InventoryBulkOperationType;
+  percentage?: number | null;
+  sale_price_ars?: number | null;
+  profit_margin_percentage?: number | null;
+  brand?: string | null;
+  supplier?: string | null;
+  minimum_stock?: number | null;
+  confirm_clear?: boolean;
+};
+
+export type InventoryBulkOperationPreviewPayload = {
+  selection: InventoryBulkSelectionPayload;
+  operation: InventoryBulkOperationValuePayload;
+};
+
+export type InventoryBulkOperationSummary = {
+  selected_count: number;
+  affected_count: number;
+  unchanged_count: number;
+  invalid_count: number;
+  excluded_count: number;
+  reversed_count: number;
+  conflict_count: number;
+};
+
+export type InventoryBulkOperationItem = {
+  id: string;
+  inventory_item_id: string;
+  inventory_item_name: string | null;
+  inventory_item_internal_code: string | null;
+  field_name: string;
+  old_value_json: Record<string, unknown> | null;
+  new_value_json: Record<string, unknown> | null;
+  product_updated_at_snapshot: string;
+  status: InventoryBulkOperationItemStatus;
+  error_message: string | null;
+  reverted_at: string | null;
+  created_at: string;
+};
+
+export type InventoryBulkOperation = {
+  id: string;
+  operation_type: InventoryBulkOperationType;
+  selection_mode: InventoryBulkSelectionMode;
+  filters_json: Record<string, unknown> | null;
+  request_json: Record<string, unknown>;
+  status: InventoryBulkOperationStatus;
+  selected_count: number;
+  affected_count: number;
+  unchanged_count: number;
+  invalid_count: number;
+  excluded_count: number;
+  reversed_count: number;
+  conflict_count: number;
+  expires_at: string;
+  confirmed_at: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name?: string | null;
+  reversed_by_user_email?: string | null;
+  reversal_reason: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  items: InventoryBulkOperationItem[];
+  summary: InventoryBulkOperationSummary | null;
+};
+
+export type InventoryBulkOperationListItem = Omit<
+  InventoryBulkOperation,
+  "filters_json" | "request_json" | "expires_at" | "reversed_by_user_id" | "reversal_reason" | "created_by_user_id" | "items" | "summary"
+>;
+
+export type InventoryImportMode = "initial_load" | "catalog_update";
+export type InventoryImportStatus = "preview" | "confirmed" | "failed" | "expired";
+export type InventoryImportRowStatus = "valid" | "warning" | "error" | "skipped";
+export type InventoryImportRowAction = "create" | "update" | "skip" | "review_required";
+export type InventoryImportMatchType =
+  | "exact_match"
+  | "possible_match"
+  | "new_product"
+  | "duplicate_in_file"
+  | "conflict"
+  | "invalid";
+
+export type InventoryImportSummary = {
+  row_count: number;
+  valid_count: number;
+  warning_count: number;
+  error_count: number;
+  create_count: number;
+  update_count: number;
+  skip_count: number;
+  movement_count: number;
+  stock_increase_total: string;
+  stock_decrease_total: string;
+  warnings: string[];
+};
+
+export type InventoryImportRow = {
+  id: string;
+  row_number: number;
+  normalized_data: Record<string, string | number | boolean | null>;
+  existing_inventory_item_id: string | null;
+  match_type: InventoryImportMatchType;
+  proposed_action: InventoryImportRowAction;
+  status: InventoryImportRowStatus;
+  errors: string[];
+  warnings: string[];
+  product_snapshot: Record<string, string | number | boolean | null> | null;
+  changed_fields: string[];
+  stock_current: string | null;
+  stock_target: string | null;
+  stock_delta: string | null;
+  expected_movement_type: InventoryMovementType | null;
+};
+
+export type InventoryImport = {
+  id: string;
+  mode: InventoryImportMode;
+  status: InventoryImportStatus;
+  original_filename: string;
+  file_hash: string;
+  row_count: number;
+  valid_count: number;
+  warning_count: number;
+  error_count: number;
+  operation_id: string | null;
+  result_summary: Record<string, unknown> | null;
+  expires_at: string;
+  confirmed_at: string | null;
+  created_by_user_id?: string | null;
+  created_by_user_name?: string | null;
+  created_by_user_email?: string | null;
+  created_at: string;
+  rows: InventoryImportRow[];
+  summary: InventoryImportSummary | null;
+};
+
+export type InventoryImportListItem = Omit<
+  InventoryImport,
+  "file_hash" | "result_summary" | "created_by_user_id" | "rows" | "summary"
+>;
+
+export type InventoryImportConfirmRow = {
+  row_id: string;
+  selected: boolean;
+  action: InventoryImportRowAction;
+};
+
+export type InventoryImportConfirmPayload = {
+  explicit_confirm: boolean;
+  rows: InventoryImportConfirmRow[];
+  reason?: string | null;
 };
 
 export type AppointmentType =
@@ -648,6 +1150,7 @@ export type AppointmentType =
   | "vaccine"
   | "deworming"
   | "exam"
+  | "procedure"
   | "other";
 
 export type AppointmentStatus =
@@ -663,6 +1166,7 @@ export type Appointment = {
   owner_id: string | null;
   assigned_user_id?: string | null;
   created_by_user_id?: string | null;
+  service_id?: string | null;
   title: string;
   reason: string | null;
   appointment_type: AppointmentType;
@@ -676,6 +1180,8 @@ export type Appointment = {
   assigned_user_email?: string | null;
   created_by_user_name?: string | null;
   created_by_user_email?: string | null;
+  service_name?: string | null;
+  service_calendar_color?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -684,12 +1190,13 @@ export type CreateAppointmentPayload = {
   patient_id?: string | null;
   owner_id?: string | null;
   assigned_user_id?: string | null;
+  service_id?: string | null;
   title: string;
   reason?: string | null;
-  appointment_type: AppointmentType;
+  appointment_type?: AppointmentType | null;
   status?: AppointmentStatus;
   start_at: string;
-  end_at: string;
+  end_at?: string | null;
   notes?: string | null;
 };
 
@@ -811,7 +1318,9 @@ export type CreatePatientPayload = {
   owner_id: string;
   name: string;
   species: string;
+  species_catalog_item_id?: string | null;
   breed?: string;
+  breed_catalog_item_id?: string | null;
   sex?: string;
   estimated_age?: string;
   weight_kg?: number;
@@ -885,6 +1394,7 @@ export type CreateMedicationPayload = {
 export type CreateStudyRequestPayload = {
   name: string;
   study_type: ConsultationStudyRequestType;
+  exam_catalog_item_id?: string | null;
   notes?: string | null;
 };
 
@@ -892,11 +1402,14 @@ export type CreateExamPayload = {
   patient_id: string;
   consultation_id?: string | null;
   exam_type: string;
+  exam_catalog_item_id?: string | null;
   requested_at: string;
   observations?: string | null;
 };
 
 export type UpdateExamPayload = {
+  exam_type?: string;
+  exam_catalog_item_id?: string | null;
   status?: ExamStatus;
   performed_at?: string | null;
   result_summary?: string | null;
@@ -907,6 +1420,7 @@ export type UpdateExamPayload = {
 export type CreatePreventiveCarePayload = {
   name: string;
   care_type: PreventiveCareType;
+  catalog_item_id?: string | null;
   applied_at: string;
   next_due_at?: string | null;
   lot_number?: string | null;
@@ -918,6 +1432,7 @@ export type UpdatePreventiveCarePayload = Partial<CreatePreventiveCarePayload>;
 export type CreatePatientFileReferencePayload = {
   name: string;
   file_type: string;
+  file_type_catalog_item_id?: string | null;
   description?: string | null;
   external_url?: string | null;
 };
@@ -941,7 +1456,7 @@ export type SearchResponse = {
   };
 };
 
-export type AppRole = "superadmin" | "medico_veterinario" | "contador";
+export type AppRole = "superadmin" | "clinic_admin" | "medico_veterinario" | "contador";
 
 export type CurrentUser = {
   id: string;
@@ -970,6 +1485,18 @@ export type TenantOption = {
   name: string;
 };
 
+export type CreateTenantPayload = {
+  name: string;
+  admin_email: string;
+  admin_full_name: string;
+};
+
+export type CreateTenantResult = {
+  tenant: TenantOption;
+  admin_user: AdminUser;
+  password_reset_link: string | null;
+};
+
 export type InviteUserPayload = {
   email: string;
   full_name: string;
@@ -986,4 +1513,568 @@ export type ListUsersFilters = {
   tenant_id?: string;
   is_active?: boolean;
   search?: string;
+};
+
+export type PurchaseStatus =
+  | "draft"
+  | "cancelled"
+  | "received"
+  | "partially_received"
+  | "returned"
+  | "reversed";
+
+export type PurchaseDocumentType =
+  | "invoice"
+  | "receipt"
+  | "ticket"
+  | "delivery_note"
+  | "other";
+
+export type PurchaseAttachmentStatus = "pending" | "attached";
+export type PurchaseReturnStatus = "draft" | "confirmed" | "cancelled";
+export type PurchaseReturnAggregationStatus = "none" | "partial" | "full";
+export type PurchaseReturnDocumentType = "credit_note" | "return_delivery_note" | "other";
+
+export type PurchaseCreatorOption = {
+  id: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+};
+
+export type PurchaseAttachment = {
+  id: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_user_name: string | null;
+  uploaded_by_user_email: string | null;
+  uploaded_at: string;
+  is_active: boolean;
+  replaced_at: string | null;
+  replaced_by_user_id: string | null;
+  replaced_by_user_name: string | null;
+  replaced_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PurchaseItemInput = {
+  inventory_item_id: string;
+  quantity: string;
+  unit_price_without_tax_ars: string;
+  tax_rate_percentage: string;
+};
+
+export type PurchaseItem = PurchaseItemInput & {
+  id: string;
+  line_number: number;
+  description_snapshot: string;
+  internal_code_snapshot: string;
+  unit: string;
+  unit_price_with_tax_ars: string;
+  line_subtotal_ars: string;
+  line_tax_ars: string;
+  line_total_ars: string;
+  previous_purchase_price_ars: string | null;
+  previous_purchase_tax_rate_percentage: string | null;
+  confirmed_returned_quantity: string;
+  returnable_quantity: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupplierSummary = {
+  id: string;
+  name: string;
+  tax_id: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
+export type Supplier = SupplierSummary & {
+  tenant_id: string;
+  address: string | null;
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+};
+
+export type SupplierWritePayload = {
+  name: string;
+  tax_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
+
+export type SupplierListFilters = {
+  search?: string;
+  include_inactive?: boolean;
+  is_active?: boolean;
+  page?: number;
+  page_size?: number;
+  sort_by?: "name" | "updated_at";
+  sort_direction?: "asc" | "desc";
+};
+
+export type PurchaseSummary = {
+  id: string;
+  supplier_id: string;
+  supplier_name: string;
+  supplier_tax_id: string | null;
+  purchase_date: string;
+  document_type: PurchaseDocumentType;
+  document_number: string | null;
+  currency: "USD" | "ARS";
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+  status: PurchaseStatus;
+  item_count: number;
+  attachment_status: PurchaseAttachmentStatus;
+  return_status: PurchaseReturnAggregationStatus;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Purchase = Omit<PurchaseSummary, "item_count"> & {
+  tenant_id: string;
+  supplier: SupplierSummary | null;
+  notes: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  received_at: string | null;
+  received_by_user_id: string | null;
+  received_by_user_name: string | null;
+  received_by_user_email: string | null;
+  inventory_operation_id: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name: string | null;
+  reversed_by_user_email: string | null;
+  reversal_reason: string | null;
+  reversal_operation_id: string | null;
+  reversal_warnings: string[];
+  attachment: PurchaseAttachment | null;
+  attachment_history: PurchaseAttachment[];
+  returned_total_ars: string;
+  confirmed_return_count: number;
+  can_register_return: boolean;
+  returns: PurchaseReturnSummary[];
+  items: PurchaseItem[];
+};
+
+export type PurchaseReturnItemInput = { purchase_item_id: string; quantity: string };
+
+export type PurchaseReturnItem = PurchaseReturnItemInput & {
+  id: string;
+  inventory_item_id: string;
+  line_number: number;
+  description_snapshot: string;
+  internal_code_snapshot: string;
+  unit: string;
+  unit_price_without_tax_ars: string;
+  tax_rate_percentage: string;
+  line_subtotal_ars: string;
+  line_tax_ars: string;
+  line_total_ars: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PurchaseReturnSummary = {
+  id: string;
+  purchase_id: string;
+  supplier_id: string;
+  supplier_name: string;
+  return_date: string;
+  status: PurchaseReturnStatus;
+  reason: string;
+  document_type: PurchaseReturnDocumentType | null;
+  document_number: string | null;
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+  item_count: number;
+  attachment_status: PurchaseAttachmentStatus;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PurchaseReturn = Omit<PurchaseReturnSummary, "item_count"> & {
+  tenant_id: string;
+  supplier_tax_id: string | null;
+  currency: "USD" | "ARS";
+  inventory_operation_id: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
+  confirmed_by_user_name: string | null;
+  confirmed_by_user_email: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  attachment: PurchaseAttachment | null;
+  attachment_history: PurchaseAttachment[];
+  purchase: {
+    id: string;
+    purchase_date: string;
+    supplier_id: string;
+    supplier_name: string;
+    document_type: PurchaseDocumentType;
+    document_number: string | null;
+    total_ars: string;
+    status: PurchaseStatus;
+  };
+  items: PurchaseReturnItem[];
+};
+
+export type PurchaseReturnWritePayload = {
+  return_date: string;
+  reason: string;
+  document_type?: PurchaseReturnDocumentType | null;
+  document_number?: string | null;
+  items: PurchaseReturnItemInput[];
+};
+
+export type PurchaseWritePayload = {
+  supplier_id: string;
+  purchase_date: string;
+  document_type: PurchaseDocumentType;
+  document_number?: string | null;
+  notes?: string | null;
+  items: PurchaseItemInput[];
+};
+
+export type PurchaseListFilters = {
+  search?: string;
+  supplier?: string;
+  supplier_id?: string;
+  status?: "draft" | "cancelled" | "received" | "reversed";
+  document_type?: PurchaseDocumentType;
+  date_from?: string;
+  date_to?: string;
+  created_by_user_id?: string;
+  attachment_status?: PurchaseAttachmentStatus;
+  page?: number;
+  page_size?: number;
+  sort_by?: "purchase_date" | "created_at" | "total_ars" | "supplier_name" | "status";
+  sort_direction?: "asc" | "desc";
+};
+
+export type PurchaseListSummary = {
+  purchase_count: number;
+  subtotal_ars: string;
+  tax_total_ars: string;
+  total_ars: string;
+};
+
+export type PurchaseDashboardFilters = {
+  date_from?: string;
+  date_to?: string;
+  supplier_id?: string;
+  created_by_user_id?: string;
+  document_type?: PurchaseDocumentType;
+};
+
+export type PurchaseDashboardAttention = {
+  id: string;
+  purchase_date: string;
+  supplier_name: string;
+  document_number: string | null;
+  total_ars: string;
+  status: PurchaseStatus;
+  attachment_status: PurchaseAttachmentStatus;
+  alerts: Array<"old_draft" | "attachment_pending" | "reversed_receipt" | "document_number_missing">;
+  priority: "high" | "medium" | "info";
+};
+
+export type PurchaseDashboardTopSupplier = {
+  supplier_id: string;
+  supplier_name: string;
+  purchase_count: number;
+  registered_total_ars: string;
+  received_total_ars: string;
+};
+
+export type PurchaseDashboardRecentPurchase = {
+  id: string;
+  purchase_date: string;
+  supplier_name: string;
+  document_type: PurchaseDocumentType;
+  document_number: string | null;
+  total_ars: string;
+  status: PurchaseStatus;
+  attachment_status: PurchaseAttachmentStatus;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+};
+
+export type PurchaseDashboard = {
+  generated_at: string;
+  period: { date_from: string; date_to: string };
+  filters: {
+    supplier_id: string | null;
+    created_by_user_id: string | null;
+    document_type: PurchaseDocumentType | null;
+  };
+  summary: {
+    registered_total_ars: string;
+    received_total_ars: string;
+    returned_total_ars: string;
+    net_received_total_ars: string;
+    confirmed_return_count: number;
+    registered_tax_total_ars: string;
+    received_tax_total_ars: string;
+    purchase_count: number;
+    draft_count: number;
+    received_count: number;
+    reversed_count: number;
+    cancelled_count: number;
+    attachment_pending_count: number;
+    attachment_attached_count: number;
+  };
+  attention: PurchaseDashboardAttention[];
+  top_suppliers: PurchaseDashboardTopSupplier[];
+  recent_purchases: PurchaseDashboardRecentPurchase[];
+};
+
+export type SaleStatus = "draft" | "confirmed" | "cancelled" | "reversed";
+export type SaleLineType = "product" | "service";
+export type FiscalDocumentType = "receipt_c" | "invoice_c";
+export type SaleFiscalStatus = "pending" | "documented" | "requires_attention";
+export type PaymentMethodType = "cash" | "bank_transfer" | "debit_card" | "credit_card" | "digital_wallet" | "other";
+export type SalePaymentStatus = "unpaid" | "partial" | "paid" | "requires_attention";
+
+export type PaymentMethod = {
+  id: string;
+  label: string;
+  type: PaymentMethodType;
+  is_active: boolean;
+  sort_order: number;
+  has_payments: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order">;
+
+export type SalePayment = {
+  id: string;
+  sale_id: string;
+  payment_method_id: string;
+  payment_method_label_snapshot: string;
+  payment_method_type_snapshot: PaymentMethodType;
+  amount_ars: string;
+  received_at: string;
+  reference: string | null;
+  notes: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  is_active: boolean;
+  voided_at: string | null;
+  voided_by_user_id: string | null;
+  voided_by_user_name: string | null;
+  voided_by_user_email: string | null;
+  void_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FiscalIssuer = {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  display_name: string;
+  tax_id: string;
+  is_active: boolean;
+  can_issue_service_receipt_c: boolean;
+  can_issue_product_invoice_c: boolean;
+  service_document_type: FiscalDocumentType | null;
+  service_document_code: string | null;
+  product_document_type: FiscalDocumentType | null;
+  product_document_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FiscalIssuerWritePayload = Omit<
+  FiscalIssuer,
+  "id" | "user_name" | "user_email" | "created_at" | "updated_at"
+>;
+
+export type SaleFiscalDocumentFileVersion = {
+  id: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_at: string;
+  replaced_at: string;
+  replaced_by_user_id: string | null;
+  replaced_by_user_name: string | null;
+  replaced_by_user_email: string | null;
+};
+
+export type SaleFiscalDocument = {
+  id: string;
+  fiscal_issuer_id: string;
+  issuer_user_id_snapshot: string;
+  issuer_name_snapshot: string;
+  issuer_tax_id_snapshot: string;
+  document_type: FiscalDocumentType;
+  document_code: string;
+  document_number: string;
+  issue_date: string;
+  total_ars_snapshot: string;
+  original_filename: string;
+  content_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_user_name: string | null;
+  uploaded_by_user_email: string | null;
+  uploaded_at: string;
+  is_active: boolean;
+  file_history: SaleFiscalDocumentFileVersion[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type SaleProductItemInput = {
+  line_type: "product";
+  inventory_item_id: string;
+  quantity: string;
+  unit_price_ars?: string | null;
+  discount_percentage: string;
+};
+
+export type SaleServiceItemInput = {
+  line_type: "service";
+  service_id?: string | null;
+  description: string;
+  quantity: string;
+  unit_price_ars: string;
+  discount_percentage: string;
+};
+
+export type SaleItemInput = SaleProductItemInput | SaleServiceItemInput;
+
+export type SaleItem = {
+  id: string;
+  line_type: SaleLineType;
+  inventory_item_id: string | null;
+  service_id: string | null;
+  description_snapshot: string;
+  internal_code_snapshot: string | null;
+  unit_snapshot: string;
+  quantity: string;
+  unit_price_ars: string;
+  discount_percentage: string;
+  line_subtotal_ars: string;
+  line_discount_ars: string;
+  line_total_ars: string;
+  line_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SaleSummary = {
+  id: string;
+  owner_id: string | null;
+  patient_id: string | null;
+  owner_name_snapshot: string | null;
+  patient_name_snapshot: string | null;
+  sale_date: string;
+  currency: "USD" | "ARS";
+  subtotal_ars: string;
+  discount_total_ars: string;
+  total_ars: string;
+  status: SaleStatus;
+  fiscal_status: SaleFiscalStatus | null;
+  paid_total_ars: string;
+  balance_due_ars: string;
+  payment_status: SalePaymentStatus | null;
+  payment_requires_attention: boolean;
+  item_count: number;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+  created_by_user_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Sale = Omit<SaleSummary, "item_count"> & {
+  tenant_id: string;
+  owner_document_snapshot: string | null;
+  owner_email_snapshot: string | null;
+  patient_species_snapshot: string | null;
+  notes: string | null;
+  cancelled_at: string | null;
+  cancelled_by_user_id: string | null;
+  cancelled_by_user_name: string | null;
+  cancelled_by_user_email: string | null;
+  cancellation_reason: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: string | null;
+  confirmed_by_user_name: string | null;
+  confirmed_by_user_email: string | null;
+  inventory_operation_id: string | null;
+  reversed_at: string | null;
+  reversed_by_user_id: string | null;
+  reversed_by_user_name: string | null;
+  reversed_by_user_email: string | null;
+  reversal_reason: string | null;
+  reversal_operation_id: string | null;
+  fiscal_document: SaleFiscalDocument | null;
+  payments: SalePayment[];
+  items: SaleItem[];
+};
+
+export type SaleWritePayload = {
+  owner_id: string | null;
+  patient_id: string | null;
+  sale_date: string;
+  notes?: string | null;
+  items: SaleItemInput[];
+};
+
+export type SaleListFilters = {
+  search?: string;
+  owner_id?: string;
+  patient_id?: string;
+  status?: SaleStatus;
+  line_type?: SaleLineType;
+  date_from?: string;
+  date_to?: string;
+  created_by_user_id?: string;
+  fiscal_status?: SaleFiscalStatus;
+  payment_status?: SalePaymentStatus;
+  page?: number;
+  page_size?: number;
+  sort_by?: "sale_date" | "created_at" | "total_ars" | "status";
+  sort_direction?: "asc" | "desc";
 };

@@ -22,12 +22,19 @@ def _setup_auth(monkeypatch) -> None:
     )
 
 
-def _create_user(db_session, tenant, email: str, full_name: str) -> User:
+def _create_user(
+    db_session,
+    tenant,
+    email: str,
+    full_name: str,
+    role: str = "medico_veterinario",
+) -> User:
     user = User(
         id=uuid.uuid4(),
         tenant_id=tenant.id,
         email=email,
         full_name=full_name,
+        role=role,
         is_active=True,
     )
     db_session.add(user)
@@ -80,6 +87,37 @@ def _create_appointment(client, tenant, **overrides) -> dict:
     return response.json()["data"]
 
 
+def _user_headers(email: str) -> dict[str, str]:
+    return {"X-User-Email": email}
+
+
+def _create_service(client, db_session, tenant, **overrides) -> dict:
+    admin = _create_user(
+        db_session,
+        tenant,
+        f"service-admin-{uuid.uuid4()}@example.com",
+        "Service Admin",
+        "clinic_admin",
+    )
+    payload = {
+        "code": f"SVC-{uuid.uuid4()}",
+        "name": "Consulta con servicio",
+        "kind": "consultation",
+        "default_duration_minutes": 45,
+        "calendar_color": "#2563eb",
+        "is_bookable": True,
+        "sort_order": 10,
+    }
+    payload.update(overrides)
+    response = client.post(
+        "/api/v1/services",
+        headers=_user_headers(admin.email),
+        json=payload,
+    )
+    assert response.status_code == 201
+    return response.json()["data"]
+
+
 def test_create_appointment_successfully(client, tenant):
     owner = _create_owner(client, tenant)
     patient = _create_patient(client, tenant, owner["id"])
@@ -99,6 +137,204 @@ def test_create_appointment_successfully(client, tenant):
     assert appointment["status"] == "scheduled"
     assert appointment["patient_name"] == "Luna"
     assert appointment["owner_name"] == "Agenda Owner"
+
+
+def test_create_appointment_with_service_calculates_end_and_copies_kind(
+    client,
+    db_session,
+    tenant,
+):
+    service = _create_service(
+        client,
+        db_session,
+        tenant,
+        name="Procedimiento dental",
+        kind="procedure",
+        default_duration_minutes=60,
+    )
+    payload = _appointment_payload(
+        service_id=service["id"],
+        appointment_type=None,
+        start_at="2026-05-10T10:00:00Z",
+    )
+    payload.pop("end_at")
+
+    response = client.post(
+        "/api/v1/appointments",
+        headers=_headers(tenant),
+        json=payload,
+    )
+
+    assert response.status_code == 201
+    appointment = response.json()["data"]
+    assert appointment["service_id"] == service["id"]
+    assert appointment["service_name"] == "Procedimiento dental"
+    assert appointment["service_calendar_color"] == "#2563eb"
+    assert appointment["appointment_type"] == "procedure"
+    assert appointment["end_at"] == "2026-05-10T11:00:00"
+
+
+def test_create_appointment_with_service_rejects_inactive_service(
+    client,
+    db_session,
+    tenant,
+):
+    service = _create_service(client, db_session, tenant)
+    admin = _create_user(
+        db_session,
+        tenant,
+        "deactivate-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.post(
+        "/api/v1/appointments",
+        headers=_headers(tenant),
+        json=_appointment_payload(service_id=service["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inactive_service"
+
+
+def test_create_appointment_rejects_service_from_other_tenant(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+):
+    foreign_service = _create_service(client, db_session, other_tenant)
+
+    response = client.post(
+        "/api/v1/appointments",
+        headers=_headers(tenant),
+        json=_appointment_payload(service_id=foreign_service["id"]),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "invalid_cross_tenant_access"
+
+
+def test_create_appointment_keeps_legacy_appointment_type_without_service(
+    client,
+    tenant,
+):
+    response = client.post(
+        "/api/v1/appointments",
+        headers=_headers(tenant),
+        json=_appointment_payload(appointment_type="vaccine"),
+    )
+
+    assert response.status_code == 201
+    appointment = response.json()["data"]
+    assert appointment["service_id"] is None
+    assert appointment["appointment_type"] == "vaccine"
+
+
+def test_update_appointment_with_service_recalculates_duration(
+    client,
+    db_session,
+    tenant,
+):
+    appointment = _create_appointment(client, tenant)
+    service = _create_service(
+        client,
+        db_session,
+        tenant,
+        name="Seguimiento",
+        kind="follow_up",
+        default_duration_minutes=20,
+    )
+
+    response = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=_headers(tenant),
+        json={
+            "service_id": service["id"],
+            "start_at": "2026-05-10T12:00:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["data"]
+    assert updated["service_id"] == service["id"]
+    assert updated["appointment_type"] == "follow_up"
+    assert updated["end_at"] == "2026-05-10T12:20:00"
+
+
+def test_reschedule_appointment_with_since_deactivated_service_succeeds(
+    client,
+    db_session,
+    tenant,
+):
+    service = _create_service(
+        client,
+        db_session,
+        tenant,
+        name="Vacuna antirrábica",
+        kind="vaccine",
+        default_duration_minutes=20,
+    )
+    appointment = _create_appointment(client, tenant, service_id=service["id"])
+    admin = _create_user(
+        db_session,
+        tenant,
+        "reschedule-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=_headers(tenant),
+        json={"start_at": "2026-05-10T14:00:00Z"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()["data"]
+    assert updated["service_id"] == service["id"]
+    assert updated["end_at"] == "2026-05-10T14:20:00"
+
+
+def test_update_appointment_rejects_newly_selected_inactive_service(
+    client,
+    db_session,
+    tenant,
+):
+    appointment = _create_appointment(client, tenant)
+    service = _create_service(client, db_session, tenant)
+    admin = _create_user(
+        db_session,
+        tenant,
+        "reselect-admin@example.com",
+        "Clinic Admin",
+        "clinic_admin",
+    )
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    assert deactivate.status_code == 200
+
+    response = client.patch(
+        f"/api/v1/appointments/{appointment['id']}",
+        headers=_headers(tenant),
+        json={"service_id": service["id"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inactive_service"
 
 
 def test_create_appointment_assigned_to_same_tenant_veterinarian(

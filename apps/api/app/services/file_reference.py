@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.repositories.file_reference import FileReferenceRepository
@@ -15,6 +16,8 @@ from app.repositories.patient import PatientRepository
 from app.schemas.file_reference import FileReferenceCreate, FileReferenceUpdate
 from app.services.storage import ClinicalFileStorageService
 
+
+DOCUMENT_TYPE_CATALOG_TYPE = "document_type"
 
 ALLOWED_CLINICAL_FILE_CONTENT_TYPES = {
     "application/pdf",
@@ -42,6 +45,10 @@ class FileReferenceService:
         created_by_user_id: uuid.UUID | None = None,
     ) -> PatientFileReference:
         self._get_patient_for_tenant(tenant_id, patient_id)
+        self._validate_optional_document_type_catalog_item(
+            tenant_id,
+            payload.file_type_catalog_item_id,
+        )
 
         file_reference = PatientFileReference(
             tenant_id=tenant_id,
@@ -60,6 +67,7 @@ class FileReferenceService:
         *,
         name: str,
         file_type: str,
+        file_type_catalog_item_id: uuid.UUID | None = None,
         description: str | None,
         original_filename: str | None,
         content_type: str | None,
@@ -68,6 +76,10 @@ class FileReferenceService:
         storage_service: ClinicalFileStorageService,
     ) -> PatientFileReference:
         self._get_patient_for_tenant(tenant_id, patient_id)
+        self._validate_optional_document_type_catalog_item(
+            tenant_id,
+            file_type_catalog_item_id,
+        )
         settings = get_settings()
         bucket_name = storage_service.bucket_name
         if not bucket_name:
@@ -91,6 +103,7 @@ class FileReferenceService:
             created_by_user_id=created_by_user_id,
             name=name.strip(),
             file_type=file_type.strip(),
+            file_type_catalog_item_id=file_type_catalog_item_id,
             description=description.strip() if description else None,
             original_filename=original_filename,
             content_type=content_type,
@@ -187,6 +200,11 @@ class FileReferenceService:
             raise AppError(422, "validation_error", "name cannot be null")
         if "file_type" in updates and updates["file_type"] is None:
             raise AppError(422, "validation_error", "file_type cannot be null")
+        if "file_type_catalog_item_id" in updates:
+            self._validate_optional_document_type_catalog_item(
+                tenant_id,
+                updates["file_type_catalog_item_id"],
+            )
 
         updated_file_reference = self.file_reference_repository.update(
             file_reference,
@@ -279,6 +297,31 @@ class FileReferenceService:
                 )
             raise AppError(404, "patient_not_found", "Patient not found")
         return patient
+
+    def _validate_optional_document_type_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != DOCUMENT_TYPE_CATALOG_TYPE:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {DOCUMENT_TYPE_CATALOG_TYPE}",
+            )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_upload_fields(self, name: str, file_type: str) -> None:
         if not name or not name.strip():

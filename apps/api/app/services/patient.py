@@ -8,6 +8,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
@@ -20,6 +21,9 @@ from app.repositories.patient import PatientRepository
 from app.schemas.patient import PatientCreate, PatientRead, PatientUpdate
 from app.services.storage import ClinicalFileStorageService
 
+
+SPECIES_CATALOG_TYPE = "species"
+BREED_CATALOG_TYPE = "breed"
 
 ALLOWED_PATIENT_PHOTO_CONTENT_TYPES = {
     "image/png",
@@ -59,6 +63,17 @@ class PatientService:
                 "owner_not_found",
                 "Owner not found for the provided tenant",
             )
+
+        self._validate_optional_catalog_item(
+            tenant_id,
+            payload.species_catalog_item_id,
+            SPECIES_CATALOG_TYPE,
+        )
+        self._validate_optional_catalog_item(
+            tenant_id,
+            payload.breed_catalog_item_id,
+            BREED_CATALOG_TYPE,
+        )
 
         patient = Patient(
             tenant_id=tenant_id,
@@ -119,6 +134,19 @@ class PatientService:
                         "Owner does not belong to the provided tenant",
                     )
                 raise AppError(404, "owner_not_found", "Owner not found")
+
+        if "species_catalog_item_id" in updates:
+            self._validate_optional_catalog_item(
+                tenant_id,
+                updates["species_catalog_item_id"],
+                SPECIES_CATALOG_TYPE,
+            )
+        if "breed_catalog_item_id" in updates:
+            self._validate_optional_catalog_item(
+                tenant_id,
+                updates["breed_catalog_item_id"],
+                BREED_CATALOG_TYPE,
+            )
 
         updated_patient = self.patient_repository.update(patient, updates)
         self.db.commit()
@@ -396,6 +424,32 @@ class PatientService:
                 )
             raise AppError(404, "patient_not_found", "Patient not found")
         return patient
+
+    def _validate_optional_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+        catalog_type: str,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != catalog_type:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {catalog_type}",
+            )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_photo_file(
         self,

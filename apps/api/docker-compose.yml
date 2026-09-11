@@ -14,16 +14,18 @@ services:
       FIREBASE_SERVICE_ACCOUNT_JSON: "${FIREBASE_SERVICE_ACCOUNT_JSON:-}"
       FIREBASE_SERVICE_ACCOUNT_JSON_PATH: "${FIREBASE_SERVICE_ACCOUNT_JSON_PATH:-}"
       CLINICAL_FILES_BUCKET_NAME: ""
+      LOCAL_FILE_STORAGE_PATH: /var/lib/vetflow/storage
       MAX_CLINICAL_FILE_SIZE_MB: "25"
       AI_FEATURES_ENABLED: "false"
     ports:
       - "8000:8000"
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+      - local_vetflow_storage:/var/lib/vetflow/storage
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   db:
-    image: postgres:17
+    image: postgres:15
     environment:
       POSTGRES_USER: vetflow
       POSTGRES_PASSWORD: vetflow
@@ -35,3 +37,4 @@ services:
 
 volumes:
   postgres_vetflow_data:
+  local_vetflow_storage:

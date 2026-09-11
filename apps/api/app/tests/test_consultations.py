@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -93,11 +94,11 @@ def _create_consultation(client, tenant, patient_id, **overrides):
 
 
 def _create_inventory_item(client, tenant, **overrides):
+    initial_stock = overrides.pop("current_stock", "10")
     payload = {
         "name": "Amoxicilina stock",
         "category": "medication",
         "unit": "tablet",
-        "current_stock": "10",
         "minimum_stock": "2",
         "sale_price_ars": "1500",
     }
@@ -108,7 +109,23 @@ def _create_inventory_item(client, tenant, **overrides):
         json=payload,
     )
     assert response.status_code == 201
-    return response.json()["data"]
+    item = response.json()["data"]
+    if initial_stock is None or Decimal(str(initial_stock)) == Decimal("0"):
+        return item
+
+    movement_response = client.post(
+        f"/api/v1/inventory/items/{item['id']}/movements/entry",
+        headers={"X-Tenant-Id": str(tenant.id)},
+        json={"quantity": str(initial_stock)},
+    )
+    assert movement_response.status_code == 201
+
+    item_response = client.get(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers={"X-Tenant-Id": str(tenant.id)},
+    )
+    assert item_response.status_code == 200
+    return item_response.json()["data"]
 
 
 def test_create_and_get_consultation(client, tenant):
@@ -1026,11 +1043,19 @@ def test_add_medication_from_inventory_creates_movement_and_decreases_stock(clie
         headers={"X-Tenant-Id": str(tenant.id)},
     )
     assert movements_response.status_code == 200
-    movement = movements_response.json()["data"][0]
+    movement = next(
+        movement
+        for movement in movements_response.json()["data"]
+        if movement["id"] == medication["inventory_movement_id"]
+    )
     assert movement["id"] == medication["inventory_movement_id"]
-    assert movement["movement_type"] == "exit"
+    assert movement["movement_type"] == "clinical_consumption"
     assert movement["reason"] == "consultation_use"
     assert movement["quantity"] == "3.00"
+    assert movement["stock_before"] == "10.00"
+    assert movement["stock_after"] == "7.00"
+    assert movement["source_type"] == "consultation"
+    assert movement["source_id"] == consultation["id"]
     assert movement["related_patient_id"] == patient["id"]
     assert movement["related_consultation_id"] == consultation["id"]
 
@@ -1132,7 +1157,10 @@ def test_deleting_inventory_medication_preserves_movement_and_stock(client, tena
         headers={"X-Tenant-Id": str(tenant.id)},
     )
     assert movements_response.status_code == 200
-    assert movements_response.json()["data"][0]["id"] == medication["inventory_movement_id"]
+    assert any(
+        movement["id"] == medication["inventory_movement_id"]
+        for movement in movements_response.json()["data"]
+    )
 
     item_response = client.get(
         f"/api/v1/inventory/items/{item['id']}",

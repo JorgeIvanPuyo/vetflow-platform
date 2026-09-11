@@ -17,9 +17,11 @@ import {
   PatientPhotoInput,
 } from "@/features/patients/components/patient-photo";
 import { getApiErrorMessage } from "@/lib/api";
+import { getCatalogItems } from "@/services/catalogs";
 import { createOwner, getOwners } from "@/services/owners";
 import { createPatient, getPatients, uploadPatientPhoto } from "@/services/patients";
 import type {
+  CatalogItem,
   CreateOwnerPayload,
   CreatePatientPayload,
   Owner,
@@ -120,6 +122,36 @@ export function PatientsScreen() {
   const [photoErrorMessage, setPhotoErrorMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
+  const [speciesCatalog, setSpeciesCatalog] = useState<CatalogItem[]>([]);
+  const [breedCatalog, setBreedCatalog] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadSpeciesAndBreedCatalogs() {
+      try {
+        const [speciesResponse, breedResponse] = await Promise.all([
+          getCatalogItems("species", { include_inactive: false }),
+          getCatalogItems("breed", { include_inactive: false }),
+        ]);
+        if (isCurrent) {
+          setSpeciesCatalog(speciesResponse.data);
+          setBreedCatalog(breedResponse.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setSpeciesCatalog([]);
+          setBreedCatalog([]);
+        }
+      }
+    }
+
+    void loadSpeciesAndBreedCatalogs();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   const loadPatientsScreen = useCallback(async (requestedPage = page) => {
     setState((current) => ({
@@ -219,8 +251,24 @@ export function PatientsScreen() {
       species,
     };
 
+    const matchedSpecies = speciesCatalog.find(
+      (item) => item.name.trim().toLowerCase() === species.toLowerCase(),
+    );
+    if (matchedSpecies) {
+      payload.species_catalog_item_id = matchedSpecies.id;
+    }
+
     if (formState.breed.trim()) {
-      payload.breed = formState.breed.trim();
+      const breedValue = formState.breed.trim();
+      payload.breed = breedValue;
+      const matchedBreed = breedCatalog.find(
+        (item) =>
+          item.parent_id === (matchedSpecies?.id ?? null) &&
+          item.name.trim().toLowerCase() === breedValue.toLowerCase(),
+      );
+      if (matchedBreed) {
+        payload.breed_catalog_item_id = matchedBreed.id;
+      }
     }
     if (formState.sex.trim()) {
       payload.sex = formState.sex.trim();

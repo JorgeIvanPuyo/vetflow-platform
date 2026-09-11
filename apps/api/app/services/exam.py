@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.patient import Patient
@@ -10,6 +11,9 @@ from app.repositories.consultation import ConsultationRepository
 from app.repositories.exam import ExamRepository
 from app.repositories.patient import PatientRepository
 from app.schemas.exam import EXAM_STATUSES, ExamCreate, ExamUpdate
+
+
+EXAM_CATALOG_TYPE = "exam_type"
 
 
 class ExamService:
@@ -40,6 +44,11 @@ class ExamService:
                     "Consultation does not belong to the provided patient",
                 )
 
+        self._validate_optional_exam_catalog_item(
+            tenant_id,
+            payload.exam_catalog_item_id,
+        )
+
         exam = Exam(
             tenant_id=tenant_id,
             requested_by_user_id=requested_by_user_id,
@@ -66,6 +75,11 @@ class ExamService:
             raise AppError(422, "validation_error", "exam_type cannot be null")
         if "status" in updates:
             self._validate_status(updates["status"])
+        if "exam_catalog_item_id" in updates:
+            self._validate_optional_exam_catalog_item(
+                tenant_id,
+                updates["exam_catalog_item_id"],
+            )
 
         updated_exam = self.exam_repository.update(exam, updates)
         self.db.commit()
@@ -115,6 +129,31 @@ class ExamService:
                 )
             raise AppError(404, "consultation_not_found", "Consultation not found")
         return consultation
+
+    def _validate_optional_exam_catalog_item(
+        self,
+        tenant_id: uuid.UUID,
+        catalog_item_id: uuid.UUID | None,
+    ) -> None:
+        if catalog_item_id is None:
+            return
+        catalog_item = self.db.get(CatalogItem, catalog_item_id)
+        if catalog_item is None:
+            raise AppError(404, "catalog_item_not_found", "Catalog item not found")
+        if catalog_item.tenant_id != tenant_id:
+            raise AppError(
+                409,
+                "invalid_cross_tenant_access",
+                "Catalog item does not belong to the provided tenant",
+            )
+        if catalog_item.catalog_type != EXAM_CATALOG_TYPE:
+            raise AppError(
+                422,
+                "invalid_catalog_item_type",
+                f"Catalog item must be of type {EXAM_CATALOG_TYPE}",
+            )
+        if not catalog_item.is_active:
+            raise AppError(409, "inactive_catalog_item", "Catalog item is inactive")
 
     def _validate_status(self, status: str | None) -> None:
         if status is None:

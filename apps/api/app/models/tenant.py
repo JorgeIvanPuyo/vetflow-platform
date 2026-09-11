@@ -35,6 +35,23 @@ class Tenant(BaseModel):
         "Appointment",
         back_populates="tenant",
     )
+    preferences: Mapped[TenantPreference | None] = relationship(
+        "TenantPreference",
+        back_populates="tenant",
+        uselist=False,
+    )
+    services: Mapped[list[Service]] = relationship(
+        "Service",
+        back_populates="tenant",
+    )
+    catalog_items: Mapped[list[CatalogItem]] = relationship(
+        "CatalogItem",
+        back_populates="tenant",
+    )
+    suppliers: Mapped[list[Supplier]] = relationship(
+        "Supplier",
+        back_populates="tenant",
+    )
     follow_ups: Mapped[list[FollowUp]] = relationship(
         "FollowUp",
         back_populates="tenant",
@@ -47,3 +64,8 @@ class Tenant(BaseModel):
         "InventoryMovement",
         back_populates="tenant",
     )
+    purchases: Mapped[list[Purchase]] = relationship("Purchase", back_populates="tenant")
+    purchase_returns: Mapped[list[PurchaseReturn]] = relationship(
+        "PurchaseReturn", back_populates="tenant"
+    )
+    sales: Mapped[list[Sale]] = relationship("Sale", back_populates="tenant")

@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { InventoryDetail } from "@/features/inventory/components/inventory-detail";
 
 export default function InventoryDetailPage({
@@ -5,5 +7,9 @@ export default function InventoryDetailPage({
 }: {
   params: { id: string };
 }) {
-  return <InventoryDetail itemId={params.id} />;
+  return (
+    <Suspense fallback={<div className="loading-card" aria-label="Cargando item de inventario" />}>
+      <InventoryDetail itemId={params.id} />
+    </Suspense>
+  );
 }

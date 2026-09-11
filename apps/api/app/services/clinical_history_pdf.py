@@ -10,11 +10,10 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
-from weasyprint import HTML
-from weasyprint.urls import URLFetcher
 
 from app.core.errors import AppError
 from app.models.consultation import Consultation
@@ -31,6 +30,7 @@ from app.services.storage import ClinicalFileStorageService
 
 
 logger = logging.getLogger(__name__)
+HTML = None
 
 SUPPORTED_CLINIC_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 MAX_CLINIC_LOGO_SIZE_BYTES = 1024 * 1024
@@ -46,21 +46,31 @@ TEMPLATE_DIRECTORY = Path(__file__).resolve().parent.parent / "templates"
 TEMPLATE_NAME = "clinical_history_pdf.html"
 
 
-class PdfAssetURLFetcher(URLFetcher):
-    def fetch(self, url: str, headers=None):
-        if urlparse(url).scheme != "data":
-            raise ValueError("External PDF assets are not allowed")
-        return super().fetch(url, headers)
-
-
-PDF_ASSET_URL_FETCHER = PdfAssetURLFetcher()
-
-
 @dataclass(frozen=True)
 class ClinicalHistoryPdfExport:
     pdf_bytes: bytes
     filename: str
     text_lines: list[str]
+
+
+def _build_pdf_asset_url_fetcher():
+    class PdfAssetURLFetcher:
+        def __init__(self) -> None:
+            try:
+                from weasyprint.urls import URLFetcher
+
+                self._delegate = URLFetcher()
+            except Exception:
+                self._delegate = None
+
+        def fetch(self, url: str, headers=None):
+            if urlparse(url).scheme != "data":
+                raise ValueError("External PDF assets are not allowed")
+            if self._delegate is None:
+                raise ValueError("PDF asset fetcher is not available")
+            return self._delegate.fetch(url, headers)
+
+    return PdfAssetURLFetcher()
 
 
 class ClinicalHistoryPdfService:
@@ -74,6 +84,7 @@ class ClinicalHistoryPdfService:
         self.storage_service = storage_service
         self.consultation_service = ConsultationService(db)
         self.owner_repository = OwnerRepository(db)
+        self._clinic_timezone: ZoneInfo = ZoneInfo("UTC")
 
     def export_patient_history_pdf(
         self,
@@ -96,6 +107,7 @@ class ClinicalHistoryPdfService:
             )
             owner = self._get_owner_for_patient(tenant_id, patient)
             clinic = self.db.get(Tenant, tenant_id)
+            self._clinic_timezone = self._resolve_clinic_timezone(clinic)
             consultations = self._filter_by_date(
                 consultations, options, self._consultation_event_date
             )
@@ -520,10 +532,16 @@ class ClinicalHistoryPdfService:
         )
         template = environment.get_template(TEMPLATE_NAME)
         rendered_html = template.render(**context)
+        global HTML
+        if HTML is None:
+            from weasyprint import HTML as WeasyPrintHTML
+
+            HTML = WeasyPrintHTML
+
         return HTML(
             string=rendered_html,
             base_url=str(TEMPLATE_DIRECTORY),
-            url_fetcher=PDF_ASSET_URL_FETCHER,
+            url_fetcher=_build_pdf_asset_url_fetcher(),
         ).write_pdf()
 
     def _clinic_logo_data_uri(self, clinic: Tenant | None) -> str | None:
@@ -713,7 +731,7 @@ class ClinicalHistoryPdfService:
             return patient.estimated_age
         if patient.birth_date is None:
             return ""
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(self._clinic_timezone).date()
         years = today.year - patient.birth_date.year - (
             (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
         )
@@ -731,6 +749,7 @@ class ClinicalHistoryPdfService:
         file_references: list[PatientFileReference],
         options: ClinicalHistoryPdfExportRequest,
     ) -> list[str]:
+        self._clinic_timezone = self._resolve_clinic_timezone(clinic)
         lines = ["Historia clínica veterinaria"]
         if clinic is not None:
             lines.append(f"Clínica: {clinic.display_name or clinic.name}")
@@ -998,7 +1017,7 @@ class ClinicalHistoryPdfService:
 
     def _build_filename(self, patient_name: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", patient_name.lower()).strip("-")
-        generated_date = datetime.now(timezone.utc).date().isoformat()
+        generated_date = datetime.now(self._clinic_timezone).date().isoformat()
         return f"historia-clinica-{slug or 'paciente'}-{generated_date}.pdf"
 
     def _consultation_event_date(self, consultation: Consultation) -> datetime:
@@ -1093,7 +1112,23 @@ class ClinicalHistoryPdfService:
         return formatted.replace(".", ",")
 
     def _format_datetime(self, value: datetime | None) -> str:
-        return "" if value is None else value.strftime("%Y-%m-%d %H:%M")
+        if value is None:
+            return ""
+        localized = value.astimezone(self._clinic_timezone) if value.tzinfo else value
+        return localized.strftime("%Y-%m-%d %H:%M")
+
+    def _resolve_clinic_timezone(self, clinic: Tenant | None) -> ZoneInfo:
+        if clinic is None or not clinic.timezone:
+            return ZoneInfo("UTC")
+        try:
+            return ZoneInfo(clinic.timezone)
+        except ZoneInfoNotFoundError:
+            logger.warning(
+                "Unknown clinic timezone; falling back to UTC. tenant_id=%s timezone=%s",
+                clinic.id,
+                clinic.timezone,
+            )
+            return ZoneInfo("UTC")
 
     def _text_or_none(self, value: object | None) -> str | None:
         if self._is_empty(value):

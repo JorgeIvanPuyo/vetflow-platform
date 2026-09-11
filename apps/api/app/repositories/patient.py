@@ -20,7 +20,11 @@ class PatientRepository:
         statement = select(Patient).where(
             Patient.id == patient_id,
             Patient.tenant_id == tenant_id,
-        ).options(selectinload(Patient.created_by_user))
+        ).options(
+            selectinload(Patient.created_by_user),
+            selectinload(Patient.species_catalog_item),
+            selectinload(Patient.breed_catalog_item),
+        )
         return self.db.scalar(statement)
 
     def list(
@@ -35,7 +39,11 @@ class PatientRepository:
     ) -> tuple[list[Patient], int]:
         statement: Select[tuple[Patient]] = select(Patient).where(
             Patient.tenant_id == tenant_id
-        ).options(selectinload(Patient.created_by_user))
+        ).options(
+            selectinload(Patient.created_by_user),
+            selectinload(Patient.species_catalog_item),
+            selectinload(Patient.breed_catalog_item),
+        )
 
         if owner_id:
             statement = statement.where(Patient.owner_id == owner_id)

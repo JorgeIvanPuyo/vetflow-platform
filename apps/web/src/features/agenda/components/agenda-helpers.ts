@@ -9,6 +9,7 @@ export const appointmentTypeOptions: Array<{
   { value: "vaccine", label: "Vacuna" },
   { value: "deworming", label: "Desparasitación" },
   { value: "exam", label: "Examen" },
+  { value: "procedure", label: "Procedimiento" },
   { value: "other", label: "Otro" },
 ];
 
@@ -27,6 +28,7 @@ export type AppointmentFormState = {
   patient_id: string;
   owner_id: string;
   assigned_user_id: string;
+  service_id: string;
   appointment_type: AppointmentType;
   status: AppointmentStatus;
   date: string;
@@ -51,6 +53,7 @@ export function getInitialAppointmentFormState(
     patient_id: "",
     owner_id: "",
     assigned_user_id: "",
+    service_id: "",
     appointment_type: "consultation",
     status: "scheduled",
     date: toDateInputValue(nextStart),
@@ -89,7 +92,7 @@ export function getTypeBadgeClass(type: AppointmentType) {
   if (type === "vaccine" || type === "deworming") {
     return "badge badge--success";
   }
-  if (type === "exam") {
+  if (type === "exam" || type === "procedure") {
     return "badge badge--blue";
   }
   if (type === "other") {
@@ -177,6 +180,7 @@ export function appointmentToFormState(appointment: Appointment): AppointmentFor
     patient_id: appointment.patient_id ?? "",
     owner_id: appointment.owner_id ?? "",
     assigned_user_id: appointment.assigned_user_id ?? "",
+    service_id: appointment.service_id ?? "",
     appointment_type: appointment.appointment_type,
     status: appointment.status,
     date: toDateInputValue(startAt),

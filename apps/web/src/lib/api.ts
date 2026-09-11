@@ -32,9 +32,16 @@ const AUTH_TOKEN_WAIT_MS = 100;
 const REQUEST_RETRY_DELAYS_MS = [700, 1400];
 
 let authTokenProvider: AuthTokenProvider | null = null;
+let actingTenantId: string | null = null;
 
 function setAuthTokenProvider(provider: AuthTokenProvider | null) {
   authTokenProvider = provider;
+}
+
+// Lets a superadmin browse the app as another tenant (see the navbar tenant
+// switcher in AppSidebar). Ignored server-side for anyone who isn't a superadmin.
+function setActingTenantId(tenantId: string | null) {
+  actingTenantId = tenantId;
 }
 
 async function request<T>(
@@ -56,6 +63,10 @@ async function request<T>(
     Accept: "application/json",
     Authorization: `Bearer ${token}`,
   });
+
+  if (actingTenantId) {
+    headers.set("X-Acting-Tenant-Id", actingTenantId);
+  }
 
   if (!options.isMultipart) {
     headers.set("Content-Type", "application/json");
@@ -120,9 +131,13 @@ async function requestBlob(
   }
 
   const headers = new Headers({
-    Accept: "application/pdf",
+    Accept: "application/octet-stream",
     Authorization: `Bearer ${token}`,
   });
+
+  if (actingTenantId) {
+    headers.set("X-Acting-Tenant-Id", actingTenantId);
+  }
 
   if (!options.isMultipart) {
     headers.set("Content-Type", "application/json");
@@ -216,7 +231,7 @@ async function fetchWithTransientRetry(
     } catch (error) {
       lastError = error;
 
-      if (attempt === REQUEST_RETRY_DELAYS_MS.length) {
+      if (!retryTransient || attempt === REQUEST_RETRY_DELAYS_MS.length) {
         break;
       }
     }
@@ -282,6 +297,9 @@ export const api = {
   get<T>(path: string): Promise<T> {
     return request<T>(path, "GET");
   },
+  getBlob(path: string): Promise<BlobResponse> {
+    return requestBlob(path, "GET");
+  },
   post<T>(
     path: string,
     body: unknown,
@@ -289,8 +307,12 @@ export const api = {
   ): Promise<T> {
     return request<T>(path, "POST", { body, ...options });
   },
-  postFormData<T>(path: string, body: FormData): Promise<T> {
-    return request<T>(path, "POST", { body, isMultipart: true });
+  postFormData<T>(
+    path: string,
+    body: FormData,
+    options: Pick<RequestOptions, "retryTransient"> = {},
+  ): Promise<T> {
+    return request<T>(path, "POST", { body, isMultipart: true, ...options });
   },
   postBlob(path: string, body: unknown): Promise<BlobResponse> {
     return requestBlob(path, "POST", { body });
@@ -298,9 +320,16 @@ export const api = {
   patch<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, "PATCH", { body });
   },
+  patchFormData<T>(path: string, body: FormData): Promise<T> {
+    return request<T>(path, "PATCH", {
+      body,
+      isMultipart: true,
+      retryTransient: false,
+    });
+  },
   delete<T>(path: string): Promise<T> {
     return request<T>(path, "DELETE");
   },
 };
 
-export { ApiClientError, getApiErrorMessage, setAuthTokenProvider };
+export { ApiClientError, getApiErrorMessage, setActingTenantId, setAuthTokenProvider };

@@ -9,6 +9,7 @@ EXAM_STATUSES = {"requested", "performed", "result_loaded"}
 
 class ExamBase(BaseModel):
     exam_type: str
+    exam_catalog_item_id: uuid.UUID | None = None
     requested_at: datetime
     observations: str | None = None
 
@@ -20,6 +21,7 @@ class ExamCreate(ExamBase):
 
 class ExamUpdate(BaseModel):
     exam_type: str | None = None
+    exam_catalog_item_id: uuid.UUID | None = None
     status: str | None = None
     performed_at: datetime | None = None
     result_summary: str | None = None
@@ -34,6 +36,7 @@ class ExamRead(ExamBase):
     tenant_id: uuid.UUID
     patient_id: uuid.UUID
     consultation_id: uuid.UUID | None
+    exam_catalog_item_name: str | None = None
     requested_by_user_id: uuid.UUID | None
     requested_by_user_name: str | None = None
     requested_by_user_email: str | None = None

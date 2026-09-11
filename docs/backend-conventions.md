@@ -42,7 +42,7 @@ apps/api/
 
 `uv` is the only approved backend dependency manager. Runtime dependencies belong in `[project].dependencies`; development and test dependencies belong in `[dependency-groups].dev`.
 
-Use:
+Preffer to Use Docker, if not available use:
 
 ```bash
 cd apps/api
