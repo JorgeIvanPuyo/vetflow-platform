@@ -115,6 +115,7 @@ class SaleItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     line_type: SaleLineType
+    fiscal_line_type: SaleLineType
     inventory_item_id: uuid.UUID | None = None
     service_id: uuid.UUID | None = None
     description_snapshot: str

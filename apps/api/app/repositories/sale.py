@@ -40,7 +40,12 @@ class SaleRepository:
             select(Sale)
             .where(Sale.id == sale_id, Sale.tenant_id == tenant_id)
             .options(
-                selectinload(Sale.items.and_(SaleItem.tenant_id == tenant_id)),
+                selectinload(Sale.items.and_(SaleItem.tenant_id == tenant_id)).selectinload(
+                    SaleItem.inventory_item.and_(InventoryItem.tenant_id == tenant_id)
+                ).load_only(
+                    # Do not cache stock before confirmation obtains its row lock.
+                    InventoryItem.tenant_id, InventoryItem.category
+                ),
                 selectinload(Sale.created_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.cancelled_by_user.and_(User.tenant_id == tenant_id)),
                 selectinload(Sale.confirmed_by_user.and_(User.tenant_id == tenant_id)),

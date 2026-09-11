@@ -10,6 +10,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
 import { createSaleFiscalDocument, getFiscalIssuers, getSaleFiscalDocumentFile, updateSaleFiscalDocument } from "@/services/sales";
 import type { FiscalDocumentType, FiscalIssuer, Sale } from "@/types/api";
+import { getIssuerDocumentPair } from "./sale-fiscal-helpers";
 
 export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpdated: () => Promise<void> }) {
   const { preferences } = useClinic();
@@ -116,18 +117,6 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
       <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isSaving} onClick={() => setShowForm(false)}>Cancelar</button><button className="primary-button" type="submit" disabled={isSaving || (!document && !file)}><FileUp size={17} /> {isSaving ? "Guardando..." : document ? "Guardar corrección" : "Registrar comprobante"}</button></div>
     </form> : null}
   </section>;
-}
-
-function getIssuerDocumentPair(sale: Sale, issuer: FiscalIssuer): [FiscalDocumentType, string] | null {
-  const products = sale.items.some((item) => item.line_type === "product");
-  const services = sale.items.some((item) => item.line_type === "service");
-  if (products && services) {
-    if (!issuer.can_issue_product_invoice_c || !issuer.can_issue_service_receipt_c) return null;
-    if (issuer.product_document_type !== issuer.service_document_type || issuer.product_document_code !== issuer.service_document_code) return null;
-    return issuer.product_document_type && issuer.product_document_code ? [issuer.product_document_type, issuer.product_document_code] : null;
-  }
-  if (products) return issuer.can_issue_product_invoice_c && issuer.product_document_type && issuer.product_document_code ? [issuer.product_document_type, issuer.product_document_code] : null;
-  return services && issuer.can_issue_service_receipt_c && issuer.service_document_type && issuer.service_document_code ? [issuer.service_document_type, issuer.service_document_code] : null;
 }
 
 function labelFiscalStatus(status: Sale["fiscal_status"]) {
