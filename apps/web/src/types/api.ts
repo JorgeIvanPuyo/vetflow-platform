@@ -1986,6 +1986,7 @@ export type SaleItemInput = SaleProductItemInput | SaleServiceItemInput;
 export type SaleItem = {
   id: string;
   line_type: SaleLineType;
+  fiscal_line_type: SaleLineType;
   inventory_item_id: string | null;
   service_id: string | null;
   description_snapshot: string;

@@ -421,8 +421,8 @@ class SaleFiscalDocumentService:
         document_type: str,
         document_code: str,
     ) -> None:
-        has_products = any(item.line_type == "product" for item in sale.items)
-        has_services = any(item.line_type == "service" for item in sale.items)
+        has_products = any(item.fiscal_line_type == "product" for item in sale.items)
+        has_services = any(item.fiscal_line_type == "service" for item in sale.items)
         requested = (document_type, document_code)
         service_pair = (
             issuer.service_document_type,

@@ -4,6 +4,9 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.config import get_settings
+from app.models.catalog_item import CatalogItem
+from app.models.inventory_item import InventoryItem
+from app.models.sale import SaleItem
 from app.models.sale_fiscal import (
     SaleFiscalDocument,
     SaleFiscalDocumentFileVersion,
@@ -100,13 +103,13 @@ def _issuer(client, tenant, user, *, mode="service", same_mixed=False):
     return response.json()["data"]
 
 
-def _product(client, tenant):
+def _product(client, tenant, *, category="vaccine"):
     response = client.post(
         "/api/v1/inventory/items",
         headers=_headers(tenant),
         json={
             "name": "Vacuna",
-            "category": "vaccine",
+            "category": category,
             "unit": "unit",
             "minimum_stock": "0",
             "sale_price_ars": "100",
@@ -125,8 +128,16 @@ def _product(client, tenant):
 
 def _sale(client, tenant, *, kind="service", status="confirmed"):
     items = []
-    if kind in {"product", "mixed"}:
-        product = _product(client, tenant)
+    categories = {
+        "product": ["vaccine"],
+        "mixed": ["vaccine"],
+        "medication": ["medication"],
+        "medication_service": ["medication"],
+        "product_medication": ["vaccine", "medication"],
+        "all": ["vaccine", "medication"],
+    }
+    for category in categories.get(kind, []):
+        product = _product(client, tenant, category=category)
         items.append(
             {
                 "line_type": "product",
@@ -136,7 +147,7 @@ def _sale(client, tenant, *, kind="service", status="confirmed"):
                 "discount_percentage": "0",
             }
         )
-    if kind in {"service", "mixed"}:
+    if kind in {"service", "mixed", "medication_service", "all"}:
         items.append(
             {
                 "line_type": "service",
@@ -310,6 +321,16 @@ def test_required_document_fields_and_file(client, db_session, tenant, missing):
         ("mixed", "mixed", True, 201),
         ("service", "product", False, 409),
         ("product", "service", False, 409),
+        ("medication", "service", False, 201),
+        ("medication", "product", False, 409),
+        ("medication_service", "service", False, 201),
+        ("medication_service", "product", False, 409),
+        ("product_medication", "service", False, 409),
+        ("product_medication", "product", False, 409),
+        ("product_medication", "mixed", False, 409),
+        ("product_medication", "mixed", True, 201),
+        ("all", "mixed", False, 409),
+        ("all", "mixed", True, 201),
     ],
 )
 def test_issuer_eligibility_by_sale_composition(
@@ -326,8 +347,14 @@ def test_issuer_eligibility_by_sale_composition(
     sale = _sale(client, tenant, kind=kind)
     response = _issue(client, tenant, sale["id"], issuer)
     assert response.status_code == expected, response.text
-    if kind == "mixed" and not same_mixed:
+    if kind in {"mixed", "product_medication", "all"} and not same_mixed:
         assert response.json()["error"]["code"] == "sale_fiscal_document_mixed_not_supported"
+    if kind in {"medication", "medication_service"}:
+        assert sale["items"][0]["line_type"] == "product"
+        assert all(item["fiscal_line_type"] == "service" for item in sale["items"])
+        if expected == 201:
+            document = response.json()["data"]
+            assert (document["document_type"], document["document_code"]) == ("receipt_c", "015")
 
 
 @pytest.mark.parametrize(
@@ -359,12 +386,115 @@ def test_invalid_files_are_rejected_before_storage(
     assert storage.uploads == []
 
 
-def test_inactive_and_cross_tenant_issuers_are_not_selectable(
+@pytest.mark.parametrize(
+    ("category", "catalog_code", "expected"),
+    [
+        ("medication", None, "service"),
+        ("medication", "food", "service"),
+        ("food", "medication", "product"),
+        ("vaccine", None, "product"),
+        ("supply", None, "product"),
+        ("accessory", None, "product"),
+        ("other", None, "product"),
+    ],
+)
+def test_fiscal_classification_uses_item_type_not_optional_clinic_category(
+    client, db_session, tenant, category, catalog_code, expected
+):
+    storage = _storage(client)
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    product = _product(client, tenant, category=category)
+    catalog = CatalogItem(
+        tenant_id=tenant.id,
+        catalog_type="inventory_category",
+        name="Clasificación de la clínica",
+        normalized_name="clasificacion de la clinica",
+        code=catalog_code,
+    )
+    db_session.add(catalog)
+    db_session.flush()
+    inventory = db_session.scalar(select(InventoryItem).where(
+        InventoryItem.tenant_id == tenant.id, InventoryItem.id == uuid.UUID(product["id"])
+    ))
+    inventory.category_catalog_item_id = catalog.id
+    db_session.commit()
+    payload = {
+        "sale_date": "2026-08-09",
+        "items": [{
+            "line_type": "product", "inventory_item_id": product["id"],
+            "quantity": "1", "unit_price_ars": "100", "discount_percentage": "0",
+            "fiscal_line_type": "service",  # Client cannot override classification.
+        }],
+    }
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json=payload)
+    assert response.status_code == 422, response.text
+    del payload["items"][0]["fiscal_line_type"]
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json=payload)
+    assert response.status_code == 201, response.text
+    sale = response.json()["data"]
+    assert sale["items"][0]["fiscal_line_type"] == expected
+    confirmed = client.post(f"/api/v1/sales/{sale['id']}/confirm", headers=_headers(tenant), json={"confirm": True})
+    assert confirmed.status_code == 200, confirmed.text
+    response = _issue(client, tenant, sale["id"], issuer)
+    assert response.status_code == (201 if expected == "service" else 409), response.text
+    if expected == "product":
+        assert storage.uploads == []
+
+
+def test_foreign_inventory_cannot_supply_fiscal_classification(
     client, db_session, tenant, other_tenant
 ):
     _storage(client)
     issuer = _issuer(client, tenant, _user(db_session, tenant))
-    sale = _sale(client, tenant)
+    sale = _sale(client, tenant, kind="product")
+    foreign = _product(client, other_tenant, category="medication")
+    line = db_session.scalar(select(SaleItem).where(
+        SaleItem.tenant_id == tenant.id, SaleItem.sale_id == uuid.UUID(sale["id"])
+    ))
+    line.inventory_item_id = uuid.UUID(foreign["id"])
+    db_session.commit()
+    db_session.expire_all()
+    detail = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant))
+    assert detail.json()["data"]["items"][0]["fiscal_line_type"] == "product"
+    assert _issue(client, tenant, sale["id"], issuer).status_code == 409
+
+
+def test_historical_medication_document_preserved_and_future_identity_validated(
+    client, db_session, tenant, monkeypatch
+):
+    _storage(client)
+    product_issuer = _issuer(client, tenant, _user(db_session, tenant), mode="product")
+    service_issuer = _issuer(client, tenant, _user(db_session, tenant, email="services@example.com"))
+    sale = _sale(client, tenant, kind="medication")
+    # Reproduce a document recorded under the previous classification.
+    with monkeypatch.context() as previous_rule:
+        previous_rule.setattr(SaleItem, "fiscal_line_type", property(lambda item: item.line_type))
+        response = _issue(client, tenant, sale["id"], product_issuer)
+    assert response.status_code == 201, response.text
+    original = response.json()["data"]
+    base = f"/api/v1/sales/{sale['id']}/fiscal-document"
+    assert client.get(base, headers=_headers(tenant)).json()["data"] == original
+    corrected = client.patch(base, headers=_headers(tenant), data={"document_number": "corrected"})
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["data"]["document_type"] == "invoice_c"
+    assert corrected.json()["data"]["issuer_name_snapshot"] == original["issuer_name_snapshot"]
+    corrected = client.patch(base, headers=_headers(tenant), data={
+        "fiscal_issuer_id": service_issuer["id"], "document_type": "receipt_c", "document_code": "015",
+    })
+    assert corrected.status_code == 200, corrected.text
+    rejected = client.patch(base, headers=_headers(tenant), data={
+        "fiscal_issuer_id": product_issuer["id"], "document_type": "invoice_c", "document_code": "011",
+    })
+    assert rejected.status_code == 409, rejected.text
+
+
+@pytest.mark.parametrize("kind", ["service", "medication"])
+def test_inactive_and_cross_tenant_issuers_are_not_selectable(
+    client, db_session, tenant, other_tenant, kind
+):
+    _storage(client)
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    sale = _sale(client, tenant, kind=kind)
     client.patch(
         f"/api/v1/fiscal-issuers/{issuer['id']}",
         headers=_headers(tenant),

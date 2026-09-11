@@ -178,3 +178,20 @@ class SaleItem(BaseModel):
 
     sale: Mapped[Sale] = relationship("Sale", back_populates="items")
     inventory_item: Mapped[InventoryItem | None] = relationship("InventoryItem")
+
+    @property
+    def fiscal_line_type(self) -> str:
+        """Current fiscal classification; never changes the operational snapshot.
+
+        Inventory ``category`` is the required item type. The optional clinic
+        catalog category is independent and may have no code.
+        """
+        if self.line_type == "product":
+            inventory_item = self.inventory_item
+            if (
+                inventory_item is not None
+                and inventory_item.tenant_id == self.tenant_id
+                and inventory_item.category == "medication"
+            ):
+                return "service"
+        return self.line_type
