@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -11,6 +12,7 @@ from app.models.base import BaseModel
 class Service(BaseModel):
     __tablename__ = "services"
     __table_args__ = (
+        CheckConstraint("price >= 0", name="ck_services_price_non_negative"),
         CheckConstraint(
             "kind IN ('consultation', 'follow_up', 'vaccine', 'deworming', 'exam', 'procedure', 'other')",
             name="ck_services_kind",
@@ -27,6 +29,7 @@ class Service(BaseModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     kind: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     default_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     calendar_color: Mapped[str] = mapped_column(

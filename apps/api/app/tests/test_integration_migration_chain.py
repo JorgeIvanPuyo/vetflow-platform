@@ -33,6 +33,7 @@ def test_customization_migrations_are_linear_after_recovery_sales_head():
         ("0047_backfill_species_refs.py", "0047_backfill_species_refs", "0046_clinical_catalog_ext"),
         ("0048_operational_currency_preferences.py", "0048_operational_currency", "0047_backfill_species_refs"),
         ("0049_backfill_inventory_category_refs.py", "0049_inventory_category_refs", "0048_operational_currency"),
+        ("0050_service_pricing.py", "0050_service_pricing", "0049_inventory_category_refs"),
     ]
 
     for filename, revision, down_revision in expected:

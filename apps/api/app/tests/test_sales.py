@@ -457,3 +457,79 @@ def test_reverse_sale_restores_stock_links_movements_and_rejects_invalid_reversa
         "/api/v1/sales", headers=_headers(tenant), params={"status": "reversed"}
     ).json()["data"]
     assert [row["id"] for row in rows] == [sale["id"]]
+
+
+def _catalog_service(db, tenant, *, price="25.00", active=True):
+    from app.models.service import Service
+    service = Service(tenant_id=tenant.id, code="CONSULTA", name="Consulta catálogo", normalized_name="consulta catalogo", kind="consultation", default_duration_minutes=30, price=Decimal(price) if price is not None else None, is_active=active)
+    db.add(service); db.commit(); db.refresh(service)
+    return service
+
+
+def _catalog_line(service, *, price="25.00"):
+    return {"line_type": "service", "service_id": str(service.id), "description": service.name, "quantity": "1", "unit_price_ars": price, "discount_percentage": "0"}
+
+
+def test_catalog_service_snapshots_survive_changes_deactivation_and_draft_edit(client, db_session, tenant):
+    service = _catalog_service(db_session, tenant)
+    sale = _create(client, tenant, items=[_catalog_line(service)])
+    assert sale["items"][0]["service_id"] == str(service.id)
+    service.name = "Nombre posterior"; service.price = Decimal("90.00"); service.is_active = False
+    db_session.commit()
+    detail = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)).json()["data"]
+    assert detail["items"][0]["description_snapshot"] == "Consulta catálogo"
+    assert detail["items"][0]["unit_price_ars"] == "25.00"
+    line = {**_catalog_line(service), "description": "Consulta catálogo"}
+    edited = client.patch(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant), json={"items": [line]})
+    assert edited.status_code == 200
+    assert edited.json()["data"]["items"][0]["unit_price_ars"] == "25.00"
+    confirmed = client.post(f"/api/v1/sales/{sale['id']}/confirm", headers=_headers(tenant), json={"confirm": True})
+    assert confirmed.status_code == 200
+    assert confirmed.json()["data"]["items"][0]["description_snapshot"] == "Consulta catálogo"
+    assert confirmed.json()["data"]["total_ars"] == "25.00"
+    service.price = Decimal("100.00"); db_session.commit()
+    historical = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)).json()["data"]
+    assert historical["items"][0]["unit_price_ars"] == "25.00"
+
+
+def test_catalog_service_foreign_and_inactive_rejected_for_new_sales_and_lines(client, db_session, tenant, other_tenant):
+    foreign = _catalog_service(db_session, other_tenant)
+    inactive = _catalog_service(db_session, tenant, active=False)
+    draft = _create(client, tenant)
+    for service, expected in [(foreign, 404), (inactive, 409)]:
+        created = client.post("/api/v1/sales", headers=_headers(tenant), json=_payload(items=[_catalog_line(service)]))
+        assert created.status_code == expected
+        updated = client.patch(f"/api/v1/sales/{draft['id']}", headers=_headers(tenant), json={"items": [_catalog_line(service)]})
+        assert updated.status_code == expected
+    unchanged = client.get(f"/api/v1/sales/{draft['id']}", headers=_headers(tenant)).json()["data"]
+    assert unchanged["items"][0]["service_id"] is None
+    assert unchanged["total_ars"] == "50.00"
+
+
+def test_unpriced_service_requires_explicit_sale_price_and_preserves_manual_override(client, db_session, tenant):
+    service = _catalog_service(db_session, tenant, price=None)
+    for value in [None, "", "-1"]:
+        response = client.post("/api/v1/sales", headers=_headers(tenant), json=_payload(items=[_catalog_line(service, price=value)]))
+        assert response.status_code == 422
+    for value in ["0.00", "32.50"]:
+        sale = _create(client, tenant, items=[_catalog_line(service, price=value)])
+        assert sale["items"][0]["unit_price_ars"] == value
+    db_session.refresh(service)
+    assert service.price is None
+    service.price = Decimal("99.00"); db_session.commit()
+    override = _create(client, tenant, items=[_catalog_line(service, price="40.00")])
+    assert override["total_ars"] == "40.00"
+
+
+def test_catalog_service_mixed_sale_preserves_product_stock_and_totals(client, db_session, tenant):
+    service = _catalog_service(db_session, tenant)
+    product = _product(client, tenant)
+    _add_stock(client, tenant, product["id"], 3)
+    product_line = {"line_type": "product", "inventory_item_id": product["id"], "quantity": "2", "unit_price_ars": "100.00", "discount_percentage": "10"}
+    sale = _create(client, tenant, items=[product_line, _catalog_line(service)])
+    assert sale["total_ars"] == "205.00"
+    confirmed = client.post(f"/api/v1/sales/{sale['id']}/confirm", headers=_headers(tenant), json={"confirm": True})
+    assert confirmed.status_code == 200
+    db_session.expire_all()
+    assert db_session.scalar(select(InventoryItem.current_stock).where(InventoryItem.id == uuid.UUID(product["id"]))) == 1
+    assert db_session.scalar(select(func.count()).select_from(InventoryMovement).where(InventoryMovement.source_type == "sale", InventoryMovement.source_id == sale["id"])) == 1

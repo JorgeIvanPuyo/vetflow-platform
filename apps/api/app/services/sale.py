@@ -16,6 +16,7 @@ from app.repositories.inventory import InventoryRepository
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.sale import SaleRepository
+from app.repositories.service import ServiceRepository
 from app.repositories.user import UserRepository
 from app.schemas.sale import SaleCreate, SaleProductItemInput, SaleUpdate
 from app.services.inventory import InventoryService
@@ -36,6 +37,7 @@ class SaleService:
         self.user_repository = UserRepository(db)
         self.inventory_repository = InventoryRepository(db)
         self.inventory_service = InventoryService(db)
+        self.service_repository = ServiceRepository(db)
 
     def create(self, tenant_id: uuid.UUID, payload: SaleCreate, *, created_by_user_id: uuid.UUID | None) -> Sale:
         self._validate_user(tenant_id, created_by_user_id)
@@ -98,7 +100,11 @@ class SaleService:
             if "notes" in fields:
                 sale.notes = payload.notes
             if "items" in fields:
-                items, totals = self._build_items(tenant_id, payload.items or [])
+                items, totals = self._build_items(
+                    tenant_id,
+                    payload.items or [],
+                    existing_service_ids={line.service_id for line in sale.items if line.service_id},
+                )
                 self.repository.replace_items(sale, items)
                 for name, value in totals.items():
                     setattr(sale, name, value)
@@ -331,7 +337,9 @@ class SaleService:
             raise AppError(422, "sale_patient_owner_mismatch", "El paciente no pertenece al propietario seleccionado")
         return owner, patient
 
-    def _build_items(self, tenant_id: uuid.UUID, inputs) -> tuple[list[SaleItem], dict]:
+    def _build_items(
+        self, tenant_id: uuid.UUID, inputs, *, existing_service_ids: set[uuid.UUID] | None = None
+    ) -> tuple[list[SaleItem], dict]:
         product_ids = [item.inventory_item_id for item in inputs if isinstance(item, SaleProductItemInput)]
         if len(product_ids) != len(set(product_ids)):
             raise AppError(422, "duplicate_sale_product", "Un producto no puede repetirse en la venta")
@@ -340,7 +348,9 @@ class SaleService:
             raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
         items: list[SaleItem] = []
         subtotal = discount_total = total = Decimal("0")
+        validated_services: set[uuid.UUID] = set()
         for order, item_input in enumerate(inputs, start=1):
+            service_id = None
             if isinstance(item_input, SaleProductItemInput):
                 product = products[item_input.inventory_item_id]
                 if not product.is_active:
@@ -350,13 +360,22 @@ class SaleService:
                     raise AppError(409, "sale_price_missing", f"{product.name} no tiene precio de venta")
                 description, code, unit, inventory_id = product.name, product.internal_code, product.unit, product.id
             else:
+                service_id = item_input.service_id
+                if service_id is not None and service_id not in validated_services:
+                    service = self.service_repository.get_by_id(tenant_id, service_id)
+                    if service is None:
+                        raise AppError(404, "service_not_found", "Servicio no encontrado")
+                    # An existing draft keeps its snapshots even after deactivation.
+                    if not service.is_active and service_id not in (existing_service_ids or set()):
+                        raise AppError(409, "service_inactive", "El servicio no está activo para venta")
+                    validated_services.add(service_id)
                 price = item_input.unit_price_ars
                 description, code, unit, inventory_id = item_input.description, None, "service", None
             line_subtotal = (item_input.quantity * price).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_discount = (line_subtotal * item_input.discount_percentage / HUNDRED).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_total = (line_subtotal - line_discount).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             items.append(SaleItem(
-                tenant_id=tenant_id, line_type=item_input.line_type, inventory_item_id=inventory_id, service_id=None,
+                tenant_id=tenant_id, line_type=item_input.line_type, inventory_item_id=inventory_id, service_id=service_id,
                 description_snapshot=description, internal_code_snapshot=code, unit_snapshot=unit,
                 quantity=item_input.quantity, unit_price_ars=price, discount_percentage=item_input.discount_percentage,
                 line_subtotal_ars=line_subtotal, line_discount_ars=line_discount, line_total_ars=line_total, line_order=order,

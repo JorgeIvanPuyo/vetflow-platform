@@ -13,10 +13,13 @@ import { getInventoryItems } from "@/services/inventory";
 import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import { createSale, getSale, updateSale } from "@/services/sales";
-import type { InventoryItem, Owner, Patient, SaleItem, SaleWritePayload } from "@/types/api";
+import type { ClinicService, InventoryItem, Owner, Patient, SaleItem, SaleWritePayload } from "@/types/api";
+
+import { SaleServiceSelector } from "./sale-service-selector";
+import { hasValidServicePrice, serviceLineFromCatalog, serviceLineFromSnapshot, serviceLineToInput, type ServiceLine } from "./sale-service-helpers";
 
 type ProductLine = { key: string; type: "product"; inventoryItemId: string; description: string; code: string; unit: string; stock: string; quantity: string; price: string; discount: string };
-type ServiceLine = { key: string; type: "service"; description: string; quantity: string; price: string; discount: string };
+
 type Line = ProductLine | ServiceLine;
 
 export function SaleFormScreen({ saleId }: { saleId?: string }) {
@@ -42,6 +45,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   const [activeProductIndex, setActiveProductIndex] = useState(-1);
   const [isLoading, setIsLoading] = useState(Boolean(saleId));
   const [isSaving, setIsSaving] = useState(false);
+  const [isServiceSelectorOpen, setIsServiceSelectorOpen] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const productSelectorRef = useRef<HTMLDivElement>(null);
@@ -206,8 +210,9 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
     setActiveProductIndex(selectableIndexes[nextPosition]);
   }
 
-  function addService() {
-    setLines((current) => [...current, { key: `service-${Date.now()}-${current.length}`, type: "service", description: "", quantity: "1", price: "0", discount: "0" }]);
+  function addService(service: ClinicService) {
+    setLines((current) => [...current, serviceLineFromCatalog(service, crypto.randomUUID())]);
+    setIsServiceSelectorOpen(false);
   }
 
   function updateLine(key: string, changes: Partial<Line>) { setLines((current) => current.map((line) => line.key === key ? { ...line, ...changes } as Line : line)); }
@@ -220,7 +225,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
       owner_id: ownerId || null, patient_id: ownerId && patientId ? patientId : null, sale_date: saleDate, notes: notes.trim() || null,
       items: lines.map((line) => line.type === "product"
         ? { line_type: "product", inventory_item_id: line.inventoryItemId, quantity: line.quantity, unit_price_ars: line.price, discount_percentage: line.discount }
-        : { line_type: "service", description: line.description.trim(), quantity: line.quantity, unit_price_ars: line.price, discount_percentage: line.discount }),
+        : serviceLineToInput(line)),
     };
     setIsSaving(true); setErrorMessage(null);
     try { const response = saleId ? await updateSale(saleId, payload) : await createSale(payload); router.push(`/sales/${response.data.id}`); }
@@ -240,7 +245,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
       <label className="field"><span>Fecha *</span><input required type="date" value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label>
       <label className="field sale-notes"><span>Notas</span><textarea rows={3} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
     </div></section>
-    <section className="panel sale-form-section"><div className="section-heading-inline"><div><h2>Líneas</h2><p>Agrega productos del catálogo o servicios manuales.</p></div><button className="secondary-button" type="button" onClick={addService}><Plus size={17} /> Agregar servicio</button></div>
+    <section className="panel sale-form-section"><div className="section-heading-inline"><div><h2>Líneas</h2><p>Agrega productos o servicios del catálogo de la clínica.</p></div><button className="secondary-button" type="button" disabled={isSaving} onClick={() => { closeProductSelector(); setIsServiceSelectorOpen(true); }}><Plus size={17} /> Agregar servicio</button></div>
       <div className="sale-product-selector" ref={productSelectorRef}>
         <label className="field" htmlFor="sale-product-search"><span>Producto</span></label>
         <div className="sale-product-selector__control">
@@ -297,7 +302,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
       </div>
       <div className="sale-lines">{lines.map((line) => <article className="sale-line" key={line.key}><div className="sale-line__heading"><span>{line.type === "product" ? <><strong>{line.description}</strong><small>{line.code} · Stock actual {line.stock} {line.unit}</small></> : <label className="field"><span>Descripción del servicio *</span><input maxLength={255} value={line.description} onChange={(event) => updateLine(line.key, { description: event.target.value })} /></label>}</span><button className="icon-button" type="button" aria-label="Quitar línea" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 size={17} /></button></div><div className="sale-line__fields">
         <label className="field"><span>Cantidad *</span><input required type="number" min="1" step="1" inputMode="numeric" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} /></label>
-        <label className="field"><span>Precio unitario *</span><input required type="number" min="0" step="0.01" value={line.price} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></label>
+        <label className="field"><span>Precio unitario *</span>{line.type === "service" && !line.price.trim() ? <small>Precio no configurado. Ingresa el precio para esta venta.</small> : null}<input required type="number" min="0" step="0.01" value={line.price} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></label>
         <label className="field"><span>Descuento %</span><input required type="number" min="0" max="100" step="0.01" value={line.discount} onChange={(event) => updateLine(line.key, { discount: event.target.value })} /></label>
         <div className="sale-line__total"><span>Total estimado</span><strong>{formatPurchaseCurrency(lineTotal(line), moneyPreferences)}</strong></div>
       </div></article>)}</div>
@@ -305,11 +310,12 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
     </section>
     <section className="panel purchase-summary"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(totals.subtotal, moneyPreferences)}</strong></div><div><span>Descuentos</span><strong>{formatPurchaseCurrency(totals.discount, moneyPreferences)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(totals.total, moneyPreferences)}</strong></div><p>Los importes definitivos se calculan en el backend.</p></section>
     <section className="purchase-form-actions"><Link className="secondary-button" href={saleId ? `/sales/${saleId}` : "/sales"}>Cancelar</Link><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar borrador"}</button></section>
+    {isServiceSelectorOpen ? <SaleServiceSelector moneyPreferences={moneyPreferences} onSelect={addService} onClose={() => setIsServiceSelectorOpen(false)} /> : null}
   </form>;
 }
 
 function safeNumber(value: string) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 function lineTotal(line: Line) { const subtotal = safeNumber(line.quantity) * safeNumber(line.price); return subtotal * (1 - safeNumber(line.discount) / 100); }
 function todayIso() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
-function validate(lines: Line[]) { if (!lines.length) return "Agrega al menos una línea."; for (const line of lines) { if (!Number.isInteger(Number(line.quantity)) || Number(line.quantity) <= 0) return "Todas las cantidades deben ser enteros positivos."; if (line.type === "service" && !line.description.trim()) return "Ingresa la descripción de cada servicio."; if (Number(line.price) < 0) return "El precio no puede ser negativo."; if (Number(line.discount) < 0 || Number(line.discount) > 100) return "El descuento debe estar entre 0 y 100."; } return null; }
-function lineFromSaleItem(item: SaleItem): Line { return item.line_type === "product" ? { key: item.inventory_item_id!, type: "product", inventoryItemId: item.inventory_item_id!, description: item.description_snapshot, code: item.internal_code_snapshot ?? "Sin código", unit: item.unit_snapshot, stock: "Referencia no actualizada", quantity: item.quantity, price: item.unit_price_ars, discount: item.discount_percentage } : { key: item.id, type: "service", description: item.description_snapshot, quantity: item.quantity, price: item.unit_price_ars, discount: item.discount_percentage }; }
+function validate(lines: Line[]) { if (!lines.length) return "Agrega al menos una línea."; for (const line of lines) { if (!Number.isInteger(Number(line.quantity)) || Number(line.quantity) <= 0) return "Todas las cantidades deben ser enteros positivos."; if (line.type === "service" && !line.description.trim()) return "Ingresa la descripción de cada servicio."; if (line.type === "service" && !hasValidServicePrice(line.price)) return "Ingresa un precio válido para cada servicio."; if (Number(line.price) < 0) return "El precio no puede ser negativo."; if (Number(line.discount) < 0 || Number(line.discount) > 100) return "El descuento debe estar entre 0 y 100."; } return null; }
+function lineFromSaleItem(item: SaleItem): Line { return item.line_type === "product" ? { key: item.inventory_item_id!, type: "product", inventoryItemId: item.inventory_item_id!, description: item.description_snapshot, code: item.internal_code_snapshot ?? "Sin código", unit: item.unit_snapshot, stock: "Referencia no actualizada", quantity: item.quantity, price: item.unit_price_ars, discount: item.discount_percentage } : serviceLineFromSnapshot(item); }

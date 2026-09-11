@@ -1,6 +1,7 @@
 import {
   Calculator,
   Calendar,
+  CircleHelp,
   LayoutDashboard,
   LucideIcon,
   Package,
@@ -42,6 +43,7 @@ export const navigationItems: NavigationItem[] = [
     roles: ["superadmin"],
   },
   { href: "/settings", label: "Ajustes", icon: Settings },
+  { href: "/help", label: "Centro de ayuda", icon: CircleHelp, roles: ["clinic_admin", "medico_veterinario", "contador", "superadmin"] },
 ];
 
 // Roles that must ONLY see modules explicitly granted to them (via `roles`),

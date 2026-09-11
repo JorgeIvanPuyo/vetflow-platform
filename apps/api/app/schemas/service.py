@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
@@ -17,6 +18,7 @@ ServiceKind = Literal[
 
 
 class ServiceBase(BaseModel):
+    price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
@@ -37,6 +39,7 @@ class ServiceCreate(ServiceBase):
 
 
 class ServiceUpdate(BaseModel):
+    price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     code: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None

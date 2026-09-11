@@ -241,3 +241,50 @@ def test_bookable_only_filters_services(client, db_session, tenant):
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()["data"]] == [bookable["id"]]
+
+
+def test_service_price_create_update_clear_and_legacy_compatibility(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "pricing@example.com", "Admin", "clinic_admin")
+    legacy = _create_service(client, tenant, admin)
+    assert legacy["price"] is None
+    priced = _create_service(client, tenant, admin, code="PRICE", name="Con precio", price="25.50")
+    assert priced["price"] == "25.50"
+    headers = _user_headers(admin.email)
+    url = f"/api/v1/services/{priced['id']}"
+    updated = client.patch(url, headers=headers, json={"price": "30.00"})
+    assert updated.status_code == 200
+    assert updated.json()["data"]["price"] == "30.00"
+    renamed = client.patch(url, headers=headers, json={"name": "Nuevo nombre"})
+    assert renamed.json()["data"]["price"] == "30.00"
+    cleared = client.patch(url, headers=headers, json={"price": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["data"]["price"] is None
+    zero = client.patch(url, headers=headers, json={"price": "0.00"})
+    assert zero.status_code == 200
+    assert zero.json()["data"]["price"] == "0.00"
+
+
+def test_invalid_service_prices_are_rejected(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "invalid-price@example.com", "Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin, price="25.00")
+    for price in ["-0.01", "1.001", "1000000000000.00", "NaN", "Infinity"]:
+        created = client.post("/api/v1/services", headers=_user_headers(admin.email), json=_service_payload(name="Invalid", price=price))
+        assert created.status_code == 422, (price, created.text)
+        updated = client.patch(f"/api/v1/services/{service['id']}", headers=_user_headers(admin.email), json={"price": price})
+        assert updated.status_code == 422, (price, updated.text)
+    assert client.get(f"/api/v1/services/{service['id']}", headers=_headers(tenant)).json()["data"]["price"] == "25.00"
+
+
+def test_service_prices_list_only_current_tenant_active_including_non_bookable(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "price-a@example.com", "Admin A", "clinic_admin")
+    foreign_admin = _create_user(db_session, other_tenant, "price-b@example.com", "Admin B", "clinic_admin")
+    active = _create_service(client, tenant, admin, name="Solo venta", price="25.00", is_bookable=False)
+    inactive = _create_service(client, tenant, admin, code="OFF", name="Inactivo", price="50.00")
+    foreign = _create_service(client, other_tenant, foreign_admin, price="99.00")
+    client.post(f"/api/v1/services/{inactive['id']}/deactivate", headers=_user_headers(admin.email))
+    response = client.get("/api/v1/services?include_inactive=false", headers=_user_headers(admin.email))
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [active["id"]]
+    assert foreign["id"] not in response.text
+    cross_update = client.patch(f"/api/v1/services/{foreign['id']}", headers=_user_headers(admin.email), json={"price": "1.00"})
+    assert cross_update.status_code == 404

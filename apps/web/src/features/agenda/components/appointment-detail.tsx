@@ -83,6 +83,7 @@ function withCurrentService(
       id: currentId,
       tenant_id: appointment.tenant_id,
       code: "",
+      price: null,
       name: `${appointment.service_name ?? "Servicio"} (inactivo)`,
       normalized_name: "",
       description: null,

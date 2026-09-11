@@ -424,6 +424,7 @@ export type ClinicServiceKind =
   | "other";
 
 export type ClinicService = {
+  price: string | null;
   id: string;
   tenant_id: string;
   code: string;
@@ -444,6 +445,7 @@ export type ClinicService = {
 };
 
 export type CreateClinicServicePayload = {
+  price?: string | null;
   code: string;
   name: string;
   description?: string | null;
@@ -1972,6 +1974,7 @@ export type SaleProductItemInput = {
 
 export type SaleServiceItemInput = {
   line_type: "service";
+  service_id?: string | null;
   description: string;
   quantity: string;
   unit_price_ars: string;

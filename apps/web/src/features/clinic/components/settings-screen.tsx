@@ -28,6 +28,7 @@ import { InventoryCatalogsSection } from "@/features/clinic/components/inventory
 import { SpeciesCatalogSection } from "@/features/clinic/components/species-catalog-section";
 import { SuppliersSection } from "@/features/clinic/components/suppliers-section";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { formatCurrency, resolveMoneyPreferences } from "@/lib/money";
 import {
   deleteClinicLogo,
   getClinicProfile,
@@ -92,6 +93,7 @@ type PreferencesFormState = {
 };
 
 type ServiceFormState = {
+  price: string;
   id: string | null;
   code: string;
   name: string;
@@ -157,6 +159,7 @@ export function SettingsScreen() {
   const [teamEditMessage, setTeamEditMessage] = useState<string | null>(null);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
   const canManageCatalog = role === "clinic_admin";
+  const moneyPreferences = resolveMoneyPreferences(state.preferences);
 
   async function loadSettings() {
     setState((current) => ({
@@ -1138,6 +1141,7 @@ export function SettingsScreen() {
                               {service.code} · {getServiceKindLabel(service.kind)} ·{" "}
                               {service.default_duration_minutes} min
                             </p>
+                            <p>{service.price == null ? "Precio no configurado" : formatCurrency(service.price, moneyPreferences)}</p>
                             <div className="record-card__actions">
                               <button
                                 aria-label="Subir servicio"
@@ -1433,6 +1437,20 @@ export function SettingsScreen() {
                   </select>
                 </label>
                 <label className="field">
+                  <span>Precio ({moneyPreferences.currencyCode})</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="999999999999.99"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="Sin configurar"
+                    value={serviceFormState.price}
+                    onChange={(event) => setServiceFormState((current) => current ? { ...current, price: event.target.value } : current)}
+                  />
+                  <small>Opcional. Déjalo vacío si aún no conoces el precio.</small>
+                </label>
+                <label className="field">
                   <span>Duración</span>
                   <input
                     required
@@ -1596,6 +1614,7 @@ function preferencesToFormState(preferences: TenantPreferences): PreferencesForm
 
 function getInitialServiceFormState(nextSortOrder: number): ServiceFormState {
   return {
+    price: "",
     id: null,
     code: "",
     name: "",
@@ -1610,6 +1629,7 @@ function getInitialServiceFormState(nextSortOrder: number): ServiceFormState {
 
 function serviceToFormState(service: ClinicServiceItem): ServiceFormState {
   return {
+    price: service.price ?? "",
     id: service.id,
     code: service.code,
     name: service.name,
@@ -1623,6 +1643,9 @@ function serviceToFormState(service: ClinicServiceItem): ServiceFormState {
 }
 
 function validateServiceForm(form: ServiceFormState) {
+  if (form.price.trim() && (!Number.isFinite(Number(form.price)) || Number(form.price) < 0 || Number(form.price) > 999999999999.99)) {
+    return "Ingresa un precio válido, no negativo y con hasta 12 dígitos enteros.";
+  }
   if (!form.code.trim() || !form.name.trim()) {
     return "Código y nombre son obligatorios.";
   }
@@ -1639,6 +1662,7 @@ function validateServiceForm(form: ServiceFormState) {
 
 function buildServicePayload(form: ServiceFormState): CreateClinicServicePayload {
   return {
+    price: form.price.trim() || null,
     code: form.code.trim(),
     name: form.name.trim(),
     description: normalizeNullable(form.description),

@@ -27,6 +27,7 @@ class SaleProductItemInput(BaseModel):
 class SaleServiceItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     line_type: Literal["service"]
+    service_id: uuid.UUID | None = None
     description: str = Field(min_length=1, max_length=255)
     quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
     unit_price_ars: Decimal = Field(ge=0)
