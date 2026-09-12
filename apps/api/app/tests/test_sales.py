@@ -111,6 +111,11 @@ def test_owner_patient_consistency_snapshots_and_cross_tenant_rejections(client,
     cross_patient = client.post("/api/v1/sales", headers=_headers(tenant), json=_payload(product["id"], owner_id=owner["id"], patient_id=foreign_patient["id"]))
     assert mismatch.status_code == 422 and no_owner.status_code == 422
     assert cross_owner.status_code == 404 and cross_patient.status_code == 404
+    cross_update = client.patch(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant), json={"owner_id": foreign_owner["id"]})
+    assert cross_update.status_code == 404
+    assert cross_update.json()["error"]["code"] == "owner_not_found"
+    unchanged = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)).json()["data"]
+    assert unchanged["owner_id"] == owner["id"]
 
 
 @pytest.mark.parametrize("mutation", [

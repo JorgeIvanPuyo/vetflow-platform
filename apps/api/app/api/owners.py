@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.common import ListMeta
-from app.schemas.owner import OwnerCreate, OwnerRead, OwnerUpdate
+from app.schemas.owner import OwnerCreate, OwnerRead, OwnerSortBy, OwnerUpdate
 from app.services.owner import OwnerService
 
 router = APIRouter(prefix="/owners", tags=["owners"])
@@ -28,6 +28,7 @@ def list_owners(
     phone: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=100),
+    sort_by: OwnerSortBy = Query(default="created_at"),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -37,6 +38,7 @@ def list_owners(
         phone=phone,
         page=page,
         page_size=page_size,
+        sort_by=sort_by,
     )
     return {
         "data": [OwnerRead.model_validate(owner).model_dump(mode="json") for owner in owners],

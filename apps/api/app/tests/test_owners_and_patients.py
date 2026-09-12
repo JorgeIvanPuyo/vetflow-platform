@@ -1,4 +1,65 @@
 import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from app.models.owner import Owner
+
+
+@pytest.fixture()
+def selector_owners(db_session, tenant, other_tenant):
+    names = [f"Cliente {index:03d}" for index in range(194)] + [
+        "ana Perez", "Ana Perez", "Zulema Juanita Torres",
+    ]
+    owners = [Owner(id=uuid.uuid4(), tenant_id=tenant.id, full_name=name, phone="555") for name in names]
+    db_session.add_all(owners + [
+        Owner(tenant_id=other_tenant.id, full_name="Zulema Juanita Torres", phone="999"),
+    ])
+    db_session.commit()
+    return owners
+
+
+def test_sales_selector_reaches_all_197_owners_in_stable_name_order(client, tenant, selector_owners):
+    expected = sorted(selector_owners, key=lambda owner: (owner.full_name.lower(), str(owner.id)))
+    found = []
+    for page in range(1, 8):
+        response = client.get("/api/v1/owners", headers={"X-Tenant-Id": str(tenant.id)},
+                              params={"page": page, "page_size": 30, "sort_by": "full_name"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["meta"] == {"page": page, "page_size": 30, "total": 197}
+        assert all(owner["tenant_id"] == str(tenant.id) for owner in body["data"])
+        found.extend(owner["id"] for owner in body["data"])
+    assert found == [str(owner.id) for owner in expected]
+    assert len(set(found)) == 197
+
+
+@pytest.mark.parametrize("search", ["Zul", "JUANITA", "anita torr", "zulema juanita torres"])
+def test_sales_selector_search_finds_owner_beyond_first_page(client, tenant, selector_owners, search):
+    headers = {"X-Tenant-Id": str(tenant.id)}
+    params = {"page": 1, "page_size": 30, "sort_by": "full_name"}
+    target = str(selector_owners[-1].id)
+    first = client.get("/api/v1/owners", headers=headers, params=params).json()
+    assert target not in [owner["id"] for owner in first["data"]]
+    response = client.get("/api/v1/owners", headers=headers, params={**params, "search": search})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"]["total"] == 1  # The identical name in the other tenant is excluded.
+    assert [owner["id"] for owner in body["data"]] == [target]
+
+
+def test_owner_sort_is_opt_in_and_rejects_unknown_fields(client, db_session, tenant):
+    now = datetime.now(UTC)
+    db_session.add_all([
+        Owner(tenant_id=tenant.id, full_name="Ana", phone="1", created_at=now - timedelta(days=1)),
+        Owner(tenant_id=tenant.id, full_name="Zoe", phone="2", created_at=now),
+    ])
+    db_session.commit()
+    headers = {"X-Tenant-Id": str(tenant.id)}
+    default = client.get("/api/v1/owners", headers=headers).json()
+    assert [owner["full_name"] for owner in default["data"]] == ["Zoe", "Ana"]
+    assert default["meta"] == {"page": 1, "page_size": 2, "total": 2}
+    assert client.get("/api/v1/owners", headers=headers, params={"sort_by": "email"}).status_code == 422
 
 
 def test_create_owner(client, tenant):

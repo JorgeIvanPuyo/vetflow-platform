@@ -12,10 +12,14 @@ type GetOwnersOptions = {
   phone?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: "created_at" | "full_name";
 };
 
 export function getOwners(options: GetOwnersOptions = {}) {
   const params = new URLSearchParams();
+  if (options.sortBy) {
+    params.set("sort_by", options.sortBy);
+  }
 
   if (options.search) {
     params.set("search", options.search);
