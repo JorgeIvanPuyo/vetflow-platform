@@ -10,11 +10,11 @@ import { formatPurchaseCurrency } from "@/features/purchases/components/purchase
 import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
 import { getInventoryItems } from "@/services/inventory";
-import { getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import { createSale, getSale, updateSale } from "@/services/sales";
-import type { ClinicService, InventoryItem, Owner, Patient, SaleItem, SaleWritePayload } from "@/types/api";
+import type { ClinicService, InventoryItem, Patient, SaleItem, SaleWritePayload } from "@/types/api";
 
+import { SaleOwnerSelector } from "./sale-owner-selector";
 import { SaleServiceSelector } from "./sale-service-selector";
 import { hasValidServicePrice, serviceLineFromCatalog, serviceLineFromSnapshot, serviceLineToInput, type ServiceLine } from "./sale-service-helpers";
 
@@ -26,7 +26,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   const { preferences } = useClinic();
   const moneyPreferences = resolveMoneyPreferences(preferences);
   const router = useRouter();
-  const [owners, setOwners] = useState<Owner[]>([]);
+  const [ownerName, setOwnerName] = useState("");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [ownerId, setOwnerId] = useState("");
   const [patientId, setPatientId] = useState("");
@@ -53,10 +53,6 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   const productRequestIdRef = useRef(0);
 
   useEffect(() => {
-    getOwners({ page: 1, pageSize: 100 }).then((response) => setOwners(response.data)).catch(() => setOwners([]));
-  }, []);
-
-  useEffect(() => {
     if (!ownerId) { setPatients([]); setPatientId(""); return; }
     getPatients({ ownerId, page: 1, pageSize: 100 }).then((response) => setPatients(response.data)).catch(() => setPatients([]));
   }, [ownerId]);
@@ -67,7 +63,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
     getSale(saleId).then(({ data }) => {
       if (!active) return;
       if (data.status !== "draft") { setUnavailable(true); return; }
-      setOwnerId(data.owner_id ?? ""); setPatientId(data.patient_id ?? ""); setSaleDate(data.sale_date); setNotes(data.notes ?? "");
+      setOwnerId(data.owner_id ?? ""); setOwnerName(data.owner_name_snapshot ?? ""); setPatientId(data.patient_id ?? ""); setSaleDate(data.sale_date); setNotes(data.notes ?? "");
       setLines(data.items.map(lineFromSaleItem));
     }).catch((error) => active && setErrorMessage(getApiErrorMessage(error))).finally(() => active && setIsLoading(false));
     return () => { active = false; };
@@ -240,7 +236,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
     <section className="screen-heading list-page__header"><div><Link className="back-link" href={saleId ? `/sales/${saleId}` : "/sales"}><ArrowLeft size={18} /> {saleId ? "Detalle" : "Ventas"}</Link><h1>{saleId ? "Editar venta" : "Nueva venta"}</h1><p>El borrador no descuenta stock ni genera movimientos o comprobantes.</p></div></section>
     {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
     <section className="panel sale-form-section"><div className="section-heading"><h2>Cliente y datos</h2><p>El cliente y paciente son opcionales para permitir ventas de mostrador.</p></div><div className="sale-header-grid">
-      <label className="field"><span>Propietario</span><select value={ownerId} onChange={(event) => { setOwnerId(event.target.value); setPatientId(""); }}><option value="">Venta de mostrador</option>{owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.full_name}</option>)}</select></label>
+      <SaleOwnerSelector ownerId={ownerId} ownerName={ownerName} onSelect={(owner) => { setOwnerId(owner?.id ?? ""); setOwnerName(owner?.full_name ?? ""); if ((owner?.id ?? "") !== ownerId) setPatientId(""); }} />
       <label className="field"><span>Paciente</span><select disabled={!ownerId} value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="">{ownerId ? patients.length ? "Sin paciente" : "El propietario no tiene pacientes" : "Selecciona primero un propietario"}</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.name} · {patient.species}</option>)}</select></label>
       <label className="field"><span>Fecha *</span><input required type="date" value={saleDate} onChange={(event) => setSaleDate(event.target.value)} /></label>
       <label className="field sale-notes"><span>Notas</span><textarea rows={3} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>

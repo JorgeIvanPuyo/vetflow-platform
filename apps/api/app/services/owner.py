@@ -12,7 +12,7 @@ from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.owner import OwnerRepository
-from app.schemas.owner import OwnerCreate, OwnerUpdate
+from app.schemas.owner import OwnerCreate, OwnerSortBy, OwnerUpdate
 
 
 class OwnerService:
@@ -34,6 +34,7 @@ class OwnerService:
         phone: str | None = None,
         page: int = 1,
         page_size: int | None = None,
+        sort_by: OwnerSortBy = "created_at",
     ) -> tuple[list[Owner], int]:
         return self.owner_repository.list(
             tenant_id,
@@ -41,6 +42,7 @@ class OwnerService:
             phone=phone,
             page=page,
             page_size=page_size,
+            sort_by=sort_by,
         )
 
     def get_owner(self, tenant_id: uuid.UUID, owner_id: uuid.UUID) -> Owner:

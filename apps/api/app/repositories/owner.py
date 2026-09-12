@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.models.owner import Owner
+from app.schemas.owner import OwnerSortBy
 
 
 class OwnerRepository:
@@ -31,6 +32,7 @@ class OwnerRepository:
         phone: str | None = None,
         page: int = 1,
         page_size: int | None = None,
+        sort_by: OwnerSortBy = "created_at",
     ) -> tuple[list[Owner], int]:
         statement: Select[tuple[Owner]] = select(Owner).where(Owner.tenant_id == tenant_id)
 
@@ -39,7 +41,10 @@ class OwnerRepository:
         if phone:
             statement = statement.where(Owner.phone.ilike(f"%{phone}%"))
 
-        statement = statement.order_by(Owner.created_at.desc())
+        if sort_by == "full_name":
+            statement = statement.order_by(func.lower(Owner.full_name).asc(), Owner.id.asc())
+        else:
+            statement = statement.order_by(Owner.created_at.desc())
         if page_size is not None:
             statement = statement.offset((page - 1) * page_size).limit(page_size)
         owners = list(self.db.scalars(statement).all())
