@@ -159,6 +159,7 @@ export function SettingsScreen() {
   const [teamEditMessage, setTeamEditMessage] = useState<string | null>(null);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
   const canManageCatalog = role === "clinic_admin";
+  const canEditServices = canManageCatalog || role === "medico_veterinario";
   const moneyPreferences = resolveMoneyPreferences(state.preferences);
 
   async function loadSettings() {
@@ -467,18 +468,20 @@ export function SettingsScreen() {
   }
 
   function openNewServiceForm() {
+    if (!canManageCatalog) return;
     setServiceFormState(getInitialServiceFormState(state.services.length + 1));
     setState((current) => ({ ...current, catalogMessage: null, successMessage: null }));
   }
 
   function openEditServiceForm(service: ClinicServiceItem) {
+    if (!canEditServices) return;
     setServiceFormState(serviceToFormState(service));
     setState((current) => ({ ...current, catalogMessage: null, successMessage: null }));
   }
 
   async function handleSaveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!serviceFormState || !canManageCatalog) {
+    if (!serviceFormState || !(serviceFormState.id ? canEditServices : canManageCatalog)) {
       return;
     }
 
@@ -1167,7 +1170,7 @@ export function SettingsScreen() {
                               </button>
                               <button
                                 className="secondary-button"
-                                disabled={!canManageCatalog}
+                                disabled={!canEditServices}
                                 onClick={() => openEditServiceForm(service)}
                                 type="button"
                               >
