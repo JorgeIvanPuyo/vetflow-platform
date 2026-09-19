@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from app.models.user import User
 
 
@@ -64,7 +66,7 @@ def test_clinic_admin_can_create_and_list_services(client, db_session, tenant):
     assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
 
 
-def test_non_clinic_admin_cannot_mutate_services(client, db_session, tenant):
+def test_non_clinic_admin_cannot_create_services(client, db_session, tenant):
     vet = _create_user(
         db_session,
         tenant,
@@ -81,6 +83,122 @@ def test_non_clinic_admin_cannot_mutate_services(client, db_session, tenant):
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario"])
+def test_service_editor_can_update_all_form_fields(client, db_session, tenant, role):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    editor = _create_user(db_session, tenant, "editor@example.com", "Editor", role)
+    service = _create_service(client, tenant, admin)
+    payload = _service_payload(
+        code="EDIT", name="Servicio editado", description="Nueva descripción",
+        price="35.50", kind="procedure", default_duration_minutes=45,
+        calendar_color="#123456", is_bookable=False, sort_order=25,
+    )
+    url = f"/api/v1/services/{service['id']}"
+
+    response = client.patch(url, headers=_user_headers(editor.email), json=payload)
+
+    assert response.status_code == 200
+    persisted = client.get(url, headers=_user_headers(editor.email)).json()["data"]
+    for field, value in payload.items():
+        assert persisted[field] == value
+    assert persisted["tenant_id"] == str(tenant.id)
+    assert persisted["created_by_user_id"] == str(admin.id)
+    assert persisted["is_active"] is True
+    db_session.refresh(editor)
+    assert editor.role == role
+
+
+def test_vet_cannot_edit_foreign_service_even_with_forged_tenant_headers(
+    client, db_session, tenant, other_tenant, monkeypatch,
+):
+    import app.core.tenant as tenant_core
+
+    admin = _create_user(db_session, other_tenant, "foreign@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, other_tenant, admin, price="25.00")
+    monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": vet.email})
+    url = f"/api/v1/services/{service['id']}"
+
+    response = client.patch(url, headers={
+        "Authorization": "Bearer test-token",
+        "X-Tenant-Id": str(other_tenant.id),
+        "X-Acting-Tenant-Id": str(other_tenant.id),
+    }, json={"price": "1.00", "tenant_id": str(tenant.id)})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "service_not_found"
+    # Read back as the owner without the mocked bearer identity.
+    persisted = client.get(url, headers=_user_headers(admin.email)).json()["data"]
+    assert persisted["price"] == "25.00"
+    assert persisted["tenant_id"] == str(other_tenant.id)
+
+
+@pytest.mark.parametrize("role", ["contador", "superadmin", None])
+def test_other_roles_still_cannot_edit_services(client, db_session, tenant, role):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin)
+    headers = _headers(tenant)
+    if role:
+        user = _create_user(db_session, tenant, "other@example.com", "Other", role)
+        headers = _user_headers(user.email)
+
+    response = client.patch(
+        f"/api/v1/services/{service['id']}", headers=headers, json={"name": "Changed"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("operation", ["activate", "deactivate", "reorder", "restore-defaults"])
+def test_vet_cannot_perform_admin_service_operations(client, db_session, tenant, operation):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+    if operation == "activate":
+        client.post(f"/api/v1/services/{service['id']}/deactivate", headers=_user_headers(admin.email))
+    if operation == "reorder":
+        response = client.patch("/api/v1/services/reorder", headers=_user_headers(vet.email),
+                                json={"items": [{"id": service["id"], "sort_order": 1}]})
+    else:
+        path = operation if operation == "restore-defaults" else f"{service['id']}/{operation}"
+        response = client.post(f"/api/v1/services/{path}", headers=_user_headers(vet.email))
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_vet_edit_cannot_change_activation_or_tenant(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+    url = f"/api/v1/services/{service['id']}"
+    for active in [True, False]:
+        if not active:
+            client.post(f"{url}/deactivate", headers=_user_headers(admin.email))
+        response = client.patch(url, headers=_user_headers(vet.email), json={
+            "description": "Editado", "is_active": not active, "tenant_id": str(other_tenant.id),
+        })
+        assert response.status_code == 200
+        assert response.json()["data"]["is_active"] is active
+        assert response.json()["data"]["tenant_id"] == str(tenant.id)
+
+
+@pytest.mark.parametrize("payload", [
+    {"price": "-0.01"}, {"price": "1.001"}, {"default_duration_minutes": 0},
+    {"default_duration_minutes": 481}, {"kind": "invalid"}, {"name": " "}, {"code": None},
+])
+def test_vet_edit_preserves_validation(client, db_session, tenant, payload):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+
+    response = client.patch(f"/api/v1/services/{service['id']}",
+                            headers=_user_headers(vet.email), json=payload)
+
+    assert response.status_code == 422
 
 
 def test_duplicate_active_service_name_is_normalized_per_tenant(
