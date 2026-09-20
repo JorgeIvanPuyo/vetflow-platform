@@ -18,13 +18,8 @@ import {
   dashboardQuickPeriods,
   DashboardQuickPeriod,
   formatDashboardDateTime,
-  formatDashboardTime,
   getConsultationStatusClass,
   getConsultationStatusLabel,
-  getDashboardAppointmentStatusClass,
-  getDashboardAppointmentStatusLabel,
-  getDashboardAppointmentTypeLabel,
-  getDashboardCardLabel,
   getDashboardFollowUpStatusClass,
   getDashboardFollowUpStatusLabel,
   getDashboardFollowUpTypeClass,
@@ -32,6 +27,9 @@ import {
   getDashboardFileTypeLabel,
   getKpiIcon,
 } from "@/features/dashboard/components/dashboard-helpers";
+import { DashboardAppointmentsCard } from "@/features/dashboard/components/dashboard-appointments-card";
+import { buildDashboardAppointmentFilters } from "@/features/dashboard/components/dashboard-appointments";
+import { getAppointments } from "@/services/appointments";
 import { getApiErrorMessage } from "@/lib/api";
 import { getClinicTeam } from "@/services/clinic";
 import { getDashboardSummary } from "@/services/dashboard";
@@ -50,6 +48,7 @@ type DashboardState = {
   isRefreshing: boolean;
   summary: DashboardSummary | null;
   team: ClinicTeamMember[];
+  appointments: DashboardAppointmentItem[];
   errorMessage: string | null;
 };
 
@@ -60,6 +59,7 @@ const initialState: DashboardState = {
   isRefreshing: false,
   summary: null,
   team: [],
+  appointments: [],
   errorMessage: null,
 };
 
@@ -105,13 +105,18 @@ export function DashboardHome() {
     }));
 
     try {
-      const [summaryResult, teamResult] = await Promise.allSettled([
+      const [summaryResult, teamResult, appointmentsResult] = await Promise.allSettled([
         getDashboardSummary(requestFilters),
         getClinicTeam(),
+        getAppointments(buildDashboardAppointmentFilters(assignedUserId)),
       ]);
 
       if (summaryResult.status === "rejected") {
         throw summaryResult.reason;
+      }
+
+      if (appointmentsResult.status === "rejected") {
+        throw appointmentsResult.reason;
       }
 
       hasLoadedRef.current = true;
@@ -120,6 +125,7 @@ export function DashboardHome() {
         isLoading: false,
         isRefreshing: false,
         summary: summaryResult.value.data,
+        appointments: appointmentsResult.value.data,
         team:
           teamResult.status === "fulfilled" ? teamResult.value.data : current.team,
         errorMessage: null,
@@ -132,7 +138,7 @@ export function DashboardHome() {
         errorMessage: getApiErrorMessage(error),
       }));
     }
-  }, [requestFilters]);
+  }, [assignedUserId, requestFilters]);
 
   useEffect(() => {
     void loadDashboard();
@@ -240,27 +246,7 @@ export function DashboardHome() {
               )}
             </DashboardSection>
 
-            <DashboardSection
-              className="dashboard-section--appointments"
-              title={getDashboardCardLabel(periodFilter, "Turnos de hoy", "Turnos del período")}
-              subtitle="Primeros turnos registrados en agenda"
-              actionHref="/agenda"
-              actionLabel="Ver agenda"
-            >
-              {summary.appointments_today.length > 0 ? (
-                <div className="dashboard-list">
-                  {summary.appointments_today.slice(0, 3).map((appointment) => (
-                    <DashboardAppointmentRow key={appointment.id} appointment={appointment} />
-                  ))}
-                </div>
-              ) : (
-                <DashboardEmptyMessage>
-                  {periodFilter === "today"
-                    ? "No hay turnos programados para hoy."
-                    : "No hay turnos registrados para este período."}
-                </DashboardEmptyMessage>
-              )}
-            </DashboardSection>
+            <DashboardAppointmentsCard appointments={state.appointments} />
           </div>
 
           <div className="dashboard-secondary-grid">
@@ -600,35 +586,6 @@ function DashboardSection({
       </div>
       {children}
     </section>
-  );
-}
-
-function DashboardAppointmentRow({
-  appointment,
-}: {
-  appointment: DashboardAppointmentItem;
-}) {
-  return (
-    <Link className="dashboard-row" href={`/agenda/${appointment.id}`}>
-      <div className="dashboard-row__main">
-        <div className="dashboard-row__meta">
-          <span className="dashboard-row__time">
-            {formatDashboardTime(appointment.start_at)} - {formatDashboardTime(appointment.end_at)}
-          </span>
-          <span className={getDashboardAppointmentStatusClass(appointment.status)}>
-            {getDashboardAppointmentStatusLabel(appointment.status)}
-          </span>
-        </div>
-        <h3>{appointment.title}</h3>
-        <p>
-          {appointment.patient_name || "Paciente por confirmar"}
-          {appointment.assigned_user_name ? ` · ${appointment.assigned_user_name}` : ""}
-        </p>
-      </div>
-      <span className="dashboard-row__badge">
-        {getDashboardAppointmentTypeLabel(appointment.appointment_type)}
-      </span>
-    </Link>
   );
 }
 
