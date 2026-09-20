@@ -7369,6 +7369,49 @@ a.purchase-dashboard-metric:focus-visible {
   background: rgba(246, 243, 236, 0.72);
 }
 
+.dashboard-section--appointments {
+  background: var(--color-surface);
+}
+
+.dashboard-appointments-group {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-appointments-group + .dashboard-appointments-group {
+  margin-top: 12px;
+}
+
+.dashboard-appointments-group h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.dashboard-appointment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 4px 0;
+}
+
+.dashboard-appointment time {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.dashboard-appointment__details {
+  display: grid;
+  flex: 1 1 160px;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.dashboard-appointment__details > span {
+  color: var(--color-text-muted);
+}
+
 .dashboard-empty {
   color: var(--color-text-muted);
   font-size: 1.05rem;
