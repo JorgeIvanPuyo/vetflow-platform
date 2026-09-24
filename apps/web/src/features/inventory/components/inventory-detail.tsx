@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import styles from "./inventory-detail.module.css";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import { InventoryItemForm } from "@/features/inventory/components/inventory-item-form";
@@ -61,6 +63,8 @@ import type { InventoryItem } from "@/types/api";
 
 type InventoryDetailProps = {
   itemId: string;
+  onClose?: () => void;
+  onChanged?: () => void;
 };
 
 type InventoryDetailState = {
@@ -109,7 +113,7 @@ const initialMovementState: MovementState = {
   totalPages: 1,
 };
 
-export function InventoryDetail({ itemId }: InventoryDetailProps) {
+export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inventoryReturnTo = getInventoryReturnTo(searchParams.get("return_to"));
@@ -137,6 +141,20 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const [exitFormState, setExitFormState] = useState<InventoryExitFormState>(
     initialInventoryExitFormState,
   );
+
+  const content = useRef<HTMLDivElement>(null);
+  const flowOpen = isEditOpen || isDeleteOpen || isEntryOpen || isExitOpen;
+  useEffect(() => {
+    if (!onClose || !flowOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    content.current?.querySelector<HTMLElement>('[role="dialog"] button')?.focus();
+    return () => previousFocus?.focus({ preventScroll: true });
+  }, [flowOpen, onClose]);
+
+  function returnToInventory() {
+    if (onClose) onClose();
+    else router.push(inventoryReturnTo);
+  }
 
   const loadItem = useCallback(async () => {
     try {
@@ -327,7 +345,8 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
         successMessage: "Item actualizado correctamente.",
       }));
       setIsEditOpen(false);
-      router.push(inventoryReturnTo);
+      onChanged?.();
+      returnToInventory();
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -355,6 +374,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
     try {
       await createInventoryEntry(itemId, inventoryEntryFormToPayload(entryFormState));
+      onChanged?.();
       await refreshDetail(1, movementFilter);
       closeEntry();
       setState((current) => ({
@@ -392,6 +412,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
     try {
       await createInventoryExit(itemId, inventoryExitFormToPayload(exitFormState));
+      onChanged?.();
       await refreshDetail(1, movementFilter);
       closeExit();
       setState((current) => ({
@@ -428,7 +449,8 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
     try {
       await deleteInventoryItem(itemId);
-      router.push(inventoryReturnTo);
+      onChanged?.();
+      returnToInventory();
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -462,15 +484,21 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
   const salePriceWithTax = item.sale_price_with_tax_ars ?? item.sale_price_ars;
 
   return (
-    <div className="page-stack inventory-detail-page">
+    <div ref={content} className={`page-stack inventory-detail-page ${styles.detail} ${onClose ? styles.embedded : ""}`}
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || !flowOpen) return;
+        event.preventDefault(); event.stopPropagation();
+        if (isEditOpen) closeEdit();
+        else if (isEntryOpen) closeEntry();
+        else if (isExitOpen) closeExit();
+        else setIsDeleteOpen(false);
+      }}>
+      <div className={styles.overview} hidden={Boolean(onClose && flowOpen)}>
       <section className="detail-hero inventory-detail-hero">
-        <Link className="back-link" href={inventoryReturnTo}>
+        {!onClose ? <Link className="back-link" href={inventoryReturnTo}>
           Volver a inventario
-        </Link>
+        </Link> : null}
         <div className="detail-hero__main">
-          <span className="inventory-form-hero__icon" aria-hidden="true">
-            <Package size={28} />
-          </span>
           <div>
             <h1>{item.name}</h1>
             <p>
@@ -497,11 +525,10 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
       {state.successMessage ? <div className="success-state">{state.successMessage}</div> : null}
 
-      <section className="summary-grid">
+      <section className={styles.sections}>
         <article className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Resumen</p>
-            <h2>Estado actual</h2>
+            <h2>Resumen</h2>
           </div>
           <dl className="metric-list inventory-metric-list">
             <div>
@@ -513,12 +540,8 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               <dd>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</dd>
             </div>
             <div>
-              <dt>Precio compra sin IVA</dt>
-              <dd>{formatInventoryCurrency(item.purchase_price_ars, moneyPreferences)}</dd>
-            </div>
-            <div>
-              <dt>Precio final de venta</dt>
-              <dd>{formatInventoryCurrency(salePriceWithTax, moneyPreferences)}</dd>
+              <dt>Estado</dt>
+              <dd>{item.is_active ? "Activo" : "Inactivo"}</dd>
             </div>
           </dl>
 
@@ -547,8 +570,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
 
         <article className="panel">
           <div className="section-heading">
-            <p className="eyebrow">Precios</p>
-            <h2>Configuración comercial</h2>
+            <h2>Precios</h2>
           </div>
           <dl className="detail-grid">
             <div>
@@ -595,18 +617,13 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               <dt>Redondear precio</dt>
               <dd>{item.round_sale_price ? "Sí" : "No"}</dd>
             </div>
-            <div>
-              <dt>Proveedor habitual</dt>
-              <dd>{item.supplier_name ?? item.supplier ?? "No indicado"}</dd>
-            </div>
           </dl>
         </article>
       </section>
 
       <section className="panel">
         <div className="section-heading">
-          <p className="eyebrow">Producto</p>
-          <h2>Detalles del item</h2>
+          <h2>Detalles</h2>
         </div>
         <dl className="detail-grid">
           <div>
@@ -657,10 +674,9 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
       <section className="panel">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Movimientos</p>
             <h2>Historial de stock</h2>
           </div>
-          <div className="inventory-movement-filters" role="tablist" aria-label="Filtrar movimientos">
+          <div className="inventory-movement-filters" role="group" aria-label="Filtrar movimientos">
             {inventoryMovementFilterOptions.map((option) => (
               <button
                 key={option.value}
@@ -668,6 +684,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
                 className={`secondary-button secondary-button--compact${
                   movementFilter === option.value ? " secondary-button--active" : ""
                 }`}
+                aria-pressed={movementFilter === option.value}
                 onClick={() => {
                   setMovementFilter(option.value);
                   void loadMovements(1, option.value);
@@ -809,6 +826,8 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
         ) : null}
       </section>
 
+      </div>
+
       {isEditOpen ? (
         <div className="modal-backdrop" role="presentation" onClick={closeEdit}>
           <section
@@ -833,7 +852,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               formState={formState}
               onChange={setFormState}
               onSubmit={handleSave}
-              onCancel={() => router.push(inventoryReturnTo)}
+              onCancel={onClose ? closeEdit : returnToInventory}
               isSubmitting={state.isSaving}
               submitLabel="Guardar cambios"
               flowMessage={state.flowMessage}
