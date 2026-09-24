@@ -10,6 +10,10 @@ class FirebaseTokenVerificationError(Exception):
     """Raised when Firebase Admin cannot validate an ID token."""
 
 
+class FirebaseVerificationUnavailableError(Exception):
+    """Verification could not complete; does not imply invalid credentials."""
+
+
 class FirebaseUserProvisioningError(Exception):
     """Raised when Firebase Admin cannot create or manage a user account."""
 
@@ -58,10 +62,19 @@ def verify_id_token(id_token: str) -> dict[str, Any]:
     try:
         initialize_firebase_app()
         from firebase_admin import auth
+    except Exception as exc:
+        raise FirebaseVerificationUnavailableError("Authentication verification unavailable") from exc
 
+    try:
         return auth.verify_id_token(id_token)
-    except Exception as exc:  # Firebase exceptions vary by credentials/runtime.
+    except (auth.InvalidIdTokenError, auth.UserDisabledError) as exc:
+        # ExpiredIdTokenError and RevokedIdTokenError subclass InvalidIdTokenError.
         raise FirebaseTokenVerificationError("Invalid Firebase ID token") from exc
+    except auth.CertificateFetchError as exc:
+        raise FirebaseVerificationUnavailableError("Authentication verification unavailable") from exc
+    except Exception as exc:
+        # Transport, SDK service/configuration and unknown internal errors fail closed.
+        raise FirebaseVerificationUnavailableError("Authentication verification unavailable") from exc
 
 
 def create_firebase_user(email: str, display_name: str, password: str) -> str:

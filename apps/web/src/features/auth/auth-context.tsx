@@ -36,7 +36,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isTokenLoading, setIsTokenLoading] = useState(false);
+  const isTokenLoading = false;
 
   useEffect(() => {
     let isMounted = true;
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getFirebaseAuth().currentUser?.getIdToken() ?? null,
     );
 
-    const unsubscribe = onAuthStateChanged(firebaseAuth, async (nextUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (nextUser) => {
       if (!isMounted) {
         return;
       }
@@ -54,19 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(nextUser);
       setIsLoading(false);
 
-      if (!nextUser) {
-        setIsTokenLoading(false);
-        return;
-      }
-
-      setIsTokenLoading(true);
-      try {
-        await nextUser.getIdToken();
-      } finally {
-        if (isMounted) {
-          setIsTokenLoading(false);
-        }
-      }
+      // Token acquisition is part of the bounded backend session validation.
     });
 
     return () => {

@@ -8,10 +8,13 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
 } from "react";
 
 import { applyStoredActingTenant } from "@/lib/acting-tenant";
-import { getApiErrorMessage } from "@/lib/api";
+import { useAuth } from "./auth-context";
+import { validateSession, type SessionStatus } from "./session-bootstrap";
+import { SessionStatusScreen } from "./components/session-status-screen";
 import { getCurrentUser } from "@/services/auth";
 import type { AppRole, CurrentUser } from "@/types/api";
 
@@ -33,27 +36,40 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     applyStoredActingTenant();
     return null;
   });
+  const { user, logout } = useAuth();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<SessionStatus>("validating-session");
+  const active = useRef<{ controller: AbortController; promise: Promise<void> } | null>(null);
+  const isLoading = status === "validating-session" || status === "waiting-for-server";
+  const errorMessage = status.endsWith("failed") ? status : null;
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const response = await getCurrentUser();
-      setCurrentUser(response.data);
-    } catch (error) {
-      setCurrentUser(null);
-      setErrorMessage(getApiErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const refresh = useCallback((): Promise<void> => {
+    if (active.current) return active.current.promise;
+    const controller = new AbortController();
+    setCurrentUser(null);
+    setStatus("validating-session");
+    const promise = validateSession({
+      request: (signal) => getCurrentUser(signal),
+      refreshToken: async () => {
+        if (!user) throw new Error("No local session");
+        return user.getIdToken(true);
+      },
+      signal: controller.signal,
+      onStatus: setStatus,
+    }).then((result) => {
+      if (!result || controller.signal.aborted) return;
+      setCurrentUser(result.data?.data ?? null);
+      setStatus(result.status);
+    }).finally(() => {
+      if (active.current?.controller === controller) active.current = null;
+    });
+    active.current = { controller, promise };
+    return promise;
+  }, [user]);
 
   useEffect(() => {
     void refresh();
+    return () => { active.current?.controller.abort(); active.current = null; };
   }, [refresh]);
 
   const value = useMemo<CurrentUserContextValue>(
@@ -66,6 +82,10 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     }),
     [currentUser, errorMessage, isLoading, refresh],
   );
+
+  if (status !== "authenticated" || !currentUser) {
+    return <SessionStatusScreen status={status} onRetry={() => void refresh()} onLogin={() => void logout()} />;
+  }
 
   return (
     <CurrentUserContext.Provider value={value}>

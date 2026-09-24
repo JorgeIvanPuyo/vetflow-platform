@@ -1,7 +1,8 @@
 "use client";
 
-import { Stethoscope } from "lucide-react";
 import { ReactNode } from "react";
+
+import { SessionStatusScreen } from "./session-status-screen";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { AuthProvider, useAuth } from "@/features/auth/auth-context";
@@ -20,7 +21,7 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   const { user, isLoading, isTokenLoading } = useAuth();
 
   if (isLoading || isTokenLoading) {
-    return <SessionLoadingScreen />;
+    return <SessionStatusScreen />;
   }
 
   if (!user) {
@@ -28,25 +29,8 @@ function AuthenticatedContent({ children }: { children: ReactNode }) {
   }
 
   return (
-    <CurrentUserProvider>
+    <CurrentUserProvider key={user.uid}>
       <AppShell>{children}</AppShell>
     </CurrentUserProvider>
-  );
-}
-
-function SessionLoadingScreen() {
-  return (
-    <main className="auth-loading-screen" aria-live="polite" aria-busy="true">
-      <section className="auth-loading-card">
-        <span className="brand__mark brand__mark--large" aria-hidden="true">
-          <Stethoscope size={28} />
-        </span>
-        <div>
-          <strong>VetClinic</strong>
-          <p>Cargando tu sesión...</p>
-        </div>
-        <span className="loading-spinner" aria-hidden="true" />
-      </section>
-    </main>
   );
 }

@@ -4,6 +4,7 @@ type RequestOptions = {
   body?: unknown;
   isMultipart?: boolean;
   retryTransient?: boolean;
+  signal?: AbortSignal;
 };
 
 type BlobResponse = {
@@ -31,6 +32,21 @@ const AUTH_TOKEN_WAIT_ATTEMPTS = 30;
 const AUTH_TOKEN_WAIT_MS = 100;
 const REQUEST_RETRY_DELAYS_MS = [700, 1400];
 
+type PageReadHandler = <T>(key: string, read: (signal: AbortSignal) => Promise<T>) => Promise<T>;
+let pageReadHandler: PageReadHandler | null = null;
+
+export function setPageReadHandler(handler: PageReadHandler) {
+  pageReadHandler = handler;
+  return () => { if (pageReadHandler === handler) pageReadHandler = null; };
+}
+
+// Shared classification: authorization, validation and missing resources are not connectivity failures.
+export function isTransientApiError(error: unknown) {
+  return (error instanceof ApiClientError &&
+    (error.code === "network_error" || isTransientStatus(error.status))) ||
+    (error as { code?: string } | null)?.code === "auth/network-request-failed";
+}
+
 let authTokenProvider: AuthTokenProvider | null = null;
 let actingTenantId: string | null = null;
 
@@ -49,7 +65,11 @@ async function request<T>(
   method: HttpMethod,
   options: RequestOptions = {},
 ): Promise<T> {
-  const token = await waitForAuthToken();
+  if (method === "GET" && options.retryTransient !== false && !options.signal && pageReadHandler) {
+    return pageReadHandler(path, (signal) => request<T>(path, method, { ...options, signal, retryTransient: false }));
+  }
+  const token = await waitForAuthToken(options.signal);
+  options.signal?.throwIfAborted();
 
   if (!token) {
     throw new ApiClientError(
@@ -74,6 +94,7 @@ async function request<T>(
 
   const requestInit: RequestInit = {
     method,
+    signal: options.signal,
     headers,
     cache: "no-store",
     body: getRequestBody(options),
@@ -82,7 +103,7 @@ async function request<T>(
   const response = await fetchWithTransientRetry(
     `${API_BASE_URL}${path}`,
     requestInit,
-    { retryTransient: options.retryTransient ?? true },
+    { retryTransient: method === "GET" && (options.retryTransient ?? true) },
   );
 
   if (!response.ok) {
@@ -120,7 +141,8 @@ async function requestBlob(
   method: HttpMethod,
   options: RequestOptions = {},
 ): Promise<BlobResponse> {
-  const token = await waitForAuthToken();
+  const token = await waitForAuthToken(options.signal);
+  options.signal?.throwIfAborted();
 
   if (!token) {
     throw new ApiClientError(
@@ -145,10 +167,11 @@ async function requestBlob(
 
   const response = await fetchWithTransientRetry(`${API_BASE_URL}${path}`, {
     method,
+    signal: options.signal,
     headers,
     cache: "no-store",
     body: getRequestBody(options),
-  });
+  }, { retryTransient: method === "GET" });
 
   if (!response.ok) {
     const fallbackMessage = `Request failed with status ${response.status}`;
@@ -195,8 +218,9 @@ function getRequestBody(options: RequestOptions): BodyInit | undefined {
   return JSON.stringify(options.body);
 }
 
-async function waitForAuthToken() {
+async function waitForAuthToken(signal?: AbortSignal) {
   for (let attempt = 0; attempt < AUTH_TOKEN_WAIT_ATTEMPTS; attempt += 1) {
+    signal?.throwIfAborted();
     const token = authTokenProvider ? await authTokenProvider() : null;
 
     if (token) {
@@ -214,7 +238,6 @@ async function fetchWithTransientRetry(
   init: RequestInit,
   options: { retryTransient?: boolean } = {},
 ) {
-  let lastError: unknown = null;
   const retryTransient = options.retryTransient ?? true;
 
   for (let attempt = 0; attempt <= REQUEST_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -229,7 +252,7 @@ async function fetchWithTransientRetry(
         return response;
       }
     } catch (error) {
-      lastError = error;
+      init.signal?.throwIfAborted();
 
       if (!retryTransient || attempt === REQUEST_RETRY_DELAYS_MS.length) {
         break;
@@ -273,8 +296,12 @@ function getApiErrorMessage(error: unknown) {
     return "Estamos cargando la información. Intenta nuevamente en unos segundos.";
   }
 
-  if (error.status === 401) {
+  if (isConfirmedAuthenticationError(error)) {
     return "Tu sesión expiró. Vuelve a iniciar sesión.";
+  }
+
+  if (error.status === 401) {
+    return "No pudimos verificar tu acceso. Intenta nuevamente.";
   }
 
   if (error.status === 403) {
@@ -293,9 +320,14 @@ function getApiErrorMessage(error: unknown) {
   return error.message;
 }
 
+export function isConfirmedAuthenticationError(error: unknown) {
+  return error instanceof ApiClientError && error.status === 401 &&
+    ["invalid_auth_token", "missing_auth_token", "auth_email_missing"].includes(error.code);
+}
+
 export const api = {
-  get<T>(path: string): Promise<T> {
-    return request<T>(path, "GET");
+  get<T>(path: string, options: Pick<RequestOptions, "signal" | "retryTransient"> = {}): Promise<T> {
+    return request<T>(path, "GET", options);
   },
   getBlob(path: string): Promise<BlobResponse> {
     return requestBlob(path, "GET");
