@@ -16,7 +16,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import {
@@ -27,7 +27,7 @@ import {
   labelPurchaseDocumentType,
   labelPurchaseStatus,
 } from "@/features/purchases/components/purchase-helpers";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
 import { getPurchaseDashboard, getPurchaseFilterOptions } from "@/services/purchases";
 import { getSuppliers } from "@/services/suppliers";
@@ -81,18 +81,26 @@ export function PurchaseDashboardScreen() {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, queryString, router]);
 
+  const loadVersion = useRef(0);
+
   const loadDashboard = useCallback(async () => {
+    const version = ++loadVersion.current;
     if (data) setIsRefreshing(true);
     else setIsLoading(true);
     setErrorMessage(null);
     try {
       const response = await getPurchaseDashboard(filters);
+      if (version !== loadVersion.current) return;
       setData(response.data);
+      setErrorMessage(null);
     } catch (error) {
+      if (version !== loadVersion.current || (error instanceof ApiClientError && error.code === "read_cancelled") || (error instanceof DOMException && error.name === "AbortError")) return;
       setErrorMessage(getApiErrorMessage(error));
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (version === loadVersion.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, [data, filters]);
 
@@ -110,7 +118,10 @@ export function PurchaseDashboardScreen() {
     if (changed) router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, query.dateFrom, query.dateTo, queryString, router]);
 
-  useEffect(() => { void loadDashboard(); }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void loadDashboard();
+    return () => { loadVersion.current += 1; };
+  }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     Promise.all([
