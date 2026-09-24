@@ -12,12 +12,15 @@ import {
   LayoutGrid,
   List,
   Plus,
+  Printer,
   Search,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { InventoryPrintDialog } from "./inventory-print-dialog";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import {
@@ -179,6 +182,7 @@ export function InventoryScreen() {
   const [viewMode, setViewMode] = useState<InventoryViewMode>("cards");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isPrintOpen, setIsPrintOpen] = useState(false);
   const [exportMode, setExportMode] = useState<"all" | "filtered">("filtered");
   const [isExporting, setIsExporting] = useState(false);
   const [exportErrorMessage, setExportErrorMessage] = useState<string | null>(null);
@@ -606,6 +610,10 @@ export function InventoryScreen() {
           >
             <Download size={18} />
             Exportar
+          </button>
+          <button className="secondary-button" type="button" onClick={() => setIsPrintOpen(true)}>
+            <Printer size={18} />
+            Imprimir inventario
           </button>
           <Link className="secondary-button" href="/inventory/import">
             <FileSpreadsheet size={18} />
@@ -1204,6 +1212,10 @@ export function InventoryScreen() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {isPrintOpen ? (
+        <InventoryPrintDialog key={listReturnHref} filters={activeFilters} onClose={() => setIsPrintOpen(false)} />
       ) : null}
 
       {isExportOpen ? (

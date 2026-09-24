@@ -5,6 +5,7 @@ const Module = require('node:module');
 const { test } = require('node:test');
 const ts = require('typescript');
 const React = require('react');
+require.extensions['.css'] = (module) => { module.exports = {}; };
 const root = path.resolve(__dirname, '../..');
 const resolve = Module._resolveFilename;
 Module._resolveFilename = function (name, ...args) { return resolve.call(this, name.startsWith('@/') ? path.join(root, name.slice(2)) : name, ...args); };
@@ -87,6 +88,7 @@ Module._load = function (name, ...args) {
 };
 const { InventoryScreen } = require('./components/inventory-screen.tsx');
 const { InventoryDetail } = require('./components/inventory-detail.tsx');
+const { InventoryPrintDialog } = require('./components/inventory-print-dialog.tsx');
 Module._load = load;
 function mount(component, props) {
   const h = { values: [], effects: [], pending: [], props };
@@ -194,4 +196,75 @@ test('detail entered without context returns to the standard inventory route', a
   reset('/inventory/product-1'); const h = mount(InventoryDetail, { itemId: fixture.id }); await settle(h);
   assert.equal(find(h, n => n.props?.className === 'back-link').props.href, '/inventory');
   click(h, 'Editar'); editForm(h).props.onCancel(); assert.equal(navigations.at(-1), '/inventory'); h.dispose();
+});
+
+
+test('print action passes current filters and closing preserves list URL, search and page', async () => {
+  reset(); const h = mount(InventoryScreen); await settle(h);
+  click(h, 'Imprimir inventario');
+  const dialog = find(h, n => n.type === InventoryPrintDialog);
+  assert.ok(dialog); assert.deepEqual(dialog.props.filters, requests.at(-1));
+  dialog.props.onClose(); h.render();
+  assert.equal(find(h, n => n.type === InventoryPrintDialog), undefined);
+  assert.equal(url.pathname + url.search, context);
+  assert.equal(search(h).props.value, 'alimento & gato');
+  assert.equal(navigations.length, 0); h.dispose();
+});
+
+test('print dialog selects columns, previews all rows and invokes only the frame print dialog', async () => {
+  reset();
+  const original = api.getInventoryItems;
+  const previousDocument = global.document;
+  global.document = { activeElement: { focus() {} } };
+  let closed = false, printed = 0;
+  api.getInventoryItems = async () => ({ data: [fixture], meta: { total: 1 } });
+  const h = mount(InventoryPrintDialog, { filters: { search: 'Alimento', page: 3 }, onClose() { closed = true; } });
+  const boxes = () => nodes(h.tree).filter(n => n.type === 'input' && n.props.type === 'checkbox');
+  try {
+    assert.deepEqual(boxes().map(n => n.props.checked), [true, true, false, false, false, false, false, false, false, false]);
+    boxes()[0].props.onChange(); h.render(); boxes()[1].props.onChange(); h.render();
+    assert.equal(find(h, n => n.type === 'button' && text(n).trim() === 'Vista previa').props.disabled, true);
+    boxes()[0].props.onChange(); h.render(); boxes()[6].props.onChange(); h.render();
+    click(h, 'Vista previa'); await settle(h);
+    const frame = find(h, n => n.type === 'iframe'); assert.ok(frame);
+    assert.match(frame.props.srcDoc, /<th scope="col">Nombre<\/th>/);
+    assert.match(frame.props.srcDoc, />Stock<\/th>/);
+    assert.ok(!frame.props.srcDoc.includes('Precio final'));
+    assert.ok(!frame.props.srcDoc.includes('<button'));
+    frame.ref.current = { contentWindow: { focus() {}, print() { printed += 1; } } };
+    frame.props.onLoad(); h.render(); click(h, 'Imprimir'); assert.equal(printed, 1);
+    click(h, 'Volver al listado'); assert.equal(closed, true);
+  } finally { h.dispose(); api.getInventoryItems = original; global.document = previousDocument; }
+});
+
+test('closing print during loading discards the response and stops requesting pages', async () => {
+  reset(); const original = api.getInventoryItems, previousDocument = global.document;
+  global.document = { activeElement: null };
+  let resolvePage, calls = 0;
+  api.getInventoryItems = () => { calls += 1; return new Promise(resolve => { resolvePage = resolve; }); };
+  const h = mount(InventoryPrintDialog, { filters: {}, onClose() {} });
+  try {
+    click(h, 'Vista previa'); assert.match(text(h.tree), /Cargando productos/);
+    click(h, 'Volver al listado'); h.dispose();
+    resolvePage({ data: [fixture], meta: { total: 200 } }); await tick(); h.render();
+    assert.equal(calls, 1); assert.equal(find(h, n => n.type === 'iframe'), undefined);
+  } finally { api.getInventoryItems = original; global.document = previousDocument; }
+});
+
+
+test('empty and failed print loads show feedback, allow retry and never expose partial preview', async () => {
+  reset(); const original = api.getInventoryItems, previousDocument = global.document;
+  global.document = { activeElement: null };
+  const h = mount(InventoryPrintDialog, { filters: {}, onClose() {} });
+  try {
+    api.getInventoryItems = async () => ({ data: [], meta: { total: 0 } });
+    click(h, 'Vista previa'); await settle(h);
+    assert.match(text(h.tree), /No hay productos/); assert.equal(find(h, n => n.type === 'iframe'), undefined);
+    api.getInventoryItems = async () => { throw new Error('No se pudo cargar'); };
+    click(h, 'Vista previa'); await settle(h);
+    assert.match(text(h.tree), /No se pudo cargar/); assert.equal(find(h, n => n.type === 'iframe'), undefined);
+    api.getInventoryItems = async () => ({ data: [fixture], meta: { total: 1 } });
+    click(h, 'Vista previa'); await settle(h);
+    assert.ok(find(h, n => n.type === 'iframe')); assert.equal(find(h, n => n.props?.role === 'alert'), undefined);
+  } finally { h.dispose(); api.getInventoryItems = original; global.document = previousDocument; }
 });
