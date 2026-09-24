@@ -153,6 +153,7 @@ export function InventoryScreen() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
+  const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const latestLoadRef = useRef(0);
   const latestFilterOptionsLoadRef = useRef(0);
   const [state, setState] = useState<InventoryScreenState>(initialState);
@@ -161,7 +162,17 @@ export function InventoryScreen() {
     isLoading: true,
     errorMessage: null,
   });
-  const [queryInput, setQueryInput] = useState("");
+  const [searchInput, setSearchInput] = useState({
+    source: queryState.search,
+    value: queryState.search,
+  });
+  // A URL change must take precedence over the draft before effects run.
+  const queryInput = searchInput.source === queryState.search
+    ? searchInput.value
+    : queryState.search;
+  function setQueryInput(value: string) {
+    setSearchInput({ source: queryState.search, value });
+  }
   const [draftFilterState, setDraftFilterState] = useState<InventoryFilterState>(
     initialInventoryFilterState,
   );
@@ -185,7 +196,6 @@ export function InventoryScreen() {
   const [isBulkPreviewing, setIsBulkPreviewing] = useState(false);
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
 
-  const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const { filterState, legacyStatus, page, pageSize } = queryState;
   const filterOptions = filterOptionsState.data;
 
@@ -351,7 +361,7 @@ export function InventoryScreen() {
   }, [pathname, queryString, router]);
 
   useEffect(() => {
-    setQueryInput(queryState.search);
+    setSearchInput({ source: queryState.search, value: queryState.search });
   }, [queryState.search]);
 
   useEffect(() => {

@@ -327,6 +327,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
         successMessage: "Item actualizado correctamente.",
       }));
       setIsEditOpen(false);
+      router.push(inventoryReturnTo);
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -832,7 +833,7 @@ export function InventoryDetail({ itemId }: InventoryDetailProps) {
               formState={formState}
               onChange={setFormState}
               onSubmit={handleSave}
-              onCancel={closeEdit}
+              onCancel={() => router.push(inventoryReturnTo)}
               isSubmitting={state.isSaving}
               submitLabel="Guardar cambios"
               flowMessage={state.flowMessage}
