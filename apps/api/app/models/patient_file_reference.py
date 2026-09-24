@@ -32,6 +32,12 @@ class PatientFileReference(BaseModel):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    file_type_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     bucket_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -50,6 +56,16 @@ class PatientFileReference(BaseModel):
         back_populates="file_references",
     )
     created_by_user: Mapped[User | None] = relationship("User")
+    file_type_catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
+
+    @property
+    def file_type_catalog_item_name(self) -> str | None:
+        if (
+            self.file_type_catalog_item is None
+            or self.file_type_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.file_type_catalog_item.name
 
     @property
     def created_by_user_name(self) -> str | None:

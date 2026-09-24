@@ -65,17 +65,28 @@ def verify_id_token(id_token: str) -> dict[str, Any]:
 
 
 def create_firebase_user(email: str, display_name: str, password: str) -> str:
-    """Create a Firebase Auth account and return its uid."""
+    """Create a Firebase Auth account and return its uid.
+
+    Idempotent on "email already exists": a previous provisioning attempt may
+    have created the Firebase account and then failed before the matching DB
+    row was committed (e.g. tenant/user creation rolled back). Without this,
+    that email would be permanently stuck — the retry's local "does this user
+    already exist" check only looks at our DB, not Firebase, so it would reach
+    here again and fail the same way forever.
+    """
     try:
         initialize_firebase_app()
         from firebase_admin import auth
 
-        record = auth.create_user(
-            email=email,
-            display_name=display_name,
-            password=password,
-        )
-        return record.uid
+        try:
+            record = auth.create_user(
+                email=email,
+                display_name=display_name,
+                password=password,
+            )
+            return record.uid
+        except auth.EmailAlreadyExistsError:
+            return auth.get_user_by_email(email).uid
     except Exception as exc:  # Firebase exceptions vary by credentials/runtime.
         raise FirebaseUserProvisioningError(
             "Could not create Firebase user"

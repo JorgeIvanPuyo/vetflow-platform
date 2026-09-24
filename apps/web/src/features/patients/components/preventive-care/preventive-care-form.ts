@@ -8,6 +8,7 @@ import type {
 export type PreventiveCareFormState = {
   name: string;
   care_type: PreventiveCareType;
+  catalog_item_id: string;
   applied_at: string;
   next_due_at: string;
   lot_number: string;
@@ -34,6 +35,7 @@ export function createInitialPreventiveCareFormState(): PreventiveCareFormState 
   return {
     name: "",
     care_type: "vaccine",
+    catalog_item_id: "",
     applied_at: toDateTimeLocalValue(new Date()),
     next_due_at: "",
     lot_number: "",
@@ -46,6 +48,7 @@ export function toPreventiveCareFormState(record: PreventiveCare): PreventiveCar
   return {
     name: record.name,
     care_type: record.care_type,
+    catalog_item_id: record.catalog_item_id ?? "",
     applied_at: toDateTimeLocalValue(record.applied_at),
     next_due_at: record.next_due_at ? toDateTimeLocalValue(record.next_due_at) : "",
     lot_number: record.lot_number ?? "",
@@ -60,6 +63,7 @@ export function toPreventiveCarePayload(
   return {
     name: formState.name.trim(),
     care_type: formState.care_type,
+    catalog_item_id: formState.catalog_item_id || null,
     applied_at: new Date(formState.applied_at).toISOString(),
     next_due_at: formState.next_due_at ? new Date(formState.next_due_at).toISOString() : null,
     lot_number: formState.lot_number.trim() || null,

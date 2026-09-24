@@ -22,7 +22,10 @@ class FileReferenceRepository:
         statement = select(PatientFileReference).where(
             PatientFileReference.id == file_reference_id,
             PatientFileReference.tenant_id == tenant_id,
-        ).options(selectinload(PatientFileReference.created_by_user))
+        ).options(
+            selectinload(PatientFileReference.created_by_user),
+            selectinload(PatientFileReference.file_type_catalog_item),
+        )
         return self.db.scalar(statement)
 
     def list_by_patient(
@@ -34,7 +37,10 @@ class FileReferenceRepository:
                 PatientFileReference.tenant_id == tenant_id,
                 PatientFileReference.patient_id == patient_id,
             )
-            .options(selectinload(PatientFileReference.created_by_user))
+            .options(
+                selectinload(PatientFileReference.created_by_user),
+                selectinload(PatientFileReference.file_type_catalog_item),
+            )
             .order_by(PatientFileReference.created_at.desc())
         )
         file_references = list(self.db.scalars(statement).all())

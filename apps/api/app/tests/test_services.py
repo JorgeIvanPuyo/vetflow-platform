@@ -1,0 +1,408 @@
+import uuid
+
+import pytest
+
+from app.models.user import User
+
+
+def _headers(tenant) -> dict[str, str]:
+    return {"X-Tenant-Id": str(tenant.id)}
+
+
+def _user_headers(email: str) -> dict[str, str]:
+    return {"X-User-Email": email}
+
+
+def _create_user(db_session, tenant, email: str, full_name: str, role: str) -> User:
+    user = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email=email,
+        full_name=full_name,
+        role=role,
+        is_active=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+def _service_payload(**overrides) -> dict:
+    payload = {
+        "code": "CONSULTA",
+        "name": "Consulta general",
+        "description": "Atencion clinica general",
+        "kind": "consultation",
+        "default_duration_minutes": 30,
+        "calendar_color": "#2563eb",
+        "is_bookable": True,
+        "sort_order": 10,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_service(client, tenant, admin, **overrides) -> dict:
+    response = client.post(
+        "/api/v1/services",
+        headers=_user_headers(admin.email),
+        json=_service_payload(**overrides),
+    )
+    assert response.status_code == 201
+    return response.json()["data"]
+
+
+def test_clinic_admin_can_create_and_list_services(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "admin@example.com", "Clinic Admin", "clinic_admin")
+
+    created = _create_service(client, tenant, admin)
+    response = client.get("/api/v1/services", headers=_headers(tenant))
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == created["id"]
+    assert response.json()["data"][0]["tenant_id"] == str(tenant.id)
+    assert response.json()["data"][0]["normalized_name"] == "consulta general"
+    assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
+
+
+def test_non_clinic_admin_cannot_create_services(client, db_session, tenant):
+    vet = _create_user(
+        db_session,
+        tenant,
+        "vet@example.com",
+        "Regular Vet",
+        "medico_veterinario",
+    )
+
+    response = client.post(
+        "/api/v1/services",
+        headers=_user_headers(vet.email),
+        json=_service_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario"])
+def test_service_editor_can_update_all_form_fields(client, db_session, tenant, role):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    editor = _create_user(db_session, tenant, "editor@example.com", "Editor", role)
+    service = _create_service(client, tenant, admin)
+    payload = _service_payload(
+        code="EDIT", name="Servicio editado", description="Nueva descripción",
+        price="35.50", kind="procedure", default_duration_minutes=45,
+        calendar_color="#123456", is_bookable=False, sort_order=25,
+    )
+    url = f"/api/v1/services/{service['id']}"
+
+    response = client.patch(url, headers=_user_headers(editor.email), json=payload)
+
+    assert response.status_code == 200
+    persisted = client.get(url, headers=_user_headers(editor.email)).json()["data"]
+    for field, value in payload.items():
+        assert persisted[field] == value
+    assert persisted["tenant_id"] == str(tenant.id)
+    assert persisted["created_by_user_id"] == str(admin.id)
+    assert persisted["is_active"] is True
+    db_session.refresh(editor)
+    assert editor.role == role
+
+
+def test_vet_cannot_edit_foreign_service_even_with_forged_tenant_headers(
+    client, db_session, tenant, other_tenant, monkeypatch,
+):
+    import app.core.tenant as tenant_core
+
+    admin = _create_user(db_session, other_tenant, "foreign@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, other_tenant, admin, price="25.00")
+    monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": vet.email})
+    url = f"/api/v1/services/{service['id']}"
+
+    response = client.patch(url, headers={
+        "Authorization": "Bearer test-token",
+        "X-Tenant-Id": str(other_tenant.id),
+        "X-Acting-Tenant-Id": str(other_tenant.id),
+    }, json={"price": "1.00", "tenant_id": str(tenant.id)})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "service_not_found"
+    # Read back as the owner without the mocked bearer identity.
+    persisted = client.get(url, headers=_user_headers(admin.email)).json()["data"]
+    assert persisted["price"] == "25.00"
+    assert persisted["tenant_id"] == str(other_tenant.id)
+
+
+@pytest.mark.parametrize("role", ["contador", "superadmin", None])
+def test_other_roles_still_cannot_edit_services(client, db_session, tenant, role):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin)
+    headers = _headers(tenant)
+    if role:
+        user = _create_user(db_session, tenant, "other@example.com", "Other", role)
+        headers = _user_headers(user.email)
+
+    response = client.patch(
+        f"/api/v1/services/{service['id']}", headers=headers, json={"name": "Changed"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("operation", ["activate", "deactivate", "reorder", "restore-defaults"])
+def test_vet_cannot_perform_admin_service_operations(client, db_session, tenant, operation):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+    if operation == "activate":
+        client.post(f"/api/v1/services/{service['id']}/deactivate", headers=_user_headers(admin.email))
+    if operation == "reorder":
+        response = client.patch("/api/v1/services/reorder", headers=_user_headers(vet.email),
+                                json={"items": [{"id": service["id"], "sort_order": 1}]})
+    else:
+        path = operation if operation == "restore-defaults" else f"{service['id']}/{operation}"
+        response = client.post(f"/api/v1/services/{path}", headers=_user_headers(vet.email))
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
+
+
+def test_vet_edit_cannot_change_activation_or_tenant(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+    url = f"/api/v1/services/{service['id']}"
+    for active in [True, False]:
+        if not active:
+            client.post(f"{url}/deactivate", headers=_user_headers(admin.email))
+        response = client.patch(url, headers=_user_headers(vet.email), json={
+            "description": "Editado", "is_active": not active, "tenant_id": str(other_tenant.id),
+        })
+        assert response.status_code == 200
+        assert response.json()["data"]["is_active"] is active
+        assert response.json()["data"]["tenant_id"] == str(tenant.id)
+
+
+@pytest.mark.parametrize("payload", [
+    {"price": "-0.01"}, {"price": "1.001"}, {"default_duration_minutes": 0},
+    {"default_duration_minutes": 481}, {"kind": "invalid"}, {"name": " "}, {"code": None},
+])
+def test_vet_edit_preserves_validation(client, db_session, tenant, payload):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
+    service = _create_service(client, tenant, admin)
+
+    response = client.patch(f"/api/v1/services/{service['id']}",
+                            headers=_user_headers(vet.email), json=payload)
+
+    assert response.status_code == 422
+
+
+def test_duplicate_active_service_name_is_normalized_per_tenant(
+    client,
+    db_session,
+    tenant,
+    other_tenant,
+):
+    admin = _create_user(db_session, tenant, "admin2@example.com", "Clinic Admin", "clinic_admin")
+    other_admin = _create_user(
+        db_session,
+        other_tenant,
+        "other-admin@example.com",
+        "Other Admin",
+        "clinic_admin",
+    )
+    _create_service(client, tenant, admin, name="Consulta   Médica")
+
+    duplicate = client.post(
+        "/api/v1/services",
+        headers=_user_headers(admin.email),
+        json=_service_payload(code="CONSULTA2", name=" consulta medica "),
+    )
+    other_tenant_response = client.post(
+        "/api/v1/services",
+        headers=_user_headers(other_admin.email),
+        json=_service_payload(code="CONSULTA2", name="consulta medica"),
+    )
+
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "service_duplicate_name"
+    assert other_tenant_response.status_code == 201
+
+
+def test_deactivate_activate_and_include_inactive(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "admin3@example.com", "Clinic Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin)
+
+    deactivate = client.post(
+        f"/api/v1/services/{service['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+    active_list = client.get("/api/v1/services", headers=_headers(tenant))
+    inactive_list = client.get(
+        "/api/v1/services",
+        headers=_headers(tenant),
+        params={"include_inactive": True},
+    )
+    activate = client.post(
+        f"/api/v1/services/{service['id']}/activate",
+        headers=_user_headers(admin.email),
+    )
+
+    assert deactivate.status_code == 200
+    assert deactivate.json()["data"]["is_active"] is False
+    assert active_list.json()["data"] == []
+    assert inactive_list.json()["data"][0]["id"] == service["id"]
+    assert activate.status_code == 200
+    assert activate.json()["data"]["is_active"] is True
+
+
+def test_reorder_services_is_tenant_scoped(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "admin4@example.com", "Clinic Admin", "clinic_admin")
+    other_admin = _create_user(
+        db_session,
+        other_tenant,
+        "admin5@example.com",
+        "Other Admin",
+        "clinic_admin",
+    )
+    first = _create_service(client, tenant, admin, code="A", name="A", sort_order=10)
+    second = _create_service(client, tenant, admin, code="B", name="B", sort_order=20)
+    foreign = _create_service(client, other_tenant, other_admin, code="F", name="F")
+
+    response = client.patch(
+        "/api/v1/services/reorder",
+        headers=_user_headers(admin.email),
+        json={
+            "items": [
+                {"id": second["id"], "sort_order": 1},
+                {"id": first["id"], "sort_order": 2},
+            ]
+        },
+    )
+    cross_tenant = client.patch(
+        "/api/v1/services/reorder",
+        headers=_user_headers(admin.email),
+        json={"items": [{"id": foreign["id"], "sort_order": 1}]},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["data"][:2]] == [second["id"], first["id"]]
+    assert cross_tenant.status_code == 404
+
+
+def test_restore_defaults_creates_missing_and_reactivates_without_overwriting(
+    client, db_session, tenant
+):
+    admin = _create_user(db_session, tenant, "restore-admin1@example.com", "Clinic Admin", "clinic_admin")
+
+    seeded = client.post(
+        "/api/v1/services/restore-defaults",
+        headers=_user_headers(admin.email),
+    ).json()["data"]
+    assert {service["code"] for service in seeded} == {
+        "CONSULTA",
+        "SEGUIMIENTO",
+        "VACUNA",
+        "DESPARASITACION",
+        "EXAMEN",
+    }
+
+    consulta = next(service for service in seeded if service["code"] == "CONSULTA")
+    client.patch(
+        f"/api/v1/services/{consulta['id']}",
+        headers=_user_headers(admin.email),
+        json={"default_duration_minutes": 45},
+    )
+    seguimiento = next(service for service in seeded if service["code"] == "SEGUIMIENTO")
+    client.post(
+        f"/api/v1/services/{seguimiento['id']}/deactivate",
+        headers=_user_headers(admin.email),
+    )
+
+    response = client.post(
+        "/api/v1/services/restore-defaults",
+        headers=_user_headers(admin.email),
+    )
+
+    assert response.status_code == 200
+    services = response.json()["data"]
+    assert len(services) == 5
+    restored_consulta = next(service for service in services if service["id"] == consulta["id"])
+    assert restored_consulta["default_duration_minutes"] == 45
+    restored_seguimiento = next(
+        service for service in services if service["id"] == seguimiento["id"]
+    )
+    assert restored_seguimiento["is_active"] is True
+
+
+def test_bookable_only_filters_services(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "admin6@example.com", "Clinic Admin", "clinic_admin")
+    bookable = _create_service(client, tenant, admin, code="BOOK", name="Bookable")
+    _create_service(
+        client,
+        tenant,
+        admin,
+        code="NOBK",
+        name="No bookable",
+        is_bookable=False,
+    )
+
+    response = client.get(
+        "/api/v1/services",
+        headers=_headers(tenant),
+        params={"bookable_only": True},
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["data"]] == [bookable["id"]]
+
+
+def test_service_price_create_update_clear_and_legacy_compatibility(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "pricing@example.com", "Admin", "clinic_admin")
+    legacy = _create_service(client, tenant, admin)
+    assert legacy["price"] is None
+    priced = _create_service(client, tenant, admin, code="PRICE", name="Con precio", price="25.50")
+    assert priced["price"] == "25.50"
+    headers = _user_headers(admin.email)
+    url = f"/api/v1/services/{priced['id']}"
+    updated = client.patch(url, headers=headers, json={"price": "30.00"})
+    assert updated.status_code == 200
+    assert updated.json()["data"]["price"] == "30.00"
+    renamed = client.patch(url, headers=headers, json={"name": "Nuevo nombre"})
+    assert renamed.json()["data"]["price"] == "30.00"
+    cleared = client.patch(url, headers=headers, json={"price": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["data"]["price"] is None
+    zero = client.patch(url, headers=headers, json={"price": "0.00"})
+    assert zero.status_code == 200
+    assert zero.json()["data"]["price"] == "0.00"
+
+
+def test_invalid_service_prices_are_rejected(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "invalid-price@example.com", "Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin, price="25.00")
+    for price in ["-0.01", "1.001", "1000000000000.00", "NaN", "Infinity"]:
+        created = client.post("/api/v1/services", headers=_user_headers(admin.email), json=_service_payload(name="Invalid", price=price))
+        assert created.status_code == 422, (price, created.text)
+        updated = client.patch(f"/api/v1/services/{service['id']}", headers=_user_headers(admin.email), json={"price": price})
+        assert updated.status_code == 422, (price, updated.text)
+    assert client.get(f"/api/v1/services/{service['id']}", headers=_headers(tenant)).json()["data"]["price"] == "25.00"
+
+
+def test_service_prices_list_only_current_tenant_active_including_non_bookable(client, db_session, tenant, other_tenant):
+    admin = _create_user(db_session, tenant, "price-a@example.com", "Admin A", "clinic_admin")
+    foreign_admin = _create_user(db_session, other_tenant, "price-b@example.com", "Admin B", "clinic_admin")
+    active = _create_service(client, tenant, admin, name="Solo venta", price="25.00", is_bookable=False)
+    inactive = _create_service(client, tenant, admin, code="OFF", name="Inactivo", price="50.00")
+    foreign = _create_service(client, other_tenant, foreign_admin, price="99.00")
+    client.post(f"/api/v1/services/{inactive['id']}/deactivate", headers=_user_headers(admin.email))
+    response = client.get("/api/v1/services?include_inactive=false", headers=_user_headers(admin.email))
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [active["id"]]
+    assert foreign["id"] not in response.text
+    cross_update = client.patch(f"/api/v1/services/{foreign['id']}", headers=_user_headers(admin.email), json={"price": "1.00"})
+    assert cross_update.status_code == 404

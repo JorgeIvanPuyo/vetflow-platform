@@ -3,10 +3,26 @@ from __future__ import annotations
 import json
 import os
 from datetime import timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+
+
+LOCAL_STORAGE_BUCKET_NAME = "local-vetflow"
+
+
+class ObjectStorageService(Protocol):
+    bucket_name: str | None
+
+    def upload_clinical_file(
+        self, *, object_path: str, content: bytes, content_type: str
+    ) -> None: ...
+
+    def delete_clinical_file(self, *, bucket_name: str, object_path: str) -> None: ...
+
+    def download_object_bytes(self, *, bucket_name: str, object_path: str) -> bytes: ...
 
 
 class ClinicalFileStorageService:
@@ -155,5 +171,55 @@ class ClinicalFileStorageService:
             ) from exc
 
 
+class LocalFileStorageService:
+    def __init__(self, root_path: str | None = None) -> None:
+        settings = get_settings()
+        self.bucket_name = LOCAL_STORAGE_BUCKET_NAME
+        self.root_path = Path(root_path or settings.local_file_storage_path).resolve()
+
+    def upload_clinical_file(
+        self,
+        *,
+        object_path: str,
+        content: bytes,
+        content_type: str,
+    ) -> None:
+        del content_type
+        destination = self._resolve_path(self.bucket_name, object_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
+
+    def delete_clinical_file(self, *, bucket_name: str, object_path: str) -> None:
+        destination = self._resolve_path(bucket_name, object_path)
+        destination.unlink(missing_ok=True)
+
+    def download_object_bytes(self, *, bucket_name: str, object_path: str) -> bytes:
+        destination = self._resolve_path(bucket_name, object_path)
+        if not destination.is_file():
+            raise AppError(404, "storage_object_not_found", "Stored file not found")
+        return destination.read_bytes()
+
+    def _resolve_path(self, bucket_name: str, object_path: str) -> Path:
+        if bucket_name != self.bucket_name:
+            raise AppError(404, "storage_object_not_found", "Stored file not found")
+        relative_path = Path(object_path)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise AppError(400, "invalid_storage_path", "Invalid storage object path")
+        bucket_root = (self.root_path / self.bucket_name).resolve()
+        destination = (bucket_root / relative_path).resolve()
+        if not destination.is_relative_to(bucket_root):
+            raise AppError(400, "invalid_storage_path", "Invalid storage object path")
+        return destination
+
+
 def get_storage_service() -> ClinicalFileStorageService:
+    return ClinicalFileStorageService()
+
+
+def get_purchase_attachment_storage_service() -> ObjectStorageService:
+    settings = get_settings()
+    if settings.clinical_files_bucket_name:
+        return ClinicalFileStorageService()
+    if settings.app_env == "development":
+        return LocalFileStorageService()
     return ClinicalFileStorageService()

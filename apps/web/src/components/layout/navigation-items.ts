@@ -1,10 +1,13 @@
 import {
   Calculator,
   Calendar,
+  CircleHelp,
   LayoutDashboard,
   LucideIcon,
   Package,
   PawPrint,
+  ShoppingCart,
+  ShoppingBag,
   Settings,
   ShieldCheck,
   Users,
@@ -24,7 +27,9 @@ export const navigationItems: NavigationItem[] = [
   { href: "/owners", label: "Propietarios", icon: Users },
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
-  { href: "/inventory", label: "Inventario", icon: Package },
+  { href: "/inventory/dashboard", label: "Inventario", icon: Package },
+  { href: "/purchases/dashboard", label: "Compras", icon: ShoppingCart },
+  { href: "/sales", label: "Ventas", icon: ShoppingBag },
   {
     href: "/accounting",
     label: "Contabilidad",
@@ -38,6 +43,7 @@ export const navigationItems: NavigationItem[] = [
     roles: ["superadmin"],
   },
   { href: "/settings", label: "Ajustes", icon: Settings },
+  { href: "/help", label: "Centro de ayuda", icon: CircleHelp, roles: ["clinic_admin", "medico_veterinario", "contador", "superadmin"] },
 ];
 
 // Roles that must ONLY see modules explicitly granted to them (via `roles`),

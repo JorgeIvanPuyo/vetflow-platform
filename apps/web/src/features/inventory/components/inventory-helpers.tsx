@@ -6,6 +6,7 @@ import {
   Syringe,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { formatCurrency, formatPercentage, type MoneyPreferences } from "@/lib/money";
 import type {
   CreateInventoryEntryPayload,
   CreateInventoryExitPayload,
@@ -16,12 +17,18 @@ import type {
   InventoryListFilters,
   InventoryMovement,
   InventoryMovementType,
+  InventorySortBy,
+  InventorySortOrder,
+  InventoryStockStatus,
   InventoryStatusFilter,
   InventoryUnit,
+  TenantPreferences,
   UpdateInventoryItemPayload,
 } from "@/types/api";
 
-export type InventoryMovementFilter = Extract<InventoryMovementType, "entry" | "exit"> | "all";
+export type InventoryMovementFilter =
+  | Extract<InventoryMovementType, "manual_entry" | "manual_exit" | "entry" | "exit" | "reversal">
+  | "all";
 
 export const inventoryCategoryOptions: Array<{
   value: InventoryCategory;
@@ -32,6 +39,7 @@ export const inventoryCategoryOptions: Array<{
   { value: "vaccine", label: "Vacuna", description: "Biológicos preventivos" },
   { value: "supply", label: "Insumo", description: "Material clínico y descartables" },
   { value: "food", label: "Alimento", description: "Nutrición y dietas" },
+  { value: "accessory", label: "Accesorio", description: "Collares, correas y accesorios" },
   { value: "other", label: "Otro", description: "Productos varios" },
 ];
 
@@ -70,13 +78,52 @@ export const inventoryStatusOptions: Array<{
   { value: "inactive", label: "Inactivos" },
 ];
 
+export const inventoryStockStatusOptions: Array<{
+  value: InventoryStockStatus | "all";
+  label: string;
+}> = [
+  { value: "all", label: "Todos" },
+  { value: "in_stock", label: "Disponible" },
+  { value: "low_stock", label: "Stock bajo" },
+  { value: "out_of_stock", label: "Agotado" },
+  { value: "negative", label: "Stock negativo" },
+];
+
+export const inventoryActiveStatusOptions: Array<{
+  value: "active" | "inactive";
+  label: string;
+}> = [
+  { value: "active", label: "Activos" },
+  { value: "inactive", label: "Inactivos" },
+];
+
+export const inventorySortOptions: Array<{
+  value: InventorySortBy;
+  label: string;
+}> = [
+  { value: "name", label: "Nombre" },
+  { value: "internal_code", label: "Código" },
+  { value: "current_stock", label: "Stock" },
+  { value: "sale_price_ars", label: "Precio de venta" },
+  { value: "updated_at", label: "Última actualización" },
+];
+
+export const inventorySortDirectionOptions: Array<{
+  value: InventorySortOrder;
+  label: string;
+}> = [
+  { value: "asc", label: "Ascendente" },
+  { value: "desc", label: "Descendente" },
+];
+
 export const inventoryMovementFilterOptions: Array<{
   value: InventoryMovementFilter;
   label: string;
 }> = [
   { value: "all", label: "Todos" },
-  { value: "entry", label: "Entradas" },
-  { value: "exit", label: "Salidas" },
+  { value: "manual_entry", label: "Entradas" },
+  { value: "manual_exit", label: "Salidas" },
+  { value: "reversal", label: "Reversas" },
 ];
 
 export const inventoryExitReasonOptions: Array<{
@@ -92,15 +139,20 @@ export const inventoryExitReasonOptions: Array<{
 ];
 
 export type InventoryFormState = {
+  internal_code: string;
   name: string;
   category: InventoryCategory;
+  category_catalog_item_id: string;
   subcategory: string;
+  brand: string;
   unit: InventoryUnit;
   supplier: string;
+  supplier_id: string;
   lot_number: string;
   expiration_date: string;
   current_stock: string;
   minimum_stock: string;
+  purchase_tax_mode: "standard" | "none" | "custom";
   purchase_price_ars: string;
   purchase_tax_rate_percentage: string;
   profit_margin_percentage: string;
@@ -112,8 +164,12 @@ export type InventoryFormState = {
 
 export type InventoryFilterState = {
   category: InventoryCategory | "all";
-  status: InventoryStatusFilter | "all";
+  brand: string;
   supplier: string;
+  stock_status: InventoryStockStatus | "all";
+  active_status: "active" | "inactive";
+  sort_by: InventorySortBy;
+  sort_direction: InventorySortOrder;
 };
 
 export type InventoryEntryFormState = {
@@ -133,28 +189,42 @@ export type InventoryExitFormState = {
 
 export const initialInventoryFilterState: InventoryFilterState = {
   category: "all",
-  status: "active",
+  brand: "",
   supplier: "",
+  stock_status: "all",
+  active_status: "active",
+  sort_by: "name",
+  sort_direction: "asc",
 };
 
-export const initialInventoryFormState: InventoryFormState = {
-  name: "",
-  category: "medication",
-  subcategory: "",
-  unit: "unit",
-  supplier: "",
-  lot_number: "",
-  expiration_date: "",
-  current_stock: "0",
-  minimum_stock: "0",
-  purchase_price_ars: "",
-  purchase_tax_rate_percentage: "0",
-  profit_margin_percentage: "35",
-  sale_price_ars: "",
-  sale_tax_rate_percentage: "0",
-  round_sale_price: false,
-  notes: "",
-};
+export function getInitialInventoryFormState(
+  preferences?: TenantPreferences | null,
+): InventoryFormState {
+  const defaultPurchaseTaxRate = preferences?.default_purchase_tax_rate ?? "21";
+  return {
+    internal_code: "",
+    name: "",
+    category: "medication",
+    category_catalog_item_id: "",
+    subcategory: "",
+    brand: "",
+    unit: "unit",
+    supplier: "",
+    supplier_id: "",
+    lot_number: "",
+    expiration_date: "",
+    current_stock: "0",
+    minimum_stock: "0",
+    purchase_tax_mode: getPurchaseTaxMode(defaultPurchaseTaxRate, defaultPurchaseTaxRate),
+    purchase_price_ars: "",
+    purchase_tax_rate_percentage: defaultPurchaseTaxRate,
+    profit_margin_percentage: preferences?.default_profit_margin ?? "35",
+    sale_price_ars: "",
+    sale_tax_rate_percentage: preferences?.default_sale_tax_rate ?? "0",
+    round_sale_price: false,
+    notes: "",
+  };
+}
 
 export const initialInventoryEntryFormState: InventoryEntryFormState = {
   quantity: "",
@@ -191,36 +261,32 @@ export function getInventoryCategoryIcon(category: InventoryCategory): ReactNode
   if (category === "food") {
     return <Apple size={20} />;
   }
+  if (category === "accessory") {
+    return <Box size={20} />;
+  }
   if (category === "other") {
     return <ShieldAlert size={20} />;
   }
   return <Box size={20} />;
 }
 
-export function formatInventoryCurrency(value?: string | number | null) {
-  if (value === undefined || value === null || value === "") {
-    return "ARS -";
-  }
+const legacyMoneyPreferences: MoneyPreferences = {
+  currencyCode: "ARS",
+  locale: "es-AR",
+};
 
-  const numericValue = Number(value);
-  if (Number.isNaN(numericValue)) {
-    return "ARS -";
-  }
-
-  return `ARS ${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}`;
+export function formatInventoryCurrency(
+  value: string | number | null | undefined,
+  preferences: MoneyPreferences = legacyMoneyPreferences,
+) {
+  return formatCurrency(value, preferences);
 }
 
-export function formatInventoryPercentage(value?: string | number | null) {
-  const numericValue = Number(value ?? 0);
-  if (Number.isNaN(numericValue)) {
-    return "0%";
-  }
-
-  return `${new Intl.NumberFormat("es-AR", {
-    maximumFractionDigits: 2,
-  }).format(numericValue)}%`;
+export function formatInventoryPercentage(
+  value: string | number | null | undefined,
+  locale: string,
+) {
+  return formatPercentage(value, locale);
 }
 
 export function formatInventoryDate(value?: string | null) {
@@ -246,11 +312,15 @@ export function formatInventoryDateCompact(value?: string | null) {
   }).format(new Date(value));
 }
 
-export function formatInventoryQuantity(value: string, unit: InventoryUnit) {
+export function formatInventoryQuantity(
+  value: string,
+  unit: InventoryUnit,
+  locale = legacyMoneyPreferences.locale,
+) {
   const numericValue = Number(value);
   const formatted = Number.isInteger(numericValue)
-    ? new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(numericValue)
-    : new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(numericValue);
+    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(numericValue)
+    : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(numericValue);
   return `${formatted} ${getInventoryUnitLabel(unit)}`;
 }
 
@@ -258,9 +328,11 @@ export function formatInventorySignedQuantity(
   quantity: string,
   unit: InventoryUnit,
   movementType: InventoryMovementType,
+  locale = legacyMoneyPreferences.locale,
 ) {
-  const sign = movementType === "entry" ? "+" : movementType === "exit" ? "-" : "";
-  return `${sign}${formatInventoryQuantity(quantity, unit)}`;
+  const direction = getInventoryMovementDirection(movementType);
+  const sign = direction > 0 ? "+" : direction < 0 ? "-" : "";
+  return `${sign}${formatInventoryQuantity(quantity, unit, locale)}`;
 }
 
 export function formatInventoryDateTime(value?: string | null) {
@@ -279,9 +351,16 @@ export function formatInventoryDateTime(value?: string | null) {
 
 export function getInventoryStatusBadges(item: InventoryItem) {
   const badges: Array<{ label: string; className: string }> = [];
+  const stockStatus = getInventoryStockStatus(item);
 
-  if (Number(item.current_stock) === 0) {
-    badges.push({ label: "Sin stock", className: "badge badge--danger" });
+  if (stockStatus === "negative") {
+    badges.push({ label: "Stock negativo", className: "badge badge--danger" });
+  } else if (stockStatus === "out_of_stock") {
+    badges.push({ label: "Agotado", className: "badge badge--danger" });
+  } else if (stockStatus === "low_stock") {
+    badges.push({ label: "Stock bajo", className: "badge badge--warning" });
+  } else {
+    badges.push({ label: "Disponible", className: "badge badge--success" });
   }
 
   if (item.is_expired) {
@@ -290,18 +369,78 @@ export function getInventoryStatusBadges(item: InventoryItem) {
     badges.push({ label: "Por vencer", className: "badge badge--warning" });
   }
 
-  if (item.is_low_stock) {
-    badges.push({ label: "Bajo stock", className: "badge badge--danger" });
-  }
-
   if (!item.is_active) {
-    badges.push({ label: "Inactivo", className: "badge badge--blue" });
+    badges.push({ label: "Inactivo", className: "badge badge--muted" });
   }
 
   return badges;
 }
 
+export function getInventoryStockStatus(item: InventoryItem): InventoryStockStatus {
+  const currentStock = Number(item.current_stock);
+  const minimumStock = Number(item.minimum_stock);
+
+  if (currentStock < 0) {
+    return "negative";
+  }
+  if (currentStock === 0) {
+    return "out_of_stock";
+  }
+  if (currentStock <= minimumStock) {
+    return "low_stock";
+  }
+  return "in_stock";
+}
+
 export function getInventoryMovementTypeLabel(movementType: InventoryMovementType) {
+  if (movementType === "manual_entry") {
+    return "Entrada manual";
+  }
+  if (movementType === "manual_exit") {
+    return "Salida manual";
+  }
+  if (movementType === "initial_stock") {
+    return "Stock inicial";
+  }
+  if (movementType === "purchase") {
+    return "Compra";
+  }
+  if (movementType === "sale") {
+    return "Venta";
+  }
+  if (movementType === "clinical_consumption") {
+    return "Consumo clínico";
+  }
+  if (movementType === "customer_return") {
+    return "Devolución de cliente";
+  }
+  if (movementType === "supplier_return") {
+    return "Devolución a proveedor";
+  }
+  if (movementType === "adjustment_in") {
+    return "Ajuste positivo";
+  }
+  if (movementType === "adjustment_out") {
+    return "Ajuste negativo";
+  }
+  if (movementType === "expiration") {
+    return "Vencimiento";
+  }
+  if (movementType === "loss") {
+    return "Pérdida";
+  }
+  if (movementType === "breakage") {
+    return "Rotura";
+  }
+  if (movementType === "transfer_in") {
+    return "Transferencia entrante";
+  }
+  if (movementType === "transfer_out") {
+    return "Transferencia saliente";
+  }
+  if (movementType === "reversal") {
+    return "Reversa";
+  }
   if (movementType === "entry") {
     return "Compra / Entrada";
   }
@@ -311,7 +450,7 @@ export function getInventoryMovementTypeLabel(movementType: InventoryMovementTyp
   return "Ajuste";
 }
 
-export function getInventoryExitReasonLabel(reason?: InventoryExitReason | null) {
+export function getInventoryExitReasonLabel(reason?: string | null) {
   if (!reason) {
     return "Sin motivo";
   }
@@ -321,16 +460,71 @@ export function getInventoryExitReasonLabel(reason?: InventoryExitReason | null)
   );
 }
 
-export function getInventoryMovementAmountLabel(movement: InventoryMovement) {
-  if (movement.movement_type === "entry" && movement.total_cost_ars) {
-    return formatInventoryCurrency(movement.total_cost_ars);
+export function getInventoryMovementAmountLabel(
+  movement: InventoryMovement,
+  preferences: MoneyPreferences = legacyMoneyPreferences,
+) {
+  if (
+    ["entry", "manual_entry", "purchase", "customer_return", "adjustment_in", "transfer_in"].includes(
+      movement.movement_type,
+    ) &&
+    movement.total_cost_ars
+  ) {
+    return formatInventoryCurrency(movement.total_cost_ars, preferences);
   }
 
-  if (movement.movement_type === "exit" && movement.total_sale_price_ars) {
-    return formatInventoryCurrency(movement.total_sale_price_ars);
+  if (
+    [
+      "exit",
+      "manual_exit",
+      "sale",
+      "clinical_consumption",
+      "supplier_return",
+      "adjustment_out",
+      "expiration",
+      "loss",
+      "breakage",
+      "transfer_out",
+    ].includes(movement.movement_type) &&
+    movement.total_sale_price_ars
+  ) {
+    return formatInventoryCurrency(movement.total_sale_price_ars, preferences);
   }
 
   return null;
+}
+
+export function getInventoryMovementDirection(movementType: InventoryMovementType) {
+  if (
+    [
+      "initial_stock",
+      "manual_entry",
+      "purchase",
+      "customer_return",
+      "adjustment_in",
+      "transfer_in",
+      "entry",
+    ].includes(movementType)
+  ) {
+    return 1;
+  }
+  if (
+    [
+      "manual_exit",
+      "sale",
+      "clinical_consumption",
+      "supplier_return",
+      "adjustment_out",
+      "expiration",
+      "loss",
+      "breakage",
+      "transfer_out",
+      "exit",
+    ].includes(movementType)
+  ) {
+    return -1;
+  }
+  return 0;
 }
 
 export function isNonNegativeInteger(value: string) {
@@ -353,7 +547,7 @@ export function isPositiveInteger(value: string) {
 
 export function validateInventoryForm(
   formState: InventoryFormState,
-  options: { isEdit?: boolean } = {},
+  _options: { isEdit?: boolean } = {},
 ) {
   if (!formState.name.trim()) {
     return "Escribe un nombre para el item.";
@@ -363,10 +557,6 @@ export function validateInventoryForm(
   }
   if (!formState.unit) {
     return "Selecciona una unidad de medida.";
-  }
-
-  if (!options.isEdit && !isNonNegativeInteger(formState.current_stock)) {
-    return "Ingresa un número entero mayor o igual a 0.";
   }
 
   if (!isNonNegativeInteger(formState.minimum_stock)) {
@@ -381,6 +571,9 @@ export function validateInventoryForm(
   }
 
   const purchaseTaxRate = Number(formState.purchase_tax_rate_percentage || "0");
+  if (formState.purchase_tax_mode === "custom" && !formState.purchase_tax_rate_percentage.trim()) {
+    return "Ingresa un IVA de compra personalizado entre 0 y 100.";
+  }
   if (Number.isNaN(purchaseTaxRate) || purchaseTaxRate < 0 || purchaseTaxRate > 100) {
     return "El IVA de compra debe estar entre 0 y 100.";
   }
@@ -399,19 +592,23 @@ export function validateInventoryForm(
 
   const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
   if (Number.isNaN(saleTaxRate) || saleTaxRate < 0 || saleTaxRate > 100) {
-    return "El IVA de venta debe estar entre 0 y 100.";
+    return "El impuesto de venta debe estar entre 0 y 100.";
   }
 
   return null;
 }
 
-export function calculateSalePricePreview(formState: InventoryFormState) {
-  return calculateInventoryPricePreview(formState, false).saleWithoutTax;
+export function calculateSalePricePreview(
+  formState: InventoryFormState,
+  roundingIncrement = 10,
+) {
+  return calculateInventoryPricePreview(formState, false, roundingIncrement).saleWithoutTax;
 }
 
 export function calculateInventoryPricePreview(
   formState: InventoryFormState,
   manualSalePriceOverride: boolean,
+  roundingIncrement = 10,
 ) {
   const purchasePrice = parseOptionalNonNegativeNumber(formState.purchase_price_ars);
   const purchaseTaxRate = parseTaxRate(formState.purchase_tax_rate_percentage);
@@ -432,8 +629,11 @@ export function calculateInventoryPricePreview(
     saleWithoutTax = parseOptionalNonNegativeNumber(formState.sale_price_ars);
   } else if (purchaseWithTax !== null && margin !== null) {
     const calculatedPrice = roundMoney(purchaseWithTax * (1 + margin / 100));
+    const safeIncrement = Number.isFinite(roundingIncrement) && roundingIncrement > 0
+      ? roundingIncrement
+      : 10;
     saleWithoutTax = formState.round_sale_price
-      ? Math.round(calculatedPrice / 10) * 10
+      ? roundMoney(Math.round(calculatedPrice / safeIncrement) * safeIncrement)
       : calculatedPrice;
   }
 
@@ -483,7 +683,6 @@ export function inventoryFormToCreatePayload(
     name: formState.name.trim(),
     category: formState.category,
     unit: formState.unit,
-    current_stock: Number(formState.current_stock || "0"),
     minimum_stock: Number(formState.minimum_stock || "0"),
     purchase_tax_rate_percentage: Number(
       formState.purchase_tax_rate_percentage || "0",
@@ -497,8 +696,17 @@ export function inventoryFormToCreatePayload(
   if (formState.subcategory.trim()) {
     payload.subcategory = formState.subcategory.trim();
   }
+  if (formState.brand.trim()) {
+    payload.brand = formState.brand.trim();
+  }
   if (formState.supplier.trim()) {
     payload.supplier = formState.supplier.trim();
+  }
+  if (formState.supplier_id) {
+    payload.supplier_id = formState.supplier_id;
+  }
+  if (formState.category_catalog_item_id) {
+    payload.category_catalog_item_id = formState.category_catalog_item_id;
   }
   if (formState.lot_number.trim()) {
     payload.lot_number = formState.lot_number.trim();
@@ -537,7 +745,10 @@ export function inventoryFormToUpdatePayload(
   };
 
   payload.subcategory = formState.subcategory.trim() || null;
+  payload.brand = formState.brand.trim() || null;
   payload.supplier = formState.supplier.trim() || null;
+  payload.supplier_id = formState.supplier_id || null;
+  payload.category_catalog_item_id = formState.category_catalog_item_id || null;
   payload.lot_number = formState.lot_number.trim() || null;
   payload.expiration_date = formState.expiration_date || null;
   payload.purchase_price_ars = formState.purchase_price_ars.trim()
@@ -554,15 +765,20 @@ export function inventoryFormToUpdatePayload(
 
 export function inventoryItemToFormState(item: InventoryItem): InventoryFormState {
   return {
+    internal_code: item.internal_code,
     name: item.name,
     category: item.category,
+    category_catalog_item_id: item.category_catalog_item_id ?? "",
     subcategory: item.subcategory ?? "",
+    brand: item.brand ?? "",
     unit: item.unit,
     supplier: item.supplier ?? "",
+    supplier_id: item.supplier_id ?? "",
     lot_number: item.lot_number ?? "",
     expiration_date: item.expiration_date ?? "",
     current_stock: item.current_stock,
     minimum_stock: item.minimum_stock,
+    purchase_tax_mode: getPurchaseTaxMode(item.purchase_tax_rate_percentage),
     purchase_price_ars: item.purchase_price_ars ?? "",
     purchase_tax_rate_percentage: String(item.purchase_tax_rate_percentage ?? 0),
     profit_margin_percentage: item.profit_margin_percentage,
@@ -573,13 +789,35 @@ export function inventoryItemToFormState(item: InventoryItem): InventoryFormStat
   };
 }
 
-export function isInventorySalePriceManual(item: InventoryItem) {
+function getPurchaseTaxMode(
+  value?: string | number | null,
+  standardRate: string | number = 21,
+): InventoryFormState["purchase_tax_mode"] {
+  const numericValue = Number(value ?? 0);
+  const numericStandardRate = Number(standardRate);
+  if (Number.isFinite(numericValue) && Math.abs(numericValue) < 0.005) {
+    return "none";
+  }
+  if (
+    Number.isFinite(numericValue) &&
+    Number.isFinite(numericStandardRate) &&
+    Math.abs(numericValue - numericStandardRate) < 0.005
+  ) {
+    return "standard";
+  }
+  return "custom";
+}
+
+export function isInventorySalePriceManual(
+  item: InventoryItem,
+  roundingIncrement = 10,
+) {
   if (!item.sale_price_ars) {
     return false;
   }
 
   const comparableFormState = inventoryItemToFormState(item);
-  const calculatedValue = calculateSalePricePreview(comparableFormState);
+  const calculatedValue = calculateSalePricePreview(comparableFormState, roundingIncrement);
   if (calculatedValue === null) {
     return true;
   }
@@ -591,26 +829,32 @@ export function buildInventoryListFilters(
   query: string,
   filterState: InventoryFilterState,
   page: number,
-  pageSize = 12,
+  pageSize = 20,
 ): InventoryListFilters {
   const filters: InventoryListFilters = {
     page,
     page_size: pageSize,
-    sort_by: "name",
-    sort_order: "asc",
+    sort_by: filterState.sort_by,
+    sort_direction: filterState.sort_direction,
   };
 
   if (query.trim()) {
-    filters.q = query.trim();
+    filters.search = query.trim();
   }
   if (filterState.category !== "all") {
     filters.category = filterState.category;
   }
-  if (filterState.status !== "all") {
-    filters.status = filterState.status;
+  if (filterState.brand.trim()) {
+    filters.brand = filterState.brand.trim();
   }
   if (filterState.supplier.trim()) {
     filters.supplier = filterState.supplier.trim();
+  }
+  if (filterState.stock_status !== "all") {
+    filters.stock_status = filterState.stock_status;
+  }
+  if (filterState.active_status !== "active") {
+    filters.is_active = false;
   }
 
   return filters;

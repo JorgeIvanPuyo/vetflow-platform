@@ -20,6 +20,9 @@ class Settings:
             "FIREBASE_SERVICE_ACCOUNT_JSON_PATH"
         )
         self.clinical_files_bucket_name = os.getenv("CLINICAL_FILES_BUCKET_NAME")
+        self.local_file_storage_path = os.getenv(
+            "LOCAL_FILE_STORAGE_PATH", "/tmp/vetflow-storage"
+        )
         self.max_clinical_file_size_mb = int(
             os.getenv("MAX_CLINICAL_FILE_SIZE_MB", "25")
         )

@@ -4,7 +4,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, Uuid
+from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -13,10 +13,15 @@ from app.models.base import BaseModel
 MONEY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
 ZERO = Decimal("0")
-
-
 class InventoryItem(BaseModel):
     __tablename__ = "inventory_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "internal_code",
+            name="uq_inventory_items_tenant_internal_code",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
@@ -24,11 +29,25 @@ class InventoryItem(BaseModel):
         nullable=False,
         index=True,
     )
+    internal_code: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    category_catalog_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("catalog_items.id"),
+        nullable=True,
+        index=True,
+    )
     subcategory: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     unit: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     supplier: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("suppliers.id"),
+        nullable=True,
+        index=True,
+    )
     lot_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
     expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     current_stock: Mapped[Decimal] = mapped_column(
@@ -45,23 +64,14 @@ class InventoryItem(BaseModel):
     )
     purchase_price_ars: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     purchase_tax_rate_percentage: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2),
-        nullable=False,
-        default=ZERO,
-        server_default="0",
+        Numeric(5, 2), nullable=False
     )
     profit_margin_percentage: Mapped[Decimal] = mapped_column(
-        Numeric(8, 2),
-        nullable=False,
-        default=Decimal("35"),
-        server_default="35",
+        Numeric(8, 2), nullable=False
     )
     sale_price_ars: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     sale_tax_rate_percentage: Mapped[Decimal] = mapped_column(
-        Numeric(5, 2),
-        nullable=False,
-        default=ZERO,
-        server_default="0",
+        Numeric(5, 2), nullable=False
     )
     round_sale_price: Mapped[bool] = mapped_column(
         Boolean,
@@ -86,10 +96,27 @@ class InventoryItem(BaseModel):
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="inventory_items")
     created_by_user: Mapped[User | None] = relationship("User")
+    supplier_record: Mapped[Supplier | None] = relationship("Supplier")
+    category_catalog_item: Mapped[CatalogItem | None] = relationship("CatalogItem")
     movements: Mapped[list[InventoryMovement]] = relationship(
         "InventoryMovement",
         back_populates="inventory_item",
     )
+
+    @property
+    def supplier_name(self) -> str | None:
+        if self.supplier_record is None or self.supplier_record.tenant_id != self.tenant_id:
+            return None
+        return self.supplier_record.name
+
+    @property
+    def category_catalog_item_name(self) -> str | None:
+        if (
+            self.category_catalog_item is None
+            or self.category_catalog_item.tenant_id != self.tenant_id
+        ):
+            return None
+        return self.category_catalog_item.name
 
     @property
     def is_low_stock(self) -> bool:

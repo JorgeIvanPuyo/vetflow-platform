@@ -1,9 +1,10 @@
 "use client";
 
 import { X } from "lucide-react";
-import type { FormEvent } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-import type { PreventiveCareType } from "@/types/api";
+import { getCatalogItems } from "@/services/catalogs";
+import type { CatalogItem, PreventiveCareType } from "@/types/api";
 
 import {
   PreventiveCareFormState,
@@ -31,6 +32,32 @@ export function PreventiveCareFormModal({
 }: PreventiveCareFormModalProps) {
   const title = mode === "edit" ? "Editar vacuna o desparasitación" : "Agregar vacuna o desparasitación";
   const submitLabel = mode === "edit" ? "Guardar cambios" : "Guardar";
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    async function loadCatalogItems() {
+      try {
+        const response = await getCatalogItems("preventive_care_type", {
+          include_inactive: false,
+        });
+        if (isCurrent) {
+          setCatalogItems(response.data);
+        }
+      } catch {
+        if (isCurrent) {
+          setCatalogItems([]);
+        }
+      }
+    }
+
+    void loadCatalogItems();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -55,6 +82,31 @@ export function PreventiveCareFormModal({
 
         <form className="entity-form" onSubmit={onSubmit}>
           <div className="form-grid">
+            {catalogItems.length > 0 ? (
+              <label className="field">
+                <span>Prestación del catálogo (opcional)</span>
+                <select
+                  value={formState.catalog_item_id}
+                  onChange={(event) => {
+                    const selected = catalogItems.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    onUpdateForm({
+                      ...formState,
+                      catalog_item_id: event.target.value,
+                      name: selected?.name ?? formState.name,
+                    });
+                  }}
+                >
+                  <option value="">Escribir manualmente</option>
+                  {catalogItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="field">
               <span>Nombre</span>
               <input
