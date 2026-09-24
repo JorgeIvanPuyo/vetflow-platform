@@ -44,6 +44,7 @@ export type UserTrace = {
 };
 
 export type Patient = {
+  owner_name?: string | null;
   id: string;
   tenant_id: string;
   owner_id: string;

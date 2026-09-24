@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -18,7 +18,7 @@ from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
-from app.schemas.patient import PatientCreate, PatientRead, PatientUpdate
+from app.schemas.patient import PatientCreate, PatientRead, PatientSortBy, PatientUpdate
 from app.services.storage import ClinicalFileStorageService
 
 
@@ -91,6 +91,7 @@ class PatientService:
         owner_id: uuid.UUID | None = None,
         species: str | None = None,
         search: str | None = None,
+        sort_by: PatientSortBy = "created_at",
         page: int = 1,
         page_size: int | None = None,
     ) -> tuple[list[Patient], int]:
@@ -99,6 +100,7 @@ class PatientService:
             owner_id=owner_id,
             species=species,
             search=search,
+            sort_by=sort_by,
             page=page,
             page_size=page_size,
         )
@@ -370,8 +372,19 @@ class PatientService:
         *,
         storage_service: ClinicalFileStorageService | None = None,
     ) -> list[dict]:
+        if not patients:
+            return []
+        # Scope both sides of the relation, including inconsistent legacy links.
+        owner_keys = {(patient.tenant_id, patient.owner_id) for patient in patients}
+        owners = self.db.scalars(select(Owner).where(
+            tuple_(Owner.tenant_id, Owner.id).in_(owner_keys)
+        )).all()
+        owner_names = {(owner.tenant_id, owner.id): owner.full_name for owner in owners}
         return [
-            self.build_patient_response(patient, storage_service=storage_service)
+            {
+                **self.build_patient_response(patient, storage_service=storage_service),
+                "owner_name": owner_names.get((patient.tenant_id, patient.owner_id)),
+            }
             for patient in patients
         ]
 

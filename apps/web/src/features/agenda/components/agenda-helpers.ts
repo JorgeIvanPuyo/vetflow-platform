@@ -1,4 +1,4 @@
-import type { Appointment, AppointmentStatus, AppointmentType } from "@/types/api";
+import type { Appointment, AppointmentStatus, AppointmentType, Owner, Patient } from "@/types/api";
 
 export const appointmentTypeOptions: Array<{
   value: AppointmentType;
@@ -189,4 +189,14 @@ export function appointmentToFormState(appointment: Appointment): AppointmentFor
     reason: appointment.reason ?? "",
     notes: appointment.notes ?? "",
   };
+}
+
+export function selectAppointmentOwner(form: AppointmentFormState, owner: Owner | null): AppointmentFormState {
+  const ownerId = owner?.id ?? "";
+  return { ...form, owner_id: ownerId, patient_id: ownerId === form.owner_id ? form.patient_id : "" };
+}
+
+export function selectAppointmentPatient(form: AppointmentFormState, patient: Patient | null): AppointmentFormState {
+  if (patient && form.owner_id && patient.owner_id !== form.owner_id) return form;
+  return { ...form, patient_id: patient?.id ?? "", owner_id: patient?.owner_id ?? form.owner_id };
 }

@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 
+PatientSortBy = Literal["created_at", "name"]
+
+
 class PatientBase(BaseModel):
     name: str
     species: str
@@ -40,6 +43,7 @@ class PatientUpdate(BaseModel):
 
 
 class PatientRead(PatientBase):
+    owner_name: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
