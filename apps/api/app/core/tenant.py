@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.firebase import FirebaseTokenVerificationError, verify_id_token
+from app.core.firebase import (
+    FirebaseTokenVerificationError,
+    FirebaseVerificationUnavailableError,
+    verify_id_token,
+)
 from app.core.roles import Role
 from app.db.session import get_db
 from app.models.tenant import Tenant
@@ -155,6 +159,12 @@ def get_tenant_context(
 
     try:
         decoded_token = verify_id_token(token)
+    except FirebaseVerificationUnavailableError as exc:
+        raise AppError(
+            status_code=503,
+            code="auth_verification_unavailable",
+            message="Authentication verification temporarily unavailable",
+        ) from exc
     except FirebaseTokenVerificationError as exc:
         raise AppError(
             status_code=401,
