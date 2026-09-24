@@ -9,6 +9,7 @@ import type {
 } from "@/types/api";
 
 type GetPatientsOptions = {
+  sortBy?: "created_at" | "name";
   ownerId?: string;
   search?: string;
   page?: number;
@@ -17,6 +18,7 @@ type GetPatientsOptions = {
 
 export function getPatients(options: GetPatientsOptions = {}) {
   const params = new URLSearchParams();
+  if (options.sortBy) params.set("sort_by", options.sortBy);
 
   if (options.ownerId) {
     params.set("owner_id", options.ownerId);

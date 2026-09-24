@@ -21,16 +21,12 @@ import {
   updateAppointment,
 } from "@/services/appointments";
 import { getClinicTeam } from "@/services/clinic";
-import { getOwners } from "@/services/owners";
-import { getPatients } from "@/services/patients";
 import { getServices } from "@/services/services";
 import type {
   Appointment,
   AppointmentStatus,
   ClinicService,
   ClinicTeamMember,
-  Owner,
-  Patient,
   UpdateAppointmentPayload,
 } from "@/types/api";
 
@@ -104,8 +100,6 @@ type AppointmentDetailState = {
   isSaving: boolean;
   isDeleting: boolean;
   appointment: Appointment | null;
-  patients: Patient[];
-  owners: Owner[];
   team: ClinicTeamMember[];
   services: ClinicService[];
   errorMessage: string | null;
@@ -118,8 +112,6 @@ const initialState: AppointmentDetailState = {
   isSaving: false,
   isDeleting: false,
   appointment: null,
-  patients: [],
-  owners: [],
   team: [],
   services: [],
   errorMessage: null,
@@ -149,15 +141,11 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
     try {
       const [
         appointmentResponse,
-        patientsResponse,
-        ownersResponse,
         teamResponse,
         servicesResponse,
       ] =
         await Promise.all([
           getAppointment(appointmentId),
-          getPatients(),
-          getOwners(),
           getClinicTeam(),
           getServices({ bookable_only: true }),
         ]);
@@ -166,8 +154,6 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
         ...current,
         isLoading: false,
         appointment: appointmentResponse.data,
-        patients: patientsResponse.data,
-        owners: ownersResponse.data,
         team: teamResponse.data,
         services: servicesResponse.data,
       }));
@@ -201,18 +187,6 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
       isSaving: false,
       flowMessage: null,
     }));
-  }
-
-  function handlePatientChange(patientId: string) {
-    if (!formState) {
-      return;
-    }
-    const patient = state.patients.find((item) => item.id === patientId);
-    setFormState({
-      ...formState,
-      patient_id: patientId,
-      owner_id: patient?.owner_id ?? formState.owner_id,
-    });
   }
 
   function handleServiceChange(serviceId: string) {
@@ -509,14 +483,11 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
           flowMessage={state.flowMessage}
           formState={formState}
           isSubmitting={state.isSaving}
-          owners={state.owners}
-          patients={state.patients}
           team={state.team}
           services={editableServices}
           submitLabel="Guardar cambios"
           title="Editar turno"
           onClose={closeEditModal}
-          onPatientChange={handlePatientChange}
           onServiceChange={handleServiceChange}
           onSubmit={handleSaveAppointment}
           onUpdateForm={setFormState}

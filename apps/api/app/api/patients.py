@@ -9,6 +9,7 @@ from app.schemas.common import ListMeta
 from app.schemas.patient import (
     ClinicalHistoryPdfExportRequest,
     PatientCreate,
+    PatientSortBy,
     PatientUpdate,
 )
 from app.services.clinical_history_pdf import ClinicalHistoryPdfService
@@ -45,6 +46,7 @@ def list_patients(
     owner_id: uuid.UUID | None = Query(default=None),
     species: str | None = Query(default=None),
     search: str | None = Query(default=None),
+    sort_by: PatientSortBy = Query(default="created_at"),
     page: int = Query(default=1, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=100),
     tenant: TenantContext = Depends(get_tenant_context),
@@ -57,6 +59,7 @@ def list_patients(
         owner_id=owner_id,
         species=species,
         search=search,
+        sort_by=sort_by,
         page=page,
         page_size=page_size,
     )

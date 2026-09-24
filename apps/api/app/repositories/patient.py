@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.patient import Patient
+from app.schemas.patient import PatientSortBy
 
 
 class PatientRepository:
@@ -34,6 +35,7 @@ class PatientRepository:
         owner_id: uuid.UUID | None = None,
         species: str | None = None,
         search: str | None = None,
+        sort_by: PatientSortBy = "created_at",
         page: int = 1,
         page_size: int | None = None,
     ) -> tuple[list[Patient], int]:
@@ -52,7 +54,10 @@ class PatientRepository:
         if search:
             statement = statement.where(Patient.name.ilike(f"%{search}%"))
 
-        statement = statement.order_by(Patient.created_at.desc())
+        if sort_by == "name":
+            statement = statement.order_by(func.lower(Patient.name).asc(), Patient.id.asc())
+        else:
+            statement = statement.order_by(Patient.created_at.desc())
         if page_size is not None:
             statement = statement.offset((page - 1) * page_size).limit(page_size)
         patients = list(self.db.scalars(statement).all())
