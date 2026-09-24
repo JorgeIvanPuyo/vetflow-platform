@@ -15,10 +15,12 @@ function getInitial(displayName?: string | null, email?: string | null) {
 
 export function UserSessionFooter({
   className,
+  compact = false,
   onLogout,
   user,
 }: {
   className: string;
+  compact?: boolean;
   onLogout: () => void | Promise<void>;
   user: User | null;
 }) {
@@ -27,7 +29,7 @@ export function UserSessionFooter({
   const primaryLabel = displayName || getEmailPrefix(email) || "Usuario";
 
   return (
-    <div className={className}>
+    <div className={className} title={compact ? `${primaryLabel}${email ? ` · ${email}` : ""}` : undefined}>
       <span className="session-profile__avatar" aria-hidden="true">
         {getInitial(displayName, email)}
       </span>
@@ -39,6 +41,7 @@ export function UserSessionFooter({
 
       <button
         aria-label="Cerrar sesión"
+        data-sidebar-tooltip={compact ? "Cerrar sesión" : undefined}
         className="session-profile__logout"
         type="button"
         onClick={onLogout}
