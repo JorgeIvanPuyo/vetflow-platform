@@ -16,6 +16,9 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { PatientSelector } from "@/components/patient-selector";
+import { AgendaOwnerSelector } from "./agenda-owner-selector";
+
 import { getApiErrorMessage } from "@/lib/api";
 import { useAuth } from "@/features/auth/auth-context";
 import { createAppointment, getAppointments } from "@/services/appointments";
@@ -27,7 +30,7 @@ import {
   getFollowUps,
 } from "@/services/follow-ups";
 import { getOwners } from "@/services/owners";
-import { getPatients } from "@/services/patients";
+import { getPatient, getPatients } from "@/services/patients";
 import { getServices } from "@/services/services";
 import type {
   Appointment,
@@ -62,6 +65,8 @@ import {
 
 import {
   AppointmentFormState,
+  selectAppointmentOwner,
+  selectAppointmentPatient,
   appointmentStatusOptions,
   appointmentTypeOptions,
   buildAppointmentDateTime,
@@ -154,16 +159,12 @@ export function AgendaScreen({
       const [
         appointmentsResponse,
         followUpsResponse,
-        patientsResponse,
-        ownersResponse,
         teamResponse,
         servicesResponse,
       ] =
         await Promise.all([
           getAppointments(getDayRange(dateValue)),
           getFollowUps(getDayRange(dateValue)),
-          getPatients(),
-          getOwners(),
           getClinicTeam(),
           getServices({ bookable_only: true }),
         ]);
@@ -173,8 +174,6 @@ export function AgendaScreen({
         isLoading: false,
         appointments: appointmentsResponse.data,
         followUps: followUpsResponse.data,
-        patients: patientsResponse.data,
-        owners: ownersResponse.data,
         team: teamResponse.data,
         services: servicesResponse.data,
       }));
@@ -203,52 +202,51 @@ export function AgendaScreen({
   }, [requestedTab]);
 
   useEffect(() => {
-    if (!requestedPatientId || state.patients.length === 0) {
-      return;
-    }
+    if (!requestedPatientId) return;
+    let cancelled = false;
+    getPatient(requestedPatientId).then(({ data: patient }) => {
+      if (cancelled) return;
 
-    const patient = state.patients.find((item) => item.id === requestedPatientId);
-    if (!patient) {
-      return;
-    }
+      if (requestedTab === "follow_ups") {
+        setActiveTab("follow_ups");
+        setFollowUpFormState((current) => ({
+          ...current,
+          patient_id: patient.id,
+          owner_id: patient.owner_id,
+          date: selectedDate,
+          assigned_user_id:
+            current.assigned_user_id ||
+            getDefaultFollowUpAssignedUserId(state.team, user?.email) ||
+            state.team[0]?.id ||
+            "",
+        }));
+        setIsFollowUpCreateOpen(true);
+        return;
+      }
 
-    if (requestedTab === "follow_ups") {
-      setActiveTab("follow_ups");
-      setFollowUpFormState((current) => ({
+      setFormState((current) => ({
         ...current,
         patient_id: patient.id,
         owner_id: patient.owner_id,
         date: selectedDate,
         assigned_user_id:
-          current.assigned_user_id ||
-          getDefaultFollowUpAssignedUserId(state.team, user?.email) ||
-          state.team[0]?.id ||
-          "",
+          current.assigned_user_id || getDefaultAssignedUserId(state.team, user?.email),
+        ...getDefaultAppointmentServiceState(
+          state.services,
+          current.service_id,
+          selectedDate,
+          current.start_time,
+        ),
       }));
-      setIsFollowUpCreateOpen(true);
-      return;
-    }
-
-    setFormState((current) => ({
-      ...current,
-      patient_id: patient.id,
-      owner_id: patient.owner_id,
-      date: selectedDate,
-      assigned_user_id:
-        current.assigned_user_id || getDefaultAssignedUserId(state.team, user?.email),
-      ...getDefaultAppointmentServiceState(
-        state.services,
-        current.service_id,
-        selectedDate,
-        current.start_time,
-      ),
-    }));
-    setIsCreateOpen(true);
+      setIsCreateOpen(true);
+    }).catch((error) => {
+      if (!cancelled) setState((current) => ({ ...current, flowMessage: getApiErrorMessage(error) }));
+    });
+    return () => { cancelled = true; };
   }, [
     requestedPatientId,
     requestedTab,
     selectedDate,
-    state.patients,
     state.services,
     state.team,
     user?.email,
@@ -274,6 +272,17 @@ export function AgendaScreen({
     }));
     setIsCreateOpen(true);
   }
+
+  useEffect(() => {
+    if (!isFollowUpCreateOpen) return;
+    let cancelled = false;
+    Promise.all([getOwners(), getPatients()]).then(([owners, patients]) => {
+      if (!cancelled) setState((current) => ({ ...current, owners: owners.data, patients: patients.data }));
+    }).catch((error) => {
+      if (!cancelled) setState((current) => ({ ...current, flowMessage: getApiErrorMessage(error) }));
+    });
+    return () => { cancelled = true; };
+  }, [isFollowUpCreateOpen]);
 
   function openFollowUpModal() {
     const nextFormState = getInitialFollowUpFormState(parseDateInput(selectedDate));
@@ -313,15 +322,6 @@ export function AgendaScreen({
     const nextDate = parseDateInput(selectedDate);
     nextDate.setDate(nextDate.getDate() + delta);
     setSelectedDate(toDateInputValue(nextDate));
-  }
-
-  function handlePatientChange(patientId: string) {
-    const patient = state.patients.find((item) => item.id === patientId);
-    setFormState((current) => ({
-      ...current,
-      patient_id: patientId,
-      owner_id: patient?.owner_id ?? current.owner_id,
-    }));
   }
 
   function handleServiceChange(serviceId: string) {
@@ -748,14 +748,11 @@ export function AgendaScreen({
           flowMessage={state.flowMessage}
           formState={formState}
           isSubmitting={state.isSubmitting}
-          owners={state.owners}
-          patients={state.patients}
           team={state.team}
           services={state.services}
           submitLabel="Crear turno"
           title="Nuevo turno"
           onClose={closeCreateModal}
-          onPatientChange={handlePatientChange}
           onServiceChange={handleServiceChange}
           onSubmit={handleCreateAppointment}
           onUpdateForm={setFormState}
@@ -977,8 +974,6 @@ type AppointmentFormModalProps = {
   title: string;
   submitLabel: string;
   formState: AppointmentFormState;
-  patients: Patient[];
-  owners: Owner[];
   team: ClinicTeamMember[];
   services: ClinicService[];
   isSubmitting: boolean;
@@ -987,7 +982,6 @@ type AppointmentFormModalProps = {
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateForm: (nextState: AppointmentFormState) => void;
-  onPatientChange: (patientId: string) => void;
   onServiceChange: (serviceId: string) => void;
 };
 
@@ -995,8 +989,6 @@ export function AppointmentFormModal({
   title,
   submitLabel,
   formState,
-  patients,
-  owners,
   team,
   services,
   isSubmitting,
@@ -1005,10 +997,8 @@ export function AppointmentFormModal({
   onClose,
   onSubmit,
   onUpdateForm,
-  onPatientChange,
   onServiceChange,
 }: AppointmentFormModalProps) {
-  const selectedOwner = owners.find((owner) => owner.id === formState.owner_id);
   const showServiceSelector =
     services.length > 0 && !(allowLegacyType && !formState.service_id);
 
@@ -1038,39 +1028,18 @@ export function AppointmentFormModal({
             />
           </label>
 
-          <label className="field">
-            <span>Paciente</span>
-            <select
-              value={formState.patient_id}
-              onChange={(event) => onPatientChange(event.target.value)}
-            >
-              <option value="">Sin paciente seleccionado</option>
-              {patients.map((patient) => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.name} · {patient.species}
-                </option>
-              ))}
-            </select>
-          </label>
+          <PatientSelector
+            ownerId={formState.owner_id}
+            idPrefix="agenda-patient"
+            patientId={formState.patient_id}
+            onSelect={(patient) => onUpdateForm(selectAppointmentPatient(formState, patient))}
+          />
 
-          <label className="field">
-            <span>Propietario</span>
-            <select
-              value={formState.owner_id}
-              onChange={(event) => onUpdateForm({ ...formState, owner_id: event.target.value })}
-            >
-              <option value="">Sin propietario seleccionado</option>
-              {owners.map((owner) => (
-                <option key={owner.id} value={owner.id}>
-                  {owner.full_name} · {owner.phone}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {selectedOwner ? (
-            <p className="panel-note">Propietario seleccionado: {selectedOwner.full_name}</p>
-          ) : null}
+          <AgendaOwnerSelector
+            disabled={Boolean(formState.patient_id)}
+            ownerId={formState.owner_id}
+            onSelect={(owner) => onUpdateForm(selectAppointmentOwner(formState, owner))}
+          />
 
           <label className="field">
             <span>Veterinario asignado *</span>
