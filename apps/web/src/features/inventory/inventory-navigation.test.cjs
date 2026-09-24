@@ -44,7 +44,7 @@ const hooks = { ...React,
   },
 };
 
-let url, navigations, requests, savedItem, failSave;
+let url, navigations, requests, savedItem, failSave, history;
 const timers = new Map();
 let timerId = 0;
 global.window = {
@@ -52,7 +52,8 @@ global.window = {
   clearTimeout(id) { timers.delete(id); },
 };
 const router = {
-  push(href) { navigations.push(href); url = new URL(href, 'http://localhost'); },
+  back() { url = new URL(history.pop()); },
+  push(href) { history.push(url.href); navigations.push(href); url = new URL(href, 'http://localhost'); },
   replace(href) { navigations.push(href); url = new URL(href, 'http://localhost'); },
 };
 const fixture = {
@@ -87,12 +88,13 @@ Module._load = function (name, ...args) {
   return load.call(this, name, ...args);
 };
 const { InventoryScreen } = require('./components/inventory-screen.tsx');
+const { InventoryDetailModal } = require('./components/inventory-detail-modal.tsx');
 const { InventoryDetail } = require('./components/inventory-detail.tsx');
 const { InventoryPrintDialog } = require('./components/inventory-print-dialog.tsx');
 Module._load = load;
-function mount(component, props) {
+function mount(component, props, attach) {
   const h = { values: [], effects: [], pending: [], props };
-  h.render = () => { h.index = 0; current = h; h.tree = component(h.props); h.pending.splice(0).forEach((run) => run()); };
+  h.render = () => { h.index = 0; current = h; h.tree = component(h.props); attach?.(h.tree); h.pending.splice(0).forEach((run) => run()); };
   h.dispose = () => h.effects.forEach((e) => e.cleanup?.());
   h.render(); return h;
 }
@@ -104,7 +106,7 @@ const tick = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); 
 
 const context = '/inventory?search=alimento+%26+gato&category=food&brand=Marca&supplier=Proveedor&stock_status=low_stock&is_active=false&sort_by=sale_price_ars&sort_direction=desc&page=3&page_size=50';
 function reset(href = context) {
-  url = new URL(href, 'http://localhost'); navigations = []; requests = [];
+  url = new URL(href, 'http://localhost'); navigations = []; requests = []; history = [];
   savedItem = { ...fixture }; failSave = false; timers.clear();
 }
 async function settle(h) {
@@ -267,4 +269,74 @@ test('empty and failed print loads show feedback, allow retry and never expose p
     click(h, 'Vista previa'); await settle(h);
     assert.ok(find(h, n => n.type === 'iframe')); assert.equal(find(h, n => n.props?.role === 'alert'), undefined);
   } finally { h.dispose(); api.getInventoryItems = original; global.document = previousDocument; }
+});
+
+
+for (const view of ['Tarjetas', 'Tabla']) {
+  test(`opening a product from ${view} preserves mounted list, filters and history`, async () => {
+    reset(); const h = mount(InventoryScreen); await settle(h);
+    if (view === 'Tabla') click(h, view);
+    const before = requests.length;
+    let prevented = false;
+    detailLink(h).props.onClick({ button: 0, preventDefault() { prevented = true; } });
+    await settle(h);
+    assert.ok(prevented); assert.equal(url.searchParams.get('item'), fixture.id);
+    const modal = find(h, n => n.type === InventoryDetailModal); assert.ok(modal);
+    assert.equal(search(h).props.value, 'alimento & gato');
+    assert.equal(requests.length, before);
+    const openedUrl = url.href;
+    modal.props.onClose(); await settle(h);
+    assert.equal(url.pathname + url.search, context);
+    assert.equal(find(h, n => n.type === InventoryDetailModal), undefined);
+    assert.equal(requests.length, before);
+    // Forward restores the modal from URL state; browser Back closes it again.
+    router.push(openedUrl); await settle(h); assert.ok(find(h, n => n.type === InventoryDetailModal));
+    router.back(); await settle(h); assert.equal(find(h, n => n.type === InventoryDetailModal), undefined);
+    assert.equal(requests.length, before); h.dispose();
+  });
+}
+
+test('modified clicks retain direct product links and direct modal URL closes without leaving inventory', async () => {
+  reset(); const h = mount(InventoryScreen); await settle(h);
+  detailLink(h).props.onClick({ button: 0, ctrlKey: true, preventDefault() { assert.fail('modified click intercepted'); } });
+  assert.equal(navigations.length, 0); assert.match(detailLink(h).props.href, /^\/inventory\/product-1\?return_to=/);
+  h.dispose();
+  reset(context + '&item=product-1'); const direct = mount(InventoryScreen); await settle(direct);
+  find(direct, n => n.type === InventoryDetailModal).props.onClose(); await settle(direct);
+  assert.equal(url.pathname + url.search, context); direct.dispose();
+});
+
+test('native detail dialog opens modally, closes on Escape/button and restores scroll and focus', () => {
+  const previousDocument = global.document;
+  let shown = 0, nativeClosed = 0, closed = 0, focused = 0;
+  global.document = { body: { style: { overflow: 'auto' } }, activeElement: { focus() { focused += 1; } } };
+  const element = { showModal() { shown += 1; }, close() { nativeClosed += 1; } };
+  const h = mount(InventoryDetailModal, { itemId: fixture.id, onClose() { closed += 1; }, onChanged() {} }, tree => { tree.ref.current = element; });
+  try {
+    assert.equal(h.tree.type, 'dialog'); assert.equal(shown, 1); assert.equal(document.body.style.overflow, 'hidden');
+    let prevented = false; h.tree.props.onCancel({ preventDefault() { prevented = true; } });
+    assert.ok(prevented); assert.equal(closed, 1);
+    find(h, n => n.props?.['aria-label'] === 'Cerrar detalle').props.onClick(); assert.equal(closed, 2);
+    h.dispose(); assert.equal(nativeClosed, 1); assert.equal(document.body.style.overflow, 'auto'); assert.equal(focused, 1);
+  } finally { global.document = previousDocument; }
+});
+
+test('embedded detail preserves actions/history and uses one surface for editing; saving refreshes and closes', async () => {
+  reset(); const previousDocument = global.document, previousMovements = api.getInventoryMovements;
+  global.document = { activeElement: null };
+  api.getInventoryMovements = async () => ({ data: [{ id: 'movement-1', movement_type: 'initial_stock', quantity: '10', stock_before: '0', stock_after: '10', created_at: '2026-09-23T12:00:00Z', reversal_status: 'active' }], meta: { page: 1, total_pages: 1 } });
+  let closed = 0, changed = 0;
+  const h = mount(InventoryDetail, { itemId: fixture.id, onClose() { closed += 1; }, onChanged() { changed += 1; } });
+  try {
+    await settle(h);
+    for (const label of ['Editar', 'Desactivar', 'Registrar compra', 'Registrar salida', 'Historial de stock']) assert.ok(text(h.tree).includes(label));
+    assert.ok(find(h, n => n.props?.href === '/inventory/movements/movement-1'));
+    click(h, 'Editar'); assert.ok(find(h, n => n.props?.hidden === true));
+    editForm(h).props.onCancel(); h.render(); assert.equal(closed, 0); assert.equal(editForm(h), undefined);
+    click(h, 'Editar'); let prevented = false;
+    h.tree.props.onKeyDown({ key: 'Escape', preventDefault() { prevented = true; }, stopPropagation() {} }); h.render();
+    assert.ok(prevented); assert.equal(editForm(h), undefined); assert.equal(closed, 0);
+    click(h, 'Editar'); await editForm(h).props.onSubmit({ preventDefault() {} });
+    assert.equal(changed, 1); assert.equal(closed, 1); assert.equal(navigations.length, 0);
+  } finally { h.dispose(); api.getInventoryMovements = previousMovements; global.document = previousDocument; }
 });

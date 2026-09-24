@@ -18,8 +18,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { InventoryDetailModal } from "./inventory-detail-modal";
 import { InventoryPrintDialog } from "./inventory-print-dialog";
 
 import { useClinic } from "@/features/clinic/clinic-context";
@@ -155,7 +156,11 @@ export function InventoryScreen() {
   };
   const router = useRouter();
   const searchParams = useSearchParams();
-  const queryString = searchParams.toString();
+  const selectedItemId = searchParams.get("item");
+  const listParams = new URLSearchParams(searchParams.toString());
+  listParams.delete("item");
+  const queryString = listParams.toString();
+  const openedDetailHere = useRef(false);
   const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const latestLoadRef = useRef(0);
   const latestFilterOptionsLoadRef = useRef(0);
@@ -360,9 +365,10 @@ export function InventoryScreen() {
     }
 
     if (changed) {
+      if (selectedItemId) nextParams.set("item", selectedItemId);
       router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false });
     }
-  }, [pathname, queryString, router]);
+  }, [pathname, queryString, router, selectedItemId]);
 
   useEffect(() => {
     setSearchInput({ source: queryState.search, value: queryState.search });
@@ -402,6 +408,20 @@ export function InventoryScreen() {
 
     return () => window.clearTimeout(timeoutId);
   }, [queryInput, queryState.search, updateInventoryUrl]);
+
+  function openDetail(event: MouseEvent<HTMLAnchorElement>, itemId: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openedDetailHere.current = true;
+    const params = new URLSearchParams(queryString);
+    params.set("item", itemId);
+    router.push(`${pathname}?${params}`, { scroll: false });
+  }
+
+  function closeDetail() {
+    if (openedDetailHere.current) router.back();
+    else router.replace(listReturnHref, { scroll: false });
+  }
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -842,6 +862,7 @@ export function InventoryScreen() {
                   <Link
                     className="inventory-card__link"
                     href={`/inventory/${item.id}?return_to=${encodeURIComponent(listReturnHref)}`}
+                    onClick={(event) => openDetail(event, item.id)}
                   >
                   <span className="inventory-card__icon" aria-hidden="true">
                     {getInventoryCategoryIcon(item.category)}
@@ -967,6 +988,7 @@ export function InventoryScreen() {
                             <Link
                               className="inventory-table__action"
                               href={`/inventory/${item.id}?return_to=${encodeURIComponent(listReturnHref)}`}
+                              onClick={(event) => openDetail(event, item.id)}
                             >
                               Abrir
                               <ChevronRight size={16} aria-hidden="true" />
@@ -1212,6 +1234,11 @@ export function InventoryScreen() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {selectedItemId ? (
+        <InventoryDetailModal key={selectedItemId} itemId={selectedItemId}
+          onClose={closeDetail} onChanged={() => void loadInventory()} />
       ) : null}
 
       {isPrintOpen ? (

@@ -1,0 +1,71 @@
+.modal {
+  width: min(1080px, calc(100vw - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  padding: 0 28px 28px;
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 24px 80px rgba(17, 24, 39, 0.22);
+}
+
+.modal::backdrop { background: rgba(17, 24, 39, 0.42); }
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+.detail { background: var(--color-surface); border-radius: 16px; padding: 28px; }
+.embedded { padding: 0; }
+.overview:not([hidden]), .sections { display: grid; gap: 28px; }
+.overview[hidden] { display: none; }
+.overview :global(.panel), .overview :global(.detail-hero) {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+.overview :global(.detail-hero) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; }
+.overview :global(.back-link) { grid-column: 1 / -1; }
+.overview :global(.detail-hero__actions) { align-items: center; }
+.overview :global(.detail-hero__actions) > button { flex: 0 0 auto; }
+.overview :global(.detail-hero) h1 { font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; }
+.overview :global(.panel) h2 { font-size: 1.05rem; }
+.overview :global(.panel) { border-top: 1px solid var(--color-border); padding-top: 24px; }
+.overview :global(.detail-grid), .overview :global(.metric-list) {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 28px;
+}
+.overview :global(.detail-grid) > div, .overview :global(.metric-list) > div {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.overview dd { margin: 5px 0 0; overflow-wrap: anywhere; }
+.overview :global(.panel-note) { background: transparent; border: 0; padding: 0; color: var(--color-text-muted); }
+.overview :global(.inventory-movement-card) { border: 0; border-bottom: 1px solid var(--color-border); border-radius: 0; background: transparent; padding: 16px 0; }
+.overview :global(.inventory-movement-card__icon) { background: transparent; }
+.overview :global(.inventory-movement-card__top) > :global(.badge) { background: transparent; color: var(--color-text-muted); padding: 0; font-weight: 400; }
+/* In the modal, an action replaces the detail on the same surface. */
+.embedded > :global(.modal-backdrop) { position: static; display: block; background: none; backdrop-filter: none; padding: 0; }
+.embedded > :global(.modal-backdrop) > :global(.bottom-sheet) { width: 100%; max-height: none; overflow: visible; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+@media (max-width: 640px) {
+  .modal { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; padding: 0 16px 24px; }
+  .overview :global(.detail-hero) { grid-template-columns: 1fr; }
+  .detail { padding: 16px; }
+  .embedded { padding: 0; }
+  .overview :global(.detail-grid), .overview :global(.metric-list) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+}
