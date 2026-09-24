@@ -13,7 +13,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   formatInventoryCurrency,
@@ -26,7 +26,7 @@ import {
   labelBulkOperation,
   labelBulkStatus,
 } from "@/features/inventory/components/inventory-bulk-operations-screen";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import {
   getInventoryDashboard,
   getInventoryFilterOptions,
@@ -112,7 +112,10 @@ export function InventoryDashboardScreen() {
     [pathname, queryString, router],
   );
 
+  const loadVersion = useRef(0);
+
   const loadDashboard = useCallback(async () => {
+    const version = ++loadVersion.current;
     setState((current) => ({
       ...current,
       isLoading: current.data === null,
@@ -121,6 +124,7 @@ export function InventoryDashboardScreen() {
     }));
     try {
       const response = await getInventoryDashboard(filters);
+      if (version !== loadVersion.current) return;
       setState({
         data: response.data,
         isLoading: false,
@@ -128,6 +132,7 @@ export function InventoryDashboardScreen() {
         errorMessage: null,
       });
     } catch (error) {
+      if (version !== loadVersion.current || (error instanceof ApiClientError && error.code === "read_cancelled") || (error instanceof DOMException && error.name === "AbortError")) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -155,6 +160,7 @@ export function InventoryDashboardScreen() {
 
   useEffect(() => {
     void loadDashboard();
+    return () => { loadVersion.current += 1; };
   }, [loadDashboard]);
 
   useEffect(() => {
