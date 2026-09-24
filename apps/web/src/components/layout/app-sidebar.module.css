@@ -1,0 +1,35 @@
+@media (min-width: 1024px) {
+  .sidebar { transition: width 160ms ease, flex-basis 160ms ease; z-index: 30; }
+  .heading { display: flex; align-items: center; gap: 4px; margin-bottom: 18px; }
+  .heading :global(.app-sidebar__brand) { min-width: 0; flex: 1; margin-bottom: 0; }
+  .brandName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .heading :global(.brand__mark) { flex-shrink: 0; }
+  .toggle { flex-shrink: 0; border: 0; box-shadow: none; background: transparent; }
+  .sidebar :is(a, button, select):focus-visible { outline: 2px solid var(--color-primary-dark); outline-offset: 3px; }
+  .sidebar :global(.app-sidebar__link--active) { box-shadow: inset 3px 0 0 var(--color-primary-dark); }
+  .sidebar.collapsed { width: 76px; flex-basis: 76px; padding: 0; }
+  .collapsed .heading { flex-direction: column; gap: 12px; }
+  .collapsed .heading :global(.app-sidebar__brand) { padding: 0; flex: none; }
+  .collapsed .brandName, .collapsed .linkLabel, .collapsed .tenantSwitcher,
+  .collapsed :global(.session-profile__info) { display: none; }
+  .collapsed :global(.app-sidebar__link) { justify-content: center; padding: 0; }
+  .collapsed :global(.app-sidebar__link) svg { flex-shrink: 0; }
+  .collapsed :global(.app-sidebar__user-footer) {
+    height: auto; grid-template-columns: 1fr; justify-items: center; gap: 10px; padding: 12px 0;
+  }
+  .tenantToggle { align-self: center; margin-bottom: 12px; }
+  /* Labels remain available to assistive technology via aria-label. */
+  .sidebar [data-sidebar-tooltip] { position: relative; }
+  .sidebar [data-sidebar-tooltip]::after {
+    content: attr(data-sidebar-tooltip);
+    position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%);
+    z-index: 1; padding: 7px 10px; border-radius: 6px;
+    background: var(--color-text); color: white; font-size: 0.8rem; font-weight: 500;
+    white-space: nowrap; pointer-events: none; opacity: 0;
+  }
+  .sidebar [data-sidebar-tooltip]:is(:hover, :focus-visible)::after { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
