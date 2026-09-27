@@ -159,7 +159,7 @@ export function SettingsScreen() {
   const [teamEditMessage, setTeamEditMessage] = useState<string | null>(null);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
   const canManageCatalog = role === "clinic_admin";
-  const canEditServices = canManageCatalog || role === "medico_veterinario";
+  const canManageServices = canManageCatalog || role === "medico_veterinario" || role === "contador";
   const moneyPreferences = resolveMoneyPreferences(state.preferences);
 
   async function loadSettings() {
@@ -468,20 +468,20 @@ export function SettingsScreen() {
   }
 
   function openNewServiceForm() {
-    if (!canManageCatalog) return;
+    if (!canManageServices) return;
     setServiceFormState(getInitialServiceFormState(state.services.length + 1));
     setState((current) => ({ ...current, catalogMessage: null, successMessage: null }));
   }
 
   function openEditServiceForm(service: ClinicServiceItem) {
-    if (!canEditServices) return;
+    if (!canManageServices) return;
     setServiceFormState(serviceToFormState(service));
     setState((current) => ({ ...current, catalogMessage: null, successMessage: null }));
   }
 
   async function handleSaveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!serviceFormState || !(serviceFormState.id ? canEditServices : canManageCatalog)) {
+    if (!serviceFormState || !canManageServices) {
       return;
     }
 
@@ -520,7 +520,7 @@ export function SettingsScreen() {
   }
 
   async function handleToggleService(service: ClinicServiceItem) {
-    if (!canManageCatalog) {
+    if (!canManageServices) {
       return;
     }
 
@@ -553,7 +553,7 @@ export function SettingsScreen() {
   }
 
   async function handleMoveService(service: ClinicServiceItem, direction: -1 | 1) {
-    if (!canManageCatalog) {
+    if (!canManageServices) {
       return;
     }
     const ordered = [...state.services].sort((a, b) => a.sort_order - b.sort_order);
@@ -596,7 +596,7 @@ export function SettingsScreen() {
   }
 
   async function handleRestoreServiceDefaults() {
-    if (!canManageCatalog) {
+    if (!canManageServices) {
       return;
     }
 
@@ -1104,7 +1104,7 @@ export function SettingsScreen() {
                 <div className="modal-actions">
                   <button
                     className="secondary-button"
-                    disabled={!canManageCatalog || state.isSaving}
+                    disabled={!canManageServices || state.isSaving}
                     onClick={() => void handleRestoreServiceDefaults()}
                     type="button"
                   >
@@ -1112,7 +1112,7 @@ export function SettingsScreen() {
                   </button>
                   <button
                     className="primary-button"
-                    disabled={!canManageCatalog || state.isSaving}
+                    disabled={!canManageServices || state.isSaving}
                     onClick={openNewServiceForm}
                     type="button"
                   >
@@ -1149,7 +1149,7 @@ export function SettingsScreen() {
                               <button
                                 aria-label="Subir servicio"
                                 className="icon-button"
-                                disabled={!canManageCatalog || index === 0 || state.isSaving}
+                                disabled={!canManageServices || index === 0 || state.isSaving}
                                 onClick={() => void handleMoveService(service, -1)}
                                 type="button"
                               >
@@ -1159,7 +1159,7 @@ export function SettingsScreen() {
                                 aria-label="Bajar servicio"
                                 className="icon-button"
                                 disabled={
-                                  !canManageCatalog ||
+                                  !canManageServices ||
                                   index === services.length - 1 ||
                                   state.isSaving
                                 }
@@ -1170,7 +1170,7 @@ export function SettingsScreen() {
                               </button>
                               <button
                                 className="secondary-button"
-                                disabled={!canEditServices}
+                                disabled={!canManageServices}
                                 onClick={() => openEditServiceForm(service)}
                                 type="button"
                               >
@@ -1179,7 +1179,7 @@ export function SettingsScreen() {
                               </button>
                               <button
                                 className="secondary-button"
-                                disabled={!canManageCatalog || state.isSaving}
+                                disabled={!canManageServices || state.isSaving}
                                 onClick={() => void handleToggleService(service)}
                                 type="button"
                               >
