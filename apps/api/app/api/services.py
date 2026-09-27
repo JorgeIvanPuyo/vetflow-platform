@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.roles import Role
-from app.core.tenant import TenantContext, get_tenant_context, require_clinic_admin
+from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.service import (
     ServiceCreate,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/services", tags=["services"])
 def require_service_editor(
     tenant: TenantContext = Depends(get_tenant_context),
 ) -> TenantContext:
-    if tenant.role not in (Role.CLINIC_ADMIN.value, Role.MEDICO_VETERINARIO.value):
+    if tenant.role not in (Role.CLINIC_ADMIN.value, Role.MEDICO_VETERINARIO.value, Role.CONTADOR.value):
         raise AppError(403, "forbidden", "No tienes permiso para esta acción")
     return tenant
 
@@ -50,7 +50,7 @@ def list_services(
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_service(
     payload: ServiceCreate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_service_editor),
     db: Session = Depends(get_db),
 ) -> dict:
     service = ServiceCatalogService(db).create_service(
@@ -67,7 +67,7 @@ def create_service(
 @router.patch("/reorder")
 def reorder_services(
     payload: ServiceReorderRequest,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_service_editor),
     db: Session = Depends(get_db),
 ) -> dict:
     services = ServiceCatalogService(db).reorder_services(tenant.tenant_id, payload)
@@ -82,7 +82,7 @@ def reorder_services(
 
 @router.post("/restore-defaults")
 def restore_default_services(
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_service_editor),
     db: Session = Depends(get_db),
 ) -> dict:
     services = ServiceCatalogService(db).restore_defaults(tenant.tenant_id)
@@ -129,7 +129,7 @@ def update_service(
 @router.post("/{service_id}/activate")
 def activate_service(
     service_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_service_editor),
     db: Session = Depends(get_db),
 ) -> dict:
     service = ServiceCatalogService(db).activate_service(tenant.tenant_id, service_id)
@@ -142,7 +142,7 @@ def activate_service(
 @router.post("/{service_id}/deactivate")
 def deactivate_service(
     service_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_service_editor),
     db: Session = Depends(get_db),
 ) -> dict:
     service = ServiceCatalogService(db).deactivate_service(tenant.tenant_id, service_id)
