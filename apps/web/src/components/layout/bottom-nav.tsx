@@ -56,6 +56,7 @@ export function BottomNav() {
     if ("roles" in item) {
       return role ? (item.roles as readonly string[]).includes(role) : false;
     }
+    if (item.href === "/settings" && role === "contador") return true;
     return role ? !SCOPED_ROLES.includes(role) : true;
   });
 

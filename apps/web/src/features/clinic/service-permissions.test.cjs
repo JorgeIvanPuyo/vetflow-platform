@@ -37,6 +37,7 @@ const preferences = {
 let harness;
 const originalLoad = Module._load;
 Module._load = function (request, ...args) {
+  if (request === "next/navigation") return { usePathname: () => "/settings" };
   if (request === "react") return {
     ...React,
     useState(initial) {
@@ -58,6 +59,7 @@ Module._load = function (request, ...args) {
   return originalLoad.call(this, request, ...args);
 };
 
+const { BottomNav } = require("../../components/layout/bottom-nav.tsx");
 const { SettingsScreen } = require("./components/settings-screen.tsx");
 const { navigationItems, filterNavigationByRole } = require("../../components/layout/navigation-items.ts");
 const { setAuthTokenProvider, setActingTenantId } = require("../../lib/api.ts");
@@ -92,7 +94,7 @@ async function mount(role) {
   return render();
 }
 
-for (const role of ["clinic_admin", "medico_veterinario"]) {
+for (const role of ["clinic_admin", "medico_veterinario", "contador"]) {
   test(`${role} can open, change and save an existing service`, async () => {
     let tree = await mount(role);
     assert.equal(button(tree, "Editar").props.disabled, false);
@@ -136,26 +138,89 @@ for (const role of ["clinic_admin", "medico_veterinario"]) {
   });
 }
 
-test("veterinarian keeps admin service actions and preferences disabled", async () => {
-  let tree = await mount("medico_veterinario");
-  for (const label of ["Nuevo servicio", "Restaurar predeterminados", "Desactivar", "Subir servicio", "Bajar servicio"]) {
-    assert.equal(button(tree, label).props.disabled, true, label);
-  }
-  button(tree, "Nuevo servicio").props.onClick();
-  assert.ok(!nodes(render()).some((node) => node.props?.["aria-labelledby"] === "service-form-title"));
-  nodes(tree).find((node) => node.type === "button" && text(node).startsWith("Preferencias")).props.onClick();
-  tree = render();
-  assert.equal(button(tree, "Guardar preferencias").props.disabled, true);
-  const links = filterNavigationByRole(navigationItems, "medico_veterinario").map((item) => item.href);
-  assert.ok(links.includes("/settings"));
-  assert.ok(!links.includes("/users"));
-  assert.ok(!links.includes("/accounting"));
-});
+for (const role of ["medico_veterinario", "contador"]) {
+  test(`${role} keeps preferences and unrelated navigation restricted`, async () => {
+    let tree = await mount(role);
+    nodes(tree).find((node) => node.type === "button" && text(node).startsWith("Preferencias")).props.onClick();
+    tree = render();
+    assert.equal(button(tree, "Guardar preferencias").props.disabled, true);
+    const links = filterNavigationByRole(navigationItems, role).map((item) => item.href);
+    assert.ok(links.includes("/settings"));
+    assert.ok(!links.includes("/users"));
+    const mobileLinks = nodes(BottomNav()).map((node) => node.props?.href).filter(Boolean);
+    assert.ok(mobileLinks.includes("/settings"));
+    assert.ok(!mobileLinks.includes("/users"));
+    if (role === "contador") {
+      for (const href of ["/inventory/dashboard", "/purchases/dashboard", "/sales"]) {
+        assert.ok(!links.includes(href));
+        assert.ok(!mobileLinks.includes(href));
+      }
+    } else {
+      assert.ok(!links.includes("/accounting"));
+    }
+  });
+}
 
-for (const role of ["contador", "superadmin", null]) {
+for (const role of ["clinic_admin", "medico_veterinario", "contador"]) {
+  test(`${role} can create, toggle, reorder and restore services`, async () => {
+    let tree = await mount(role);
+    const previousFetch = global.fetch;
+    const requests = [];
+    setAuthTokenProvider(async () => "test-token");
+    setActingTenantId(null);
+    global.fetch = async (url, init) => {
+      const pathname = new URL(url).pathname;
+      const payload = init.body ? JSON.parse(init.body) : null;
+      requests.push([pathname, init.method, payload]);
+      let data;
+      if (pathname.endsWith("/reorder")) {
+        data = payload.items.map((item) => ({ ...service, ...item }));
+      } else if (pathname.endsWith("/restore-defaults")) {
+        data = [service];
+      } else if (pathname.endsWith("/deactivate") || pathname.endsWith("/activate")) {
+        data = { ...service, is_active: pathname.endsWith("/activate") };
+      } else {
+        data = { ...service, ...payload, id: "service-b", is_active: true };
+      }
+      return new Response(JSON.stringify({ data, meta: {} }), { status: 200 });
+    };
+    try {
+      assert.equal(button(tree, "Nuevo servicio").props.disabled, false);
+      button(tree, "Nuevo servicio").props.onClick();
+      tree = render();
+      for (const [label, value] of [["Código", "NEW"], ["Nombre", "Nuevo servicio"]]) {
+        const field = nodes(tree).find((node) => node.type === "label" && text(node).startsWith(label));
+        const input = nodes(field).find((node) => node.type === "input");
+        input.props.onChange({ target: { value } });
+        tree = render();
+      }
+      const dialog = nodes(tree).find((node) => node.props?.["aria-labelledby"] === "service-form-title");
+      await nodes(dialog).find((node) => node.type === "form").props.onSubmit({ preventDefault() {} });
+      assert.equal(requests.at(-1)[0], "/api/v1/services");
+      assert.equal(requests.at(-1)[1], "POST");
+      for (const [label, suffix] of [["Desactivar", "service-a/deactivate"], ["Activar", "service-a/activate"], ["Bajar servicio", "reorder"], ["Subir servicio", "reorder"], ["Restaurar predeterminados", "restore-defaults"]]) {
+        tree = render();
+        const action = nodes(tree).find((node) => node.type === "button" &&
+          (text(node).trim() === label || node.props["aria-label"] === label) && !node.props.disabled);
+        assert.ok(action, label);
+        action.props.onClick();
+        await new Promise(setImmediate);
+        assert.equal(requests.at(-1)[0], `/api/v1/services/${suffix}`);
+      }
+      assert.equal(requests.length, 6);
+    } finally {
+      global.fetch = previousFetch;
+      setAuthTokenProvider(null);
+    }
+  });
+}
+
+for (const role of ["superadmin", null]) {
   test(`${role} still cannot open the service editor`, async () => {
     const tree = await mount(role);
-    assert.equal(button(tree, "Editar").props.disabled, true);
+    for (const label of ["Editar", "Nuevo servicio", "Restaurar predeterminados", "Desactivar", "Subir servicio", "Bajar servicio"]) {
+      assert.equal(button(tree, label).props.disabled, true, label);
+    }
     button(tree, "Editar").props.onClick();
     assert.ok(!nodes(render()).some((node) => node.props?.["aria-labelledby"] === "service-form-title"));
   });

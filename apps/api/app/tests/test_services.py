@@ -66,26 +66,7 @@ def test_clinic_admin_can_create_and_list_services(client, db_session, tenant):
     assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
 
 
-def test_non_clinic_admin_cannot_create_services(client, db_session, tenant):
-    vet = _create_user(
-        db_session,
-        tenant,
-        "vet@example.com",
-        "Regular Vet",
-        "medico_veterinario",
-    )
-
-    response = client.post(
-        "/api/v1/services",
-        headers=_user_headers(vet.email),
-        json=_service_payload(),
-    )
-
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
-
-
-@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario"])
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador"])
 def test_service_editor_can_update_all_form_fields(client, db_session, tenant, role):
     admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
     editor = _create_user(db_session, tenant, "editor@example.com", "Editor", role)
@@ -135,7 +116,7 @@ def test_vet_cannot_edit_foreign_service_even_with_forged_tenant_headers(
     assert persisted["tenant_id"] == str(other_tenant.id)
 
 
-@pytest.mark.parametrize("role", ["contador", "superadmin", None])
+@pytest.mark.parametrize("role", ["superadmin", None])
 def test_other_roles_still_cannot_edit_services(client, db_session, tenant, role):
     admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
     service = _create_service(client, tenant, admin)
@@ -147,24 +128,6 @@ def test_other_roles_still_cannot_edit_services(client, db_session, tenant, role
     response = client.patch(
         f"/api/v1/services/{service['id']}", headers=headers, json={"name": "Changed"},
     )
-
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
-
-
-@pytest.mark.parametrize("operation", ["activate", "deactivate", "reorder", "restore-defaults"])
-def test_vet_cannot_perform_admin_service_operations(client, db_session, tenant, operation):
-    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
-    vet = _create_user(db_session, tenant, "vet@example.com", "Vet", "medico_veterinario")
-    service = _create_service(client, tenant, admin)
-    if operation == "activate":
-        client.post(f"/api/v1/services/{service['id']}/deactivate", headers=_user_headers(admin.email))
-    if operation == "reorder":
-        response = client.patch("/api/v1/services/reorder", headers=_user_headers(vet.email),
-                                json={"items": [{"id": service["id"], "sort_order": 1}]})
-    else:
-        path = operation if operation == "restore-defaults" else f"{service['id']}/{operation}"
-        response = client.post(f"/api/v1/services/{path}", headers=_user_headers(vet.email))
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "forbidden"
@@ -406,3 +369,80 @@ def test_service_prices_list_only_current_tenant_active_including_non_bookable(c
     assert foreign["id"] not in response.text
     cross_update = client.patch(f"/api/v1/services/{foreign['id']}", headers=_user_headers(admin.email), json={"price": "1.00"})
     assert cross_update.status_code == 404
+
+
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador"])
+def test_clinic_roles_manage_services_only_in_their_tenant(
+    client, db_session, tenant, other_tenant, monkeypatch, role,
+):
+    import app.core.tenant as tenant_core
+
+    user = _create_user(db_session, tenant, "member@example.com", "Member", role)
+    owner = _create_user(db_session, other_tenant, "owner@example.com", "Owner", "clinic_admin")
+    foreign = _create_service(client, other_tenant, owner)
+    foreign_url = f"/api/v1/services/{foreign['id']}"
+    monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": user.email})
+    headers = {
+        "Authorization": "Bearer test-token",
+        "X-Tenant-Id": str(other_tenant.id),
+        "X-Acting-Tenant-Id": str(other_tenant.id),
+    }
+    created = client.post("/api/v1/services", headers=headers, json=_service_payload(
+        tenant_id=str(other_tenant.id),
+    ))
+    assert created.status_code == 201
+    own = created.json()["data"]
+    assert own["tenant_id"] == str(tenant.id)
+    assert own["created_by_user_id"] == str(user.id)
+    url = f"/api/v1/services/{own['id']}"
+    assert client.get(url, headers=headers).status_code == 200
+    listed = client.get("/api/v1/services?include_inactive=true", headers=headers)
+    assert [row["id"] for row in listed.json()["data"]] == [own["id"]]
+    assert client.get(foreign_url, headers=headers).status_code == 404
+    assert client.patch(foreign_url, headers=headers, json={"name": "Intrusion"}).status_code == 404
+    for operation, active in [("deactivate", False), ("activate", True)]:
+        response = client.post(f"{url}/{operation}", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["data"]["is_active"] is active
+        assert client.post(f"{foreign_url}/{operation}", headers=headers).status_code == 404
+
+    response = client.patch("/api/v1/services/reorder", headers=headers,
+                            json={"items": [{"id": own["id"], "sort_order": 30}]})
+    assert response.status_code == 200
+    assert response.json()["data"][0]["sort_order"] == 30
+    response = client.patch("/api/v1/services/reorder", headers=headers,
+                            json={"items": [{"id": foreign["id"], "sort_order": 99}]})
+    assert response.status_code == 404
+    restored = client.post("/api/v1/services/restore-defaults", headers=headers)
+    assert restored.status_code == 200
+    assert all(row["tenant_id"] == str(tenant.id) for row in restored.json()["data"])
+    foreign_list = client.get("/api/v1/services?include_inactive=true",
+                              headers=_user_headers(owner.email)).json()["data"]
+    assert foreign_list == [foreign]
+    db_session.refresh(user)
+    assert user.role == role
+
+
+@pytest.mark.parametrize("role", ["medico_veterinario", "contador"])
+def test_service_access_does_not_grant_other_admin_permissions(client, db_session, tenant, role):
+    user = _create_user(db_session, tenant, "member@example.com", "Member", role)
+    headers = _user_headers(user.email)
+    assert client.patch("/api/v1/clinic/preferences", headers=headers,
+                        json={"currency_code": "USD"}).status_code == 403
+    assert client.post("/api/v1/suppliers", headers=headers,
+                       json={"name": "Restricted"}).status_code == 403
+
+
+@pytest.mark.parametrize("role", ["superadmin", None])
+def test_service_management_remains_forbidden_for_other_roles(client, db_session, tenant, role):
+    admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
+    service = _create_service(client, tenant, admin)
+    headers = _headers(tenant)
+    if role:
+        user = _create_user(db_session, tenant, "other@example.com", "Other", role)
+        headers = _user_headers(user.email)
+    assert client.post("/api/v1/services", headers=headers, json=_service_payload()).status_code == 403
+    assert client.patch("/api/v1/services/reorder", headers=headers,
+                        json={"items": [{"id": service["id"], "sort_order": 1}]}).status_code == 403
+    for path in ["restore-defaults", f"{service['id']}/activate", f"{service['id']}/deactivate"]:
+        assert client.post(f"/api/v1/services/{path}", headers=headers).status_code == 403

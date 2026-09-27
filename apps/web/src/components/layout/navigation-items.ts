@@ -59,6 +59,7 @@ export function filterNavigationByRole(
       return role ? item.roles.includes(role) : false;
     }
     // Unrestricted items: visible to everyone except scoped roles.
+    if (item.href === "/settings" && role === "contador") return true;
     return role ? !SCOPED_ROLES.includes(role) : true;
   });
 }
