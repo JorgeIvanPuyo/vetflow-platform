@@ -1457,7 +1457,7 @@ export type SearchResponse = {
   };
 };
 
-export type AppRole = "superadmin" | "clinic_admin" | "medico_veterinario" | "contador";
+export type AppRole = "superadmin" | "clinic_admin" | "medico_veterinario" | "contador" | "secretaria";
 
 export type CurrentUser = {
   id: string;

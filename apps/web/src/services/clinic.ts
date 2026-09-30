@@ -35,9 +35,9 @@ export function deleteClinicLogo() {
   return api.delete<ApiItemResponse<ClinicProfile>>("/api/v1/clinic/logo");
 }
 
-export function getClinicTeam() {
+export function getClinicTeam(responsibleOnly = false) {
   return api.get<{ data: ClinicTeamMember[]; meta: Record<string, never> }>(
-    "/api/v1/clinic/team",
+    responsibleOnly ? "/api/v1/clinic/team?responsible_only=true" : "/api/v1/clinic/team",
   );
 }
 

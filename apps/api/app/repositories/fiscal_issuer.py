@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.sale_fiscal import FiscalIssuer
 from app.models.user import User
+from app.core.roles import Role
 
 
 class FiscalIssuerRepository:
@@ -55,7 +56,14 @@ class FiscalIssuerRepository:
     def list(self, tenant_id: uuid.UUID, *, active_only: bool) -> list[FiscalIssuer]:
         filters = [FiscalIssuer.tenant_id == tenant_id]
         if active_only:
-            filters.append(FiscalIssuer.is_active.is_(True))
+            filters.extend([
+                FiscalIssuer.is_active.is_(True),
+                FiscalIssuer.user.has(
+                    (User.tenant_id == tenant_id)
+                    & (User.role == Role.MEDICO_VETERINARIO.value)
+                    & User.is_active.is_(True)
+                ),
+            ])
         statement = (
             select(FiscalIssuer)
             .where(*filters)

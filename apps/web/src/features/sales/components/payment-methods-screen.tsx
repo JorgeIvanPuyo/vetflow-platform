@@ -1,5 +1,7 @@
 "use client";
 
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import { ArrowLeft, Pencil, Plus, Power, Save, X } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
@@ -11,6 +13,12 @@ import type { PaymentMethod, PaymentMethodType, PaymentMethodWritePayload } from
 const initialForm: PaymentMethodWritePayload = { label: "", type: "cash", is_active: true, sort_order: 0 };
 
 export function PaymentMethodsScreen() {
+  const { isLoading } = useCurrentUser();
+  if (isLoading) return <div className="loading-state">Cargando permisos...</div>;
+  return <PaymentMethodsScreenContent />;
+}
+
+function PaymentMethodsScreenContent() {
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);

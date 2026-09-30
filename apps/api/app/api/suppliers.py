@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.tenant import TenantContext, get_tenant_context, require_clinic_admin
+from app.core.permissions import require_supplier_manager
+from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.supplier import (
     SortDirection,
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_supplier(
     payload: SupplierCreate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_supplier_manager),
     db: Session = Depends(get_db),
 ) -> dict:
     supplier = SupplierService(db).create(
@@ -87,7 +88,7 @@ def get_supplier(
 def update_supplier(
     supplier_id: uuid.UUID,
     payload: SupplierUpdate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_supplier_manager),
     db: Session = Depends(get_db),
 ) -> dict:
     supplier = SupplierService(db).update(tenant.tenant_id, supplier_id, payload)
@@ -100,7 +101,7 @@ def update_supplier(
 @router.post("/{supplier_id}/activate")
 def activate_supplier(
     supplier_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_supplier_manager),
     db: Session = Depends(get_db),
 ) -> dict:
     supplier = SupplierService(db).set_active(tenant.tenant_id, supplier_id, True)
@@ -113,7 +114,7 @@ def activate_supplier(
 @router.post("/{supplier_id}/deactivate")
 def deactivate_supplier(
     supplier_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_supplier_manager),
     db: Session = Depends(get_db),
 ) -> dict:
     supplier = SupplierService(db).set_active(tenant.tenant_id, supplier_id, False)

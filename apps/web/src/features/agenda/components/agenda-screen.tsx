@@ -1,5 +1,9 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import {
   CheckCircle2,
   CalendarDays,
@@ -119,6 +123,7 @@ export function AgendaScreen({
   initialTab?: AgendaTab;
 }) {
   const { user } = useAuth();
+  const { role } = useCurrentUser();
   const searchParams = useSearchParams();
   const requestedPatientId = searchParams.get("patient_id") ?? "";
   const requestedTab = searchParams.get("tab");
@@ -165,7 +170,7 @@ export function AgendaScreen({
         await Promise.all([
           getAppointments(getDayRange(dateValue)),
           getFollowUps(getDayRange(dateValue)),
-          getClinicTeam(),
+          getClinicTeam(true),
           getServices({ bookable_only: true }),
         ]);
 
@@ -563,6 +568,7 @@ export function AgendaScreen({
       <button
         aria-label={activeTab === "appointments" ? "Nuevo turno" : "Nuevo seguimiento"}
         className="floating-add-button list-page__fab"
+        disabled={!canPerformClinicalActions(role) && activeTab === "follow_ups"}
         onClick={activeTab === "appointments" ? openCreateModal : openFollowUpModal}
         type="button"
       >
@@ -835,6 +841,7 @@ function FollowUpCard({
   onComplete: (followUp: FollowUp) => void;
   onCancel: (followUp: FollowUp) => void;
 }) {
+  const { role } = useCurrentUser();
   const assignedUser = getFollowUpUserName(
     followUp.assigned_user_name,
     followUp.assigned_user_email,
@@ -870,6 +877,7 @@ function FollowUpCard({
           <button
             className="secondary-button"
             disabled={
+              !canPerformClinicalActions(role) ||
               isBusy ||
               followUp.status === "completed" ||
               followUp.status === "cancelled"

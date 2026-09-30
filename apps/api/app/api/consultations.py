@@ -4,7 +4,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.permissions import clinical_read_or_veterinarian
+from app.core.tenant import TenantContext
 from app.db.session import get_db
 from app.schemas.common import ListMeta
 from app.schemas.consultation import (
@@ -35,7 +36,7 @@ router = APIRouter(tags=["consultations"])
 @router.post("/consultations", status_code=status.HTTP_201_CREATED)
 def create_consultation(
     payload: ConsultationCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).create_consultation(
@@ -59,7 +60,7 @@ def list_consultations(
         default=None,
         alias="status",
     ),
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultations, total = ConsultationService(db).list_consultations(
@@ -119,7 +120,7 @@ def _compact_list_text(value: str | None, max_length: int = 240) -> str | None:
 @router.get("/consultations/{consultation_id}")
 def get_consultation(
     consultation_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).get_consultation(
@@ -135,7 +136,7 @@ def get_consultation(
 @router.post("/consultations/{consultation_id}/ai-summary")
 def generate_consultation_ai_summary(
     consultation_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).generate_ai_summary(
@@ -161,7 +162,7 @@ def generate_consultation_ai_summary(
 )
 def create_follow_up_consultation(
     consultation_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).create_follow_up_consultation(
@@ -180,7 +181,7 @@ def create_follow_up_consultation(
 def update_consultation(
     consultation_id: uuid.UUID,
     payload: ConsultationUpdate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).update_consultation(
@@ -198,7 +199,7 @@ def update_consultation(
 def update_consultation_step(
     consultation_id: uuid.UUID,
     payload: ConsultationStepUpdate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultation = ConsultationService(db).update_consultation(
@@ -218,7 +219,7 @@ def update_consultation_step(
 )
 def delete_consultation(
     consultation_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> None:
     ConsultationService(db).delete_consultation(tenant.tenant_id, consultation_id)
@@ -231,7 +232,7 @@ def delete_consultation(
 def create_consultation_medication(
     consultation_id: uuid.UUID,
     payload: ConsultationMedicationCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     medication = ConsultationService(db).create_medication(
@@ -253,7 +254,7 @@ def create_consultation_medication(
 )
 def delete_consultation_medication(
     medication_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> None:
     ConsultationService(db).delete_medication(tenant.tenant_id, medication_id)
@@ -266,7 +267,7 @@ def delete_consultation_medication(
 def create_consultation_study_request(
     consultation_id: uuid.UUID,
     payload: ConsultationStudyRequestCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     study_request = ConsultationService(db).create_study_request(
@@ -288,7 +289,7 @@ def create_consultation_study_request(
 )
 def delete_consultation_study_request(
     study_request_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> None:
     ConsultationService(db).delete_study_request(tenant.tenant_id, study_request_id)
@@ -297,7 +298,7 @@ def delete_consultation_study_request(
 @router.get("/patients/{patient_id}/consultations")
 def list_patient_consultations(
     patient_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     consultations, total = ConsultationService(db).list_patient_consultations(
@@ -320,7 +321,7 @@ def list_patient_consultations(
 @router.get("/patients/{patient_id}/clinical-history")
 def get_patient_clinical_history(
     patient_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     (

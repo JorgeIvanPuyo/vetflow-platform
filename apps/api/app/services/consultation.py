@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.permissions import ensure_veterinarian
 from app.models.catalog_item import CatalogItem
 from app.models.consultation import (
     Consultation,
@@ -207,6 +208,11 @@ class ConsultationService:
             updates["attending_user_id"] = self._resolve_attending_user_id(
                 tenant_id,
                 updates["attending_user_id"],
+                default_user_id=None,
+            )
+        if updates.get("status") == "completed":
+            self._resolve_attending_user_id(
+                tenant_id, updates.get("attending_user_id", consultation.attending_user_id),
                 default_user_id=None,
             )
         self._validate_update_numbers(updates)
@@ -437,8 +443,9 @@ class ConsultationService:
         *,
         default_user_id: uuid.UUID | None,
     ) -> uuid.UUID | None:
+        attending_user_id = attending_user_id or default_user_id
         if attending_user_id is None:
-            return default_user_id
+            return None
 
         user = self.user_repository.get_by_id(tenant_id, attending_user_id)
         if user is None or not user.is_active:
@@ -447,6 +454,7 @@ class ConsultationService:
                 "team_member_not_found",
                 "Clinic team member not found",
             )
+        ensure_veterinarian(user)
         return user.id
 
     def _validate_optional_exam_catalog_item(

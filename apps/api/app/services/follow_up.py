@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.permissions import ensure_veterinarian
 from app.models.appointment import Appointment
 from app.models.follow_up import FollowUp
 from app.models.owner import Owner
@@ -46,7 +47,7 @@ class FollowUpService:
     ) -> FollowUp:
         self._validate_patient(tenant_id, payload.patient_id)
         self._validate_owner(tenant_id, payload.owner_id)
-        self._validate_user(tenant_id, payload.assigned_user_id)
+        self._validate_user(tenant_id, payload.assigned_user_id, responsible=True)
         self._validate_user(tenant_id, created_by_user_id)
 
         follow_up = FollowUp(
@@ -147,7 +148,7 @@ class FollowUpService:
                 raise AppError(422, "validation_error", f"{field} cannot be null")
 
         if "assigned_user_id" in updates and updates["assigned_user_id"] is not None:
-            self._validate_user(tenant_id, updates["assigned_user_id"])
+            self._validate_user(tenant_id, updates["assigned_user_id"], responsible=True)
         if "appointment_id" in updates and updates["appointment_id"] is not None:
             self._validate_appointment(tenant_id, updates["appointment_id"])
 
@@ -270,11 +271,13 @@ class FollowUpService:
             )
         raise AppError(404, "owner_not_found", "Owner not found")
 
-    def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
+    def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None, *, responsible: bool = False) -> None:
         if user_id is None:
             return
         user = self.user_repository.get_by_id(tenant_id, user_id)
         if user is not None:
+            if responsible:
+                ensure_veterinarian(user)
             return
         user_any_tenant = self.db.get(User, user_id)
         if user_any_tenant is not None:

@@ -1,7 +1,9 @@
+from app.tests.role_helpers import veterinarian_headers
+
 def _create_owner(client, tenant, full_name="Owner"):
     response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": full_name, "phone": "555-1000"},
     )
     assert response.status_code == 201
@@ -11,7 +13,7 @@ def _create_owner(client, tenant, full_name="Owner"):
 def _create_patient(client, tenant, owner_id, name="Luna"):
     response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"owner_id": owner_id, "name": name, "species": "Canine"},
     )
     assert response.status_code == 201
@@ -32,7 +34,7 @@ def _create_consultation(client, tenant, patient_id, **overrides):
     payload.update(overrides)
     response = client.post(
         "/api/v1/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -49,7 +51,7 @@ def _create_exam(client, tenant, patient_id, **overrides):
     payload.update(overrides)
     response = client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -69,7 +71,7 @@ def test_create_exam_for_patient(client, tenant):
 
     response = client.get(
         f"/api/v1/exams/{exam['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -95,7 +97,7 @@ def test_prevent_exam_for_patient_from_another_tenant(client, tenant, other_tena
 
     response = client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": foreign_patient["id"],
             "exam_type": "Blood test",
@@ -114,7 +116,7 @@ def test_prevent_linking_exam_to_consultation_from_another_patient(client, tenan
 
     response = client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "consultation_id": other_consultation["id"],
@@ -146,7 +148,7 @@ def test_list_exams_by_patient(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -168,7 +170,7 @@ def test_list_exams_by_consultation(client, tenant):
 
     response = client.get(
         f"/api/v1/consultations/{consultation['id']}/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -183,7 +185,7 @@ def test_update_exam_with_result_fields(client, tenant):
 
     response = client.patch(
         f"/api/v1/exams/{exam['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "status": "result_loaded",
             "performed_at": "2026-04-25T11:00:00Z",
@@ -206,7 +208,7 @@ def test_reject_invalid_exam_status(client, tenant):
 
     response = client.patch(
         f"/api/v1/exams/{exam['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"status": "archived"},
     )
 
@@ -231,7 +233,7 @@ def test_clinical_history_includes_exam_timeline_item(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -243,6 +245,8 @@ def test_clinical_history_includes_exam_timeline_item(client, tenant):
         "date": "2026-04-24T10:30:00",
         "title": "Blood test",
         "summary": "Requested",
+        "requested_by": {"id": exam["requested_by_user_id"], "full_name": "Test Veterinarian",
+                         "email": f"test-veterinarian-{tenant.id}@example.com"},
     }
     assert body["timeline"][1]["type"] == "consultation"
     assert body["timeline"][1]["id"] == consultation["id"]
@@ -258,7 +262,7 @@ def test_clinical_history_does_not_leak_cross_tenant_exams(
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200

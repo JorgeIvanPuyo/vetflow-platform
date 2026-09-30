@@ -1,3 +1,5 @@
+from app.tests.role_helpers import veterinarian_headers
+
 import uuid
 
 from app.models.appointment import Appointment
@@ -5,7 +7,7 @@ from app.models.user import User
 
 
 def _headers(tenant) -> dict[str, str]:
-    return {"X-Tenant-Id": str(tenant.id)}
+    return veterinarian_headers(tenant)
 
 
 def _auth_headers(email: str) -> dict[str, str]:

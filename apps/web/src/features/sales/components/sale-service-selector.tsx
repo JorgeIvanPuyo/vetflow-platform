@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import { Plus, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -101,7 +103,7 @@ export function SaleServiceSelector({ moneyPreferences, onSelect, onClose }: {
         <Search aria-hidden="true" size={18} />
         <input ref={inputRef} id="sale-service-search" type="search" autoComplete="off" placeholder="Nombre del servicio" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} />
       </div>
-      <SaleServiceOptions services={services} query={query} isLoading={isLoading} hasError={hasError} canConfigure={role === "clinic_admin"} moneyPreferences={moneyPreferences} onRetry={() => setRevision((value) => value + 1)} onSelect={onSelect} />
+      <SaleServiceOptions services={services} query={query} isLoading={isLoading} hasError={hasError} canConfigure={canOperateClinic(role)} moneyPreferences={moneyPreferences} onRetry={() => setRevision((value) => value + 1)} onSelect={onSelect} />
       <button type="button" className="secondary-button" onClick={onClose}>Cancelar</button>
     </dialog>
   );

@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.permissions import clinical_read_or_veterinarian, require_veterinarian
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.common import ListMeta
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/follow-ups", tags=["follow-ups"])
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_follow_up(
     payload: FollowUpCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     follow_up = FollowUpService(db).create_follow_up(
@@ -46,7 +47,7 @@ def list_follow_ups(
     assigned_user_id: uuid.UUID | None = Query(default=None),
     status: FollowUpStatus | None = Query(default=None),
     follow_up_type: FollowUpType | None = Query(default=None),
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     follow_ups, total = FollowUpService(db).list_follow_ups(
@@ -71,7 +72,7 @@ def list_follow_ups(
 @router.get("/{follow_up_id}")
 def get_follow_up(
     follow_up_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     follow_up = FollowUpService(db).get_follow_up(tenant.tenant_id, follow_up_id)
@@ -88,6 +89,10 @@ def update_follow_up(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    # Reassigning a veterinarian or rescheduling is administrative; clinical
+    # content and completion remain professional actions.
+    if payload.model_fields_set - {"due_at", "assigned_user_id", "appointment_id"}:
+        require_veterinarian(tenant)
     follow_up = FollowUpService(db).update_follow_up(
         tenant.tenant_id,
         follow_up_id,
@@ -102,7 +107,7 @@ def update_follow_up(
 @router.post("/{follow_up_id}/complete")
 def complete_follow_up(
     follow_up_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     follow_up = FollowUpService(db).complete_follow_up(tenant.tenant_id, follow_up_id)
@@ -133,7 +138,7 @@ def cancel_follow_up(
 @router.delete("/{follow_up_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_follow_up(
     follow_up_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> Response:
     FollowUpService(db).delete_follow_up(tenant.tenant_id, follow_up_id)

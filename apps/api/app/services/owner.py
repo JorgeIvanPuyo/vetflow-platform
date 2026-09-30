@@ -64,7 +64,9 @@ class OwnerService:
         self.db.commit()
         return updated_owner
 
-    def delete_owner(self, tenant_id: uuid.UUID, owner_id: uuid.UUID) -> None:
+    def delete_owner(
+        self, tenant_id: uuid.UUID, owner_id: uuid.UUID, *, allow_patient_deletion: bool = True,
+    ) -> None:
         owner = self.get_owner(tenant_id, owner_id)
         patient_ids = list(
             self.db.scalars(
@@ -74,6 +76,9 @@ class OwnerService:
                 )
             ).all()
         )
+
+        if patient_ids and not allow_patient_deletion:
+            raise AppError(403, "forbidden", "No puedes eliminar un propietario con pacientes e historia clínica")
 
         if patient_ids:
             self.db.execute(

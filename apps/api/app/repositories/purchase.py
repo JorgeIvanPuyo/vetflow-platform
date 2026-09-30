@@ -265,13 +265,15 @@ class PurchaseRepository:
     def list_creator_options(self, tenant_id: uuid.UUID) -> list[dict]:
         statement = (
             select(User.id, User.full_name, User.email, User.is_active)
-            .join(
-                Purchase,
-                (Purchase.created_by_user_id == User.id)
-                & (Purchase.tenant_id == tenant_id),
+            .where(
+                User.tenant_id == tenant_id,
+                exists(
+                    select(Purchase.id).where(
+                        Purchase.tenant_id == tenant_id,
+                        Purchase.created_by_user_id == User.id,
+                    )
+                ),
             )
-            .where(User.tenant_id == tenant_id)
-            .distinct()
             .order_by(func.lower(User.full_name).asc(), User.id.asc())
         )
         return [dict(row) for row in self.db.execute(statement).mappings().all()]

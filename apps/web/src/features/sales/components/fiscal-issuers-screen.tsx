@@ -1,11 +1,14 @@
 "use client";
 
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import { ArrowLeft, Pencil, Plus, Power, Save, X } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
+import { getClinicTeam } from "@/services/clinic";
 import { getApiErrorMessage } from "@/lib/api";
-import { createFiscalIssuer, getFiscalIssuers, getSaleFilterOptions, updateFiscalIssuer } from "@/services/sales";
+import { createFiscalIssuer, getFiscalIssuers, updateFiscalIssuer } from "@/services/sales";
 import type { FiscalDocumentType, FiscalIssuer, FiscalIssuerWritePayload, PurchaseCreatorOption } from "@/types/api";
 
 type IssuerForm = Omit<FiscalIssuerWritePayload, "service_document_type" | "product_document_type"> & {
@@ -27,6 +30,12 @@ const initialForm: IssuerForm = {
 };
 
 export function FiscalIssuersScreen() {
+  const { isLoading } = useCurrentUser();
+  if (isLoading) return <div className="loading-state">Cargando permisos...</div>;
+  return <FiscalIssuersScreenContent />;
+}
+
+function FiscalIssuersScreenContent() {
   const [issuers, setIssuers] = useState<FiscalIssuer[]>([]);
   const [users, setUsers] = useState<PurchaseCreatorOption[]>([]);
   const [form, setForm] = useState<IssuerForm>(initialForm);
@@ -38,9 +47,9 @@ export function FiscalIssuersScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [issuerResponse, userResponse] = await Promise.all([getFiscalIssuers(), getSaleFilterOptions()]);
+      const [issuerResponse, userResponse] = await Promise.all([getFiscalIssuers(), getClinicTeam(true)]);
       setIssuers(issuerResponse.data);
-      setUsers(userResponse.data.creators);
+      setUsers(userResponse.data);
     } catch (value) {
       setError(getApiErrorMessage(value));
     }

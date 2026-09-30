@@ -8,8 +8,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.permissions import require_supplier_manager
 from app.core.config import get_settings
-from app.core.tenant import get_tenant_context, require_clinic_admin
+from app.core.tenant import get_tenant_context
 
 from app.db.base import Base
 from app.db.session import get_db
@@ -112,8 +113,8 @@ def allow_supplier_mutations(client: TestClient):
     tests only need deterministic supplier fixtures without coupling every test to
     clinic-admin setup.
     """
-    client.app.dependency_overrides[require_clinic_admin] = get_tenant_context
+    client.app.dependency_overrides[require_supplier_manager] = get_tenant_context
     try:
         yield
     finally:
-        client.app.dependency_overrides.pop(require_clinic_admin, None)
+        client.app.dependency_overrides.pop(require_supplier_manager, None)

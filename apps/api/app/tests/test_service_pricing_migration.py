@@ -19,8 +19,9 @@ def _config():
     return config
 
 
-def test_service_pricing_is_the_only_migration_head():
-    assert ScriptDirectory.from_config(_config()).get_heads() == ["0050_service_pricing"]
+def test_service_pricing_is_in_migration_chain():
+    script = ScriptDirectory.from_config(_config())
+    assert script.get_revision("0051_secretary_role").down_revision == "0050_service_pricing"
 
 
 def test_service_pricing_upgrade_preserves_legacy_rows_and_downgrade(monkeypatch):

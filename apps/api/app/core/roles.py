@@ -6,6 +6,7 @@ class Role(str, Enum):
     CLINIC_ADMIN = "clinic_admin"
     MEDICO_VETERINARIO = "medico_veterinario"
     CONTADOR = "contador"
+    SECRETARIA = "secretaria"
 
 
 ALL_ROLES: tuple[str, ...] = tuple(role.value for role in Role)

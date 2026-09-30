@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.permissions import clinical_read_or_veterinarian
+from app.core.tenant import TenantContext
 from app.db.session import get_db
 from app.schemas.common import ListMeta
 from app.schemas.preventive_care import (
@@ -23,7 +24,7 @@ router = APIRouter(tags=["preventive-care"])
 def create_preventive_care(
     patient_id: uuid.UUID,
     payload: PreventiveCareCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     record = PreventiveCareService(db).create_preventive_care(
@@ -41,7 +42,7 @@ def create_preventive_care(
 @router.get("/patients/{patient_id}/preventive-care")
 def list_patient_preventive_care(
     patient_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     records, total = PreventiveCareService(db).list_patient_preventive_care(
@@ -60,7 +61,7 @@ def list_patient_preventive_care(
 @router.get("/preventive-care/{record_id}")
 def get_preventive_care(
     record_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     record = PreventiveCareService(db).get_preventive_care(
@@ -77,7 +78,7 @@ def get_preventive_care(
 def update_preventive_care(
     record_id: uuid.UUID,
     payload: PreventiveCareUpdate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     record = PreventiveCareService(db).update_preventive_care(
@@ -94,7 +95,7 @@ def update_preventive_care(
 @router.delete("/preventive-care/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_preventive_care(
     record_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> Response:
     PreventiveCareService(db).delete_preventive_care(tenant.tenant_id, record_id)

@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.services.fiscal_issuer import FiscalIssuerService
 from app.models.sale import Sale
 from app.models.sale_fiscal import (
     FiscalIssuer,
@@ -389,6 +390,7 @@ class SaleFiscalDocumentService:
                 "fiscal_issuer_inactive",
                 "El emisor fiscal está inactivo y no puede seleccionarse",
             )
+        FiscalIssuerService(self.db).validate_eligible_user(tenant_id, issuer.user_id)
         return issuer
 
     def _validate_actor(

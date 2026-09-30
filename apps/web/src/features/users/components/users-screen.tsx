@@ -16,6 +16,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   clinic_admin: "Administrador de clínica",
   medico_veterinario: "Médico veterinario",
   contador: "Contador",
+  secretaria: "Secretaria",
 };
 
 type StatusFilter = "all" | "active" | "inactive";

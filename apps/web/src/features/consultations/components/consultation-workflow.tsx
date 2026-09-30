@@ -1,5 +1,10 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+import { ConsultationReadOnly } from "./consultation-read-only";
+
 import {
   ArrowLeft,
   CalendarCheck,
@@ -260,6 +265,15 @@ function getStepIcon(stepId: (typeof steps)[number]["id"]) {
 }
 
 export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
+  const { role, isLoading } = useCurrentUser();
+  if (isLoading) return <div className="loading-state">Cargando permisos...</div>;
+  if (!canPerformClinicalActions(role)) return props.mode === "edit"
+    ? <ConsultationReadOnly consultationId={props.consultationId} />
+    : <div className="empty-state">La creación de consultas requiere personal clínico.</div>;
+  return <ConsultationWorkflowContent {...props} />;
+}
+
+function ConsultationWorkflowContent(props: ConsultationWorkflowProps) {
   const { user } = useAuth();
   const { preferences } = useClinic();
   const moneyPreferences = {
@@ -400,7 +414,7 @@ export function ConsultationWorkflow(props: ConsultationWorkflowProps) {
       setTeamLoadMessage(null);
 
       try {
-        const response = await getClinicTeam();
+        const response = await getClinicTeam(true);
         if (isCurrent) {
           setTeamMembers(response.data.filter((member) => member.is_active));
         }
