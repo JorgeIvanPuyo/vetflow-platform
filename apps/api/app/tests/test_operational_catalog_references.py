@@ -1,14 +1,7 @@
 import uuid
 
 from app.models.user import User
-
-
-def _headers(tenant) -> dict[str, str]:
-    return {"X-Tenant-Id": str(tenant.id)}
-
-
-def _user_headers(email: str) -> dict[str, str]:
-    return {"X-User-Email": email}
+from app.tests.role_helpers import clinic_admin_headers, headers_for_user, veterinarian_headers
 
 
 def _create_admin(db_session, tenant, email: str, full_name: str = "Clinic Admin") -> User:
@@ -31,7 +24,7 @@ def _create_catalog_item(client, admin, catalog_type: str, **overrides) -> dict:
     payload.update(overrides)
     response = client.post(
         f"/api/v1/clinic/catalogs/{catalog_type}",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
         json=payload,
     )
     assert response.status_code == 201
@@ -41,7 +34,7 @@ def _create_catalog_item(client, admin, catalog_type: str, **overrides) -> dict:
 def _deactivate_catalog_item(client, admin, catalog_type: str, item_id: str) -> None:
     response = client.post(
         f"/api/v1/clinic/catalogs/{catalog_type}/{item_id}/deactivate",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
     )
     assert response.status_code == 200
 
@@ -49,7 +42,7 @@ def _deactivate_catalog_item(client, admin, catalog_type: str, item_id: str) -> 
 def _create_owner(client, tenant, full_name="Owner") -> dict:
     response = client.post(
         "/api/v1/owners",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"full_name": full_name, "phone": "555-1000"},
     )
     assert response.status_code == 201
@@ -60,7 +53,7 @@ def _create_patient(client, tenant, name="Luna") -> dict:
     owner = _create_owner(client, tenant, f"{name} Owner")
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"owner_id": owner["id"], "name": name, "species": "Canine"},
     )
     assert response.status_code == 201
@@ -76,7 +69,7 @@ def _create_consultation(client, tenant, patient_id, **overrides) -> dict:
     payload.update(overrides)
     response = client.post(
         "/api/v1/consultations",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -107,7 +100,7 @@ def test_subcategory_rejects_parent_of_wrong_type(client, db_session, tenant):
 
     response = client.post(
         "/api/v1/clinic/catalogs/inventory_subcategory",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
         json={"name": "Antibioticos", "parent_id": wrong_type_parent["id"]},
     )
 
@@ -121,7 +114,7 @@ def test_catalog_type_without_parent_support_rejects_parent_id(client, db_sessio
 
     response = client.post(
         "/api/v1/clinic/catalogs/mucous_membrane",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
         json={"name": "Palidas", "parent_id": other_item["id"]},
     )
 
@@ -140,7 +133,7 @@ def test_subcategory_rejects_parent_from_another_tenant(
 
     response = client.post(
         "/api/v1/clinic/catalogs/inventory_subcategory",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
         json={"name": "Refuerzos", "parent_id": foreign_category["id"]},
     )
 
@@ -161,7 +154,7 @@ def test_create_inventory_item_with_category_catalog_item_id_resolves_name(
 
     response = client.post(
         "/api/v1/inventory/items",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Ivermectina",
             "category": "medication",
@@ -186,7 +179,7 @@ def test_create_inventory_item_with_cross_tenant_category_catalog_item_is_reject
 
     response = client.post(
         "/api/v1/inventory/items",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Ivermectina",
             "category": "medication",
@@ -208,7 +201,7 @@ def test_create_inventory_item_with_inactive_category_catalog_item_is_rejected(
 
     response = client.post(
         "/api/v1/inventory/items",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Ivermectina",
             "category": "medication",
@@ -229,7 +222,7 @@ def test_create_inventory_item_with_wrong_catalog_type_for_category_is_rejected(
 
     response = client.post(
         "/api/v1/inventory/items",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Ivermectina",
             "category": "medication",
@@ -247,7 +240,7 @@ def test_create_inventory_item_with_unknown_category_catalog_item_id_returns_404
 ):
     response = client.post(
         "/api/v1/inventory/items",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Ivermectina",
             "category": "medication",
@@ -270,7 +263,7 @@ def test_create_exam_with_exam_catalog_item_id_resolves_name(client, db_session,
 
     response = client.post(
         "/api/v1/exams",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "exam_type": "Hemograma",
@@ -294,7 +287,7 @@ def test_create_exam_with_cross_tenant_catalog_item_is_rejected(
 
     response = client.post(
         "/api/v1/exams",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "exam_type": "Hemograma",
@@ -315,7 +308,7 @@ def test_create_exam_with_inactive_exam_catalog_item_is_rejected(client, db_sess
 
     response = client.post(
         "/api/v1/exams",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "exam_type": "Descontinuado",
@@ -341,7 +334,7 @@ def test_create_study_request_with_exam_catalog_item_id_resolves_name(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/study-requests",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Urianalisis",
             "study_type": "laboratory",
@@ -367,7 +360,7 @@ def test_create_preventive_care_with_catalog_item_id_resolves_name(client, db_se
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/preventive-care",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Vacuna antirrabica",
             "care_type": "vaccine",
@@ -393,7 +386,7 @@ def test_create_preventive_care_with_cross_tenant_catalog_item_is_rejected(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/preventive-care",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Vacuna antirrabica",
             "care_type": "vaccine",
@@ -418,7 +411,7 @@ def test_create_preventive_care_with_inactive_catalog_item_is_rejected(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/preventive-care",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Descontinuado",
             "care_type": "vaccine",
@@ -441,7 +434,7 @@ def test_create_file_reference_with_catalog_item_id_resolves_name(client, db_ses
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/file-references",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Radiografia lateral",
             "file_type": "radiography",
@@ -464,7 +457,7 @@ def test_create_file_reference_with_cross_tenant_catalog_item_is_rejected(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/file-references",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Radiografia lateral",
             "file_type": "radiography",
@@ -486,7 +479,7 @@ def test_create_file_reference_with_inactive_catalog_item_is_rejected(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/file-references",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "name": "Radiografia lateral",
             "file_type": "radiography",
@@ -517,7 +510,7 @@ def test_create_patient_with_species_and_breed_catalog_items_resolves_names(
 
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "owner_id": owner["id"],
             "name": "Rocky",
@@ -542,7 +535,7 @@ def test_breed_catalog_item_rejects_parent_of_wrong_type(client, db_session, ten
 
     response = client.post(
         "/api/v1/clinic/catalogs/breed",
-        headers=_user_headers(admin.email),
+        headers=headers_for_user(admin),
         json={"name": "Labrador", "parent_id": wrong_type_parent["id"]},
     )
 
@@ -559,7 +552,7 @@ def test_create_patient_with_cross_tenant_species_catalog_item_is_rejected(
 
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "owner_id": owner["id"],
             "name": "Rocky",
@@ -581,7 +574,7 @@ def test_create_patient_with_wrong_catalog_type_for_species_is_rejected(
 
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "owner_id": owner["id"],
             "name": "Rocky",
@@ -604,7 +597,7 @@ def test_create_patient_with_inactive_species_catalog_item_is_rejected(
 
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "owner_id": owner["id"],
             "name": "Rocky",
