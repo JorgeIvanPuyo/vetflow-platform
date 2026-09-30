@@ -82,10 +82,10 @@ test("guides have unique slugs, canonical routes, valid references and complete 
 });
 
 test("help is available in sidebar navigation for every authenticated role", () => {
-  for (const role of ["clinic_admin", "medico_veterinario", "contador", "superadmin"]) {
+  for (const role of ["clinic_admin", "medico_veterinario", "contador", "superadmin", "secretaria"]) {
     assert.ok(filterNavigationByRole(navigationItems, role).some((item) => item.href === "/help"));
   }
-  assert.deepEqual(filterNavigationByRole(navigationItems, "contador").map((item) => item.href), ["/accounting", "/help"]);
+  assert.deepEqual(filterNavigationByRole(navigationItems, "contador").map((item) => item.href), ["/", "/owners", "/patients", "/agenda", "/inventory/dashboard", "/purchases/dashboard", "/sales", "/accounting", "/settings", "/help"]);
 });
 
 test("home renders a search control, categories, frequent tasks and guide links", () => {

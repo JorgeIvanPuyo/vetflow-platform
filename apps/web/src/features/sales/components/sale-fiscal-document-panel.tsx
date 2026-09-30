@@ -1,11 +1,13 @@
 "use client";
 
+
 import { AlertTriangle, Download, Eye, FileCheck2, FileUp, Settings2, X } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency, formatPurchaseDate, formatPurchaseDateTime, formatPurchaseUser } from "@/features/purchases/components/purchase-helpers";
+import { getClinicTeam } from "@/services/clinic";
 import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
 import { createSaleFiscalDocument, getFiscalIssuers, getSaleFiscalDocumentFile, updateSaleFiscalDocument } from "@/services/sales";
@@ -26,7 +28,12 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getFiscalIssuers().then((response) => setIssuers(response.data)).catch(() => setIssuers([]));
+    Promise.all([getFiscalIssuers(), getClinicTeam(true)])
+      .then(([response, team]) => {
+        const eligibleUsers = new Set(team.data.map((user) => user.id));
+        setIssuers(response.data.filter((issuer) => eligibleUsers.has(issuer.user_id)));
+      })
+      .catch(() => setIssuers([]));
   }, []);
 
   const eligible = useMemo(() => issuers.filter((issuer) => {
@@ -107,15 +114,15 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
       </div>
       <div className="purchase-attachment-actions"><button className="secondary-button" type="button" onClick={() => void openFile(false)}><Eye size={17} /> Ver</button><button className="secondary-button" type="button" onClick={() => void openFile(true)}><Download size={17} /> Descargar</button><button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Corregir o reemplazar</button></div>
       {document.file_history.length ? <details className="purchase-attachment-history"><summary>Historial de archivos ({document.file_history.length})</summary>{document.file_history.map((item) => <div key={item.id}><strong>{item.original_filename}</strong><small>{formatPurchaseDateTime(item.uploaded_at)} · reemplazado {formatPurchaseDateTime(item.replaced_at)} por {formatPurchaseUser(item.replaced_by_user_name, item.replaced_by_user_email)}</small></div>)}</details> : null}
-    </> : sale.status === "confirmed" ? <div className="purchase-empty-state"><FileCheck2 size={28} /><h3>Comprobante pendiente</h3><p>Registra el comprobante emitido manualmente fuera de Vetflow.</p>{eligible.length ? <button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Registrar comprobante</button> : <><small>{hasActiveIssuers ? "No hay un emisor activo compatible con la composición de esta venta." : "No hay emisores fiscales activos configurados."}</small><Link className="secondary-button" href="/settings/sales/fiscal-issuers"><Settings2 size={17} /> Ir a Ajustes</Link></>}</div> : <p>El comprobante podrá registrarse cuando la venta esté confirmada.</p>}
+    </> : sale.status === "confirmed" ? <div className="purchase-empty-state"><FileCheck2 size={28} /><h3>Comprobante pendiente</h3><p>Registra el comprobante emitido manualmente fuera de Vetflow.</p>{eligible.length ? <button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Registrar comprobante</button> : <><small>{hasActiveIssuers ? "No hay un emisor activo compatible con la composición de esta venta." : "No hay emisores fiscales activos configurados."}</small>{<Link className="secondary-button" href="/settings/sales/fiscal-issuers"><Settings2 size={17} /> Ir a Ajustes</Link>}</>}</div> : <p>El comprobante podrá registrarse cuando la venta esté confirmada.</p>}
     {error && !showForm ? <div className="error-state" role="alert">{error}</div> : null}
-    {showForm ? <form className="sale-fiscal-form" onSubmit={submit}>
+    {showForm ? <form className="sale-fiscal-form" onSubmit={submit}><fieldset>
       <div className="section-heading"><div><h3>{document ? "Corregir comprobante" : "Registrar comprobante"}</h3><p>El total se toma de la venta y no puede editarse.</p></div><button className="icon-button" type="button" aria-label="Cerrar formulario fiscal" onClick={() => setShowForm(false)}><X size={17} /></button></div>
       <div className="fiscal-document-form-grid"><label className="field"><span>Emisor *</span><select required value={issuerId} onChange={(event) => setIssuerId(event.target.value)}><option value="">Seleccionar</option>{eligible.map((issuer) => <option key={issuer.id} value={issuer.id}>{issuer.display_name} · {issuer.tax_id}{issuer.is_active ? "" : " (inactivo, documento actual)"}</option>)}</select></label><label className="field"><span>Tipo permitido</span><input readOnly value={selectedPair ? `${labelDocumentType(selectedPair[0])} · ${selectedPair[1]}` : "Sin tipo compatible"} /></label><label className="field"><span>Número *</span><input required maxLength={120} value={number} onChange={(event) => setNumber(event.target.value)} /></label><label className="field"><span>Fecha de emisión *</span><input required type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} /></label><label className="field"><span>Total</span><input readOnly value={formatPurchaseCurrency(sale.total_ars, moneyPreferences)} /></label></div>
       <label className="purchase-attachment-picker"><FileUp size={20} /><span>{file?.name ?? (document ? "Conservar archivo actual o seleccionar reemplazo" : "Seleccionar PDF, JPEG o PNG *")}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
       {file ? <small>{formatFileSize(file.size)}</small> : null}{error ? <div className="error-state" role="alert">{error}</div> : null}
       <div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isSaving} onClick={() => setShowForm(false)}>Cancelar</button><button className="primary-button" type="submit" disabled={isSaving || (!document && !file)}><FileUp size={17} /> {isSaving ? "Guardando..." : document ? "Guardar corrección" : "Registrar comprobante"}</button></div>
-    </form> : null}
+    </fieldset></form> : null}
   </section>;
 }
 

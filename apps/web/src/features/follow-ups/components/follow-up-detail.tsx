@@ -1,5 +1,9 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import {
   ArrowLeft,
   CalendarDays,
@@ -70,6 +74,8 @@ const initialState: FollowUpDetailState = {
 };
 
 export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   const router = useRouter();
   const [state, setState] = useState<FollowUpDetailState>(initialState);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -92,7 +98,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
           getFollowUp(followUpId),
           getPatients(),
           getOwners(),
-          getClinicTeam(),
+          getClinicTeam(true),
         ]);
 
       setState((current) => ({
@@ -171,9 +177,10 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
     }));
 
     try {
+      const payload = buildFollowUpUpdatePayload(formState);
       const response = await updateFollowUp(
         followUpId,
-        buildFollowUpUpdatePayload(formState),
+        isClinicalReadOnly ? { due_at: payload.due_at, assigned_user_id: payload.assigned_user_id } : payload,
       );
       setState((current) => ({
         ...current,
@@ -402,7 +409,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
         <div className="detail-action-row">
           <button
             className="secondary-button"
-            disabled={state.isSaving || followUp.status === "completed" || followUp.status === "cancelled"}
+            disabled={isClinicalReadOnly || state.isSaving || followUp.status === "completed" || followUp.status === "cancelled"}
             type="button"
             onClick={() => void handleCompleteFollowUp()}
           >
@@ -418,7 +425,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
           </button>
           <button
             className="secondary-button secondary-button--danger"
-            disabled={state.isDeleting}
+            disabled={isClinicalReadOnly || state.isDeleting}
             type="button"
             onClick={() => setIsDeleteOpen(true)}
           >
@@ -429,6 +436,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
 
       {isEditOpen && formState ? (
         <FollowUpFormModal
+          administrativeOnly={isClinicalReadOnly}
           flowMessage={state.flowMessage}
           formState={formState}
           isSubmitting={state.isSaving}
@@ -516,7 +524,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
               <button
                 aria-label="Cerrar"
                 className="icon-button"
-                disabled={state.isDeleting}
+                disabled={isClinicalReadOnly || state.isDeleting}
                 onClick={() => setIsDeleteOpen(false)}
                 type="button"
               >
@@ -546,7 +554,7 @@ export function FollowUpDetail({ followUpId }: FollowUpDetailProps) {
               <div className="modal-actions">
                 <button
                   className="secondary-button"
-                  disabled={state.isDeleting}
+                  disabled={isClinicalReadOnly || state.isDeleting}
                   onClick={() => setIsDeleteOpen(false)}
                   type="button"
                 >

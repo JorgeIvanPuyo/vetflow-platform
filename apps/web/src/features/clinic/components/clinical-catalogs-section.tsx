@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import {
   ChevronDown,
   ChevronUp,
@@ -98,7 +100,7 @@ export function ClinicalCatalogsSection({
   onToggle,
 }: ClinicalCatalogsSectionProps) {
   const { role } = useCurrentUser();
-  const canManageCatalog = role === "clinic_admin";
+  const canManageCatalog = canOperateClinic(role);
   const [itemsByType, setItemsByType] = useState<
     Partial<Record<CatalogType, CatalogItem[]>>
   >(() => Object.fromEntries(CLINICAL_CATALOG_TYPES.map((type) => [type, []])));

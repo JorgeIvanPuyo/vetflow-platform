@@ -107,7 +107,7 @@ export function DashboardHome() {
     try {
       const [summaryResult, teamResult, appointmentsResult] = await Promise.allSettled([
         getDashboardSummary(requestFilters),
-        getClinicTeam(),
+        getClinicTeam(true),
         getAppointments(buildDashboardAppointmentFilters(assignedUserId)),
       ]);
 

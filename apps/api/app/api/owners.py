@@ -77,5 +77,7 @@ def delete_owner(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    OwnerService(db).delete_owner(tenant.tenant_id, owner_id)
+    OwnerService(db).delete_owner(
+        tenant.tenant_id, owner_id, allow_patient_deletion=tenant.role in ("medico_veterinario", "superadmin"),
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

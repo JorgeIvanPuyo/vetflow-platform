@@ -292,8 +292,17 @@ class PatientService:
         patient_id: uuid.UUID,
         *,
         storage_service: ClinicalFileStorageService | None = None,
+        allow_clinical_deletion: bool = True,
     ) -> None:
         patient = self.get_patient(tenant_id, patient_id)
+        if not allow_clinical_deletion:
+            if any(getattr(patient, field) is not None for field in ("weight_kg", "allergies", "chronic_conditions")):
+                raise AppError(403, "forbidden", "No puedes eliminar un paciente con datos clínicos")
+            for model in (Consultation, Exam, FollowUp, PatientPreventiveCare):
+                if self.db.scalar(select(model.id).where(
+                    model.tenant_id == tenant_id, model.patient_id == patient_id,
+                ).limit(1)) is not None:
+                    raise AppError(403, "forbidden", "No puedes eliminar un paciente con historia clínica")
         if patient.photo_object_path:
             bucket_name = patient.photo_bucket_name or (
                 storage_service.bucket_name if storage_service else None

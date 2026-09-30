@@ -1,3 +1,5 @@
+from app.tests.role_helpers import veterinarian_headers
+
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -23,7 +25,7 @@ def test_sales_selector_reaches_all_197_owners_in_stable_name_order(client, tena
     expected = sorted(selector_owners, key=lambda owner: (owner.full_name.lower(), str(owner.id)))
     found = []
     for page in range(1, 8):
-        response = client.get("/api/v1/owners", headers={"X-Tenant-Id": str(tenant.id)},
+        response = client.get("/api/v1/owners", headers=veterinarian_headers(tenant),
                               params={"page": page, "page_size": 30, "sort_by": "full_name"})
         assert response.status_code == 200
         body = response.json()
@@ -36,7 +38,7 @@ def test_sales_selector_reaches_all_197_owners_in_stable_name_order(client, tena
 
 @pytest.mark.parametrize("search", ["Zul", "JUANITA", "anita torr", "zulema juanita torres"])
 def test_sales_selector_search_finds_owner_beyond_first_page(client, tenant, selector_owners, search):
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
     params = {"page": 1, "page_size": 30, "sort_by": "full_name"}
     target = str(selector_owners[-1].id)
     first = client.get("/api/v1/owners", headers=headers, params=params).json()
@@ -55,7 +57,7 @@ def test_owner_sort_is_opt_in_and_rejects_unknown_fields(client, db_session, ten
         Owner(tenant_id=tenant.id, full_name="Zoe", phone="2", created_at=now),
     ])
     db_session.commit()
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
     default = client.get("/api/v1/owners", headers=headers).json()
     assert [owner["full_name"] for owner in default["data"]] == ["Zoe", "Ana"]
     assert default["meta"] == {"page": 1, "page_size": 2, "total": 2}
@@ -65,7 +67,7 @@ def test_owner_sort_is_opt_in_and_rejects_unknown_fields(client, db_session, ten
 def test_create_owner(client, tenant):
     response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "full_name": "Maria Perez",
             "phone": "555-1000",
@@ -84,18 +86,18 @@ def test_create_owner(client, tenant):
 def test_list_owners_filtered_by_tenant(client, tenant, other_tenant):
     client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": "Owner One", "phone": "111"},
     )
     client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"full_name": "Owner Two", "phone": "222"},
     )
 
     response = client.get(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -108,7 +110,7 @@ def test_list_owners_filtered_by_tenant(client, tenant, other_tenant):
 def test_list_owners_supports_tenant_safe_search_and_pagination(
     client, tenant, other_tenant
 ):
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
     for index in range(3):
         client.post(
             "/api/v1/owners",
@@ -117,7 +119,7 @@ def test_list_owners_supports_tenant_safe_search_and_pagination(
         )
     client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"full_name": "Familia Vetflow Externa", "phone": "999"},
     )
 
@@ -137,7 +139,7 @@ def test_list_owners_supports_tenant_safe_search_and_pagination(
 def test_list_patients_supports_tenant_safe_search_and_pagination(
     client, tenant, other_tenant
 ):
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
     owner = client.post(
         "/api/v1/owners",
         headers=headers,
@@ -154,7 +156,7 @@ def test_list_patients_supports_tenant_safe_search_and_pagination(
             },
         )
 
-    other_headers = {"X-Tenant-Id": str(other_tenant.id)}
+    other_headers = veterinarian_headers(other_tenant)
     other_owner = client.post(
         "/api/v1/owners",
         headers=other_headers,
@@ -184,7 +186,7 @@ def test_list_patients_supports_tenant_safe_search_and_pagination(
 
 
 def test_owner_and_patient_lists_remain_unpaginated_without_page_size(client, tenant):
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
     for index in range(3):
         owner = client.post(
             "/api/v1/owners",
@@ -215,14 +217,14 @@ def test_owner_and_patient_lists_remain_unpaginated_without_page_size(client, te
 def test_create_patient_under_owner(client, tenant):
     owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": "Owner Patient", "phone": "333"},
     )
     owner_id = owner_response.json()["data"]["id"]
 
     response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "owner_id": owner_id,
             "name": "Luna",
@@ -246,14 +248,14 @@ def test_prevent_patient_creation_if_owner_belongs_to_another_tenant(
 ):
     owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"full_name": "Foreign Owner", "phone": "444"},
     )
     foreign_owner_id = owner_response.json()["data"]["id"]
 
     response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "owner_id": foreign_owner_id,
             "name": "Toby",
@@ -268,21 +270,21 @@ def test_prevent_patient_creation_if_owner_belongs_to_another_tenant(
 def test_delete_owner_without_patients(client, tenant):
     owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": "Owner Without Pets", "phone": "555"},
     )
     owner_id = owner_response.json()["data"]["id"]
 
     response = client.delete(
         f"/api/v1/owners/{owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 204
 
     get_response = client.get(
         f"/api/v1/owners/{owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
     assert get_response.json()["error"]["code"] == "owner_not_found"
@@ -291,21 +293,21 @@ def test_delete_owner_without_patients(client, tenant):
 def test_delete_owner_with_patients_deletes_associated_patients(client, tenant):
     owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": "Cascade Owner", "phone": "555"},
     )
     owner_id = owner_response.json()["data"]["id"]
 
     patient_response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"owner_id": owner_id, "name": "Nina", "species": "Canine"},
     )
     patient_id = patient_response.json()["data"]["id"]
 
     consultation_response = client.post(
         "/api/v1/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient_id,
             "visit_date": "2026-04-24T10:30:00Z",
@@ -316,7 +318,7 @@ def test_delete_owner_with_patients_deletes_associated_patients(client, tenant):
 
     client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient_id,
             "consultation_id": consultation_id,
@@ -327,26 +329,26 @@ def test_delete_owner_with_patients_deletes_associated_patients(client, tenant):
 
     response = client.delete(
         f"/api/v1/owners/{owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 204
 
     owner_lookup = client.get(
         f"/api/v1/owners/{owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert owner_lookup.status_code == 404
 
     patient_lookup = client.get(
         f"/api/v1/patients/{patient_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert patient_lookup.status_code == 404
 
     owner_patients = client.get(
         f"/api/v1/patients?owner_id={owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert owner_patients.status_code == 200
     assert owner_patients.json()["meta"]["total"] == 0
@@ -357,39 +359,39 @@ def test_delete_owner_does_not_remove_other_tenant_patients(
 ):
     owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": "Tenant Owner", "phone": "555"},
     )
     owner_id = owner_response.json()["data"]["id"]
     client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"owner_id": owner_id, "name": "Nina", "species": "Canine"},
     )
 
     other_owner_response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"full_name": "Other Tenant Owner", "phone": "777"},
     )
     other_owner_id = other_owner_response.json()["data"]["id"]
     other_patient_response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"owner_id": other_owner_id, "name": "Mora", "species": "Feline"},
     )
     other_patient_id = other_patient_response.json()["data"]["id"]
 
     response = client.delete(
         f"/api/v1/owners/{owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 204
 
     other_patient_lookup = client.get(
         f"/api/v1/patients/{other_patient_id}",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
     )
     assert other_patient_lookup.status_code == 200
     assert other_patient_lookup.json()["data"]["id"] == other_patient_id
@@ -400,7 +402,7 @@ def test_delete_unknown_owner_returns_not_found(client, tenant):
 
     response = client.delete(
         f"/api/v1/owners/{unknown_owner_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 404

@@ -1,5 +1,9 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import { Edit, Plus, Syringe, Trash2 } from "lucide-react";
 
 import { formatDateTime } from "@/lib/datetime";
@@ -21,6 +25,8 @@ export function PreventiveCareSection({
   onEdit,
   onDelete,
 }: PreventiveCareSectionProps) {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   return (
     <section className="panel patient-detail-section">
       <div className="section-heading section-heading--row">
@@ -29,7 +35,7 @@ export function PreventiveCareSection({
           <h2>Vacunas y desparasitación</h2>
           <p>Registros preventivos persistentes del paciente.</p>
         </div>
-        <button className="primary-button" type="button" onClick={onAdd}>
+        <button disabled={isClinicalReadOnly} className="primary-button" type="button" onClick={onAdd}>
           <Plus aria-hidden="true" size={18} /> Agregar
         </button>
       </div>
@@ -55,7 +61,7 @@ export function PreventiveCareSection({
                 ) : null}
               </div>
               <div className="record-card__icon-actions">
-                <button
+                <button disabled={isClinicalReadOnly}
                   aria-label={`Editar ${record.name}`}
                   className="icon-button"
                   onClick={() => onEdit(record)}
@@ -64,7 +70,7 @@ export function PreventiveCareSection({
                 >
                   <Edit aria-hidden="true" size={16} />
                 </button>
-                <button
+                <button disabled={isClinicalReadOnly}
                   aria-label={`Eliminar ${record.name}`}
                   className="icon-button icon-button--danger"
                   onClick={() => onDelete(record)}

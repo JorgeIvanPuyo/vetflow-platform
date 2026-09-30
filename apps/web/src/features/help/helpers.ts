@@ -5,6 +5,7 @@ export const helpRoleLabels: Record<AppRole, string> = {
   clinic_admin: "Administrador de clínica",
   medico_veterinario: "Médico veterinario",
   contador: "Contador",
+  secretaria: "Secretaria",
   superadmin: "Superadmin",
 };
 

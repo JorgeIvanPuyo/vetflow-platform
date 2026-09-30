@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.permissions import require_veterinarian
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.common import ListMeta
@@ -26,6 +27,8 @@ def create_patient(
     db: Session = Depends(get_db),
     storage_service: ClinicalFileStorageService = Depends(get_storage_service),
 ) -> dict:
+    if {"weight_kg", "allergies", "chronic_conditions"} & payload.model_fields_set:
+        require_veterinarian(tenant)
     service = PatientService(db)
     patient = service.create_patient(
         tenant.tenant_id,
@@ -102,6 +105,8 @@ def update_patient(
     db: Session = Depends(get_db),
     storage_service: ClinicalFileStorageService = Depends(get_storage_service),
 ) -> dict:
+    if {"weight_kg", "allergies", "chronic_conditions"} & payload.model_fields_set:
+        require_veterinarian(tenant)
     service = PatientService(db)
     patient = service.update_patient(tenant.tenant_id, patient_id, payload)
     return {
@@ -173,6 +178,7 @@ def delete_patient(
         tenant.tenant_id,
         patient_id,
         storage_service=storage_service,
+        allow_clinical_deletion=tenant.role in ("medico_veterinario", "superadmin"),
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

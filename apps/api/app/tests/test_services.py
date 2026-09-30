@@ -66,7 +66,7 @@ def test_clinic_admin_can_create_and_list_services(client, db_session, tenant):
     assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
 
 
-@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador"])
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador", "secretaria"])
 def test_service_editor_can_update_all_form_fields(client, db_session, tenant, role):
     admin = _create_user(db_session, tenant, "creator@example.com", "Admin", "clinic_admin")
     editor = _create_user(db_session, tenant, "editor@example.com", "Editor", role)
@@ -371,7 +371,7 @@ def test_service_prices_list_only_current_tenant_active_including_non_bookable(c
     assert cross_update.status_code == 404
 
 
-@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador"])
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador", "secretaria"])
 def test_clinic_roles_manage_services_only_in_their_tenant(
     client, db_session, tenant, other_tenant, monkeypatch, role,
 ):
@@ -424,13 +424,14 @@ def test_clinic_roles_manage_services_only_in_their_tenant(
 
 
 @pytest.mark.parametrize("role", ["medico_veterinario", "contador"])
-def test_service_access_does_not_grant_other_admin_permissions(client, db_session, tenant, role):
+def test_operators_manage_preferences_and_suppliers_without_global_admin(client, db_session, tenant, role):
     user = _create_user(db_session, tenant, "member@example.com", "Member", role)
     headers = _user_headers(user.email)
     assert client.patch("/api/v1/clinic/preferences", headers=headers,
-                        json={"currency_code": "USD"}).status_code == 403
+                        json={"currency_code": "USD"}).status_code == 200
     assert client.post("/api/v1/suppliers", headers=headers,
-                       json={"name": "Restricted"}).status_code == 403
+                       json={"name": "Operational"}).status_code == 201
+    assert client.get("/api/v1/admin/users", headers=headers).status_code == 403
 
 
 @pytest.mark.parametrize("role", ["superadmin", None])

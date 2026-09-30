@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.tenant import TenantContext, get_tenant_context, require_clinic_admin
+from app.core.permissions import require_clinic_operator
+from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.catalog_item import (
     CatalogItemCreate,
@@ -41,7 +42,7 @@ def list_catalog_items(
 def create_catalog_item(
     catalog_type: str,
     payload: CatalogItemCreate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     item = CatalogItemService(db).create_item(
@@ -60,7 +61,7 @@ def create_catalog_item(
 def reorder_catalog_items(
     catalog_type: str,
     payload: CatalogItemReorderRequest,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     items = CatalogItemService(db).reorder_items(
@@ -82,7 +83,7 @@ def update_catalog_item(
     catalog_type: str,
     item_id: uuid.UUID,
     payload: CatalogItemUpdate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     item = CatalogItemService(db).update_item(
@@ -101,7 +102,7 @@ def update_catalog_item(
 def activate_catalog_item(
     catalog_type: str,
     item_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     item = CatalogItemService(db).activate_item(tenant.tenant_id, catalog_type, item_id)
@@ -114,7 +115,7 @@ def activate_catalog_item(
 @router.post("/{catalog_type}/restore-defaults")
 def restore_default_catalog_items(
     catalog_type: str,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     items = CatalogItemService(db).restore_defaults(tenant.tenant_id, catalog_type)
@@ -131,7 +132,7 @@ def restore_default_catalog_items(
 def deactivate_catalog_item(
     catalog_type: str,
     item_id: uuid.UUID,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     item = CatalogItemService(db).deactivate_item(

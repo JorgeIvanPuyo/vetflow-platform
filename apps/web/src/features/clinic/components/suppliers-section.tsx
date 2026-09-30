@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import { ChevronDown, Pencil, Power, PowerOff, Truck, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 
@@ -42,7 +44,8 @@ type SuppliersSectionProps = {
 
 export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps) {
   const { role } = useCurrentUser();
-  const canManageCatalog = role === "clinic_admin";
+  const canManageSuppliers =
+    canOperateClinic(role);
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -113,7 +116,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
 
   async function handleSaveSupplier(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!formState || !canManageCatalog) {
+    if (!formState || !canManageSuppliers) {
       return;
     }
 
@@ -151,7 +154,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
   }
 
   async function handleToggleSupplier(supplier: SupplierSummary) {
-    if (!canManageCatalog) {
+    if (!canManageSuppliers) {
       return;
     }
 
@@ -197,7 +200,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
           <div className="modal-actions">
             <button
               className="primary-button"
-              disabled={!canManageCatalog || isSaving}
+              disabled={!canManageSuppliers || isSaving}
               onClick={openNewSupplierForm}
               type="button"
             >
@@ -230,7 +233,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
                     <div className="record-card__actions">
                       <button
                         className="secondary-button"
-                        disabled={!canManageCatalog}
+                        disabled={!canManageSuppliers}
                         onClick={() => void openEditSupplierForm(supplier)}
                         type="button"
                       >
@@ -239,7 +242,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
                       </button>
                       <button
                         className="secondary-button"
-                        disabled={!canManageCatalog || isSaving}
+                        disabled={!canManageSuppliers || isSaving}
                         onClick={() => void handleToggleSupplier(supplier)}
                         type="button"
                       >
@@ -349,7 +352,7 @@ export function SuppliersSection({ isExpanded, onToggle }: SuppliersSectionProps
                 </button>
                 <button
                   className="primary-button"
-                  disabled={!canManageCatalog || isSaving}
+                  disabled={!canManageSuppliers || isSaving}
                   type="submit"
                 >
                   {formState.id ? "Guardar cambios" : "Crear proveedor"}
