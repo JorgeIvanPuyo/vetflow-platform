@@ -199,3 +199,49 @@ def test_operator_cannot_cross_tenant_catalog_payment_or_responsibility(client, 
     assert client.post("/api/v1/fiscal-issuers", headers=auth, json=issuer_payload(foreign.id)).status_code == 404
     payload = {"patient_id": patient["id"], "reason": "Control", "visit_date": "2026-09-29T10:00:00Z", "attending_user_id": str(foreign.id)}
     assert client.post("/api/v1/consultations", headers=headers(actors["medico_veterinario"]), json=payload).status_code == 404
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_patient_administrative_crud_and_clinical_fields_are_separate(client, actors, tenant, role):
+    actor = actors[role]
+    auth = headers(actor)
+    owner = data(client.post("/api/v1/owners", headers=auth,
+                            json={"full_name": "Propietario", "phone": "555"}), 201)
+    payload = {"owner_id": owner["id"], "name": "Administrativo", "species": "canine"}
+    patient = data(client.post("/api/v1/patients", headers=auth, json=payload), 201)
+    assert patient["tenant_id"] == str(tenant.id)
+    assert patient["created_by_user_id"] == str(actor.id)
+    url = f"/api/v1/patients/{patient['id']}"
+    assert data(client.get(url, headers=auth))["id"] == patient["id"]
+    assert data(client.patch(url, headers=auth, json={"name": "Editado"}))["name"] == "Editado"
+    assert client.delete(url, headers=auth).status_code == 204
+
+    for field, value, expected in [
+        ("weight_kg", 5, "5.00"),
+        ("allergies", "Penicilina", "Penicilina"),
+        ("chronic_conditions", None, None),
+    ]:
+        response = client.post("/api/v1/patients", headers=auth, json={**payload, field: value})
+        if role == "medico_veterinario":
+            assert data(response, 201)[field] == expected
+        else:
+            assert response.status_code == 403
+            assert response.json()["error"]["code"] == "forbidden"
+
+
+@pytest.mark.parametrize("role", NON_CLINICAL)
+@pytest.mark.parametrize("path,payload", [
+    ("rewrite-clinical-note", {"field": "anamnesis", "text": "Prurito desde ayer"}),
+    ("generate-consultation-summary", {"consultation": {"reason": "Prurito"}}),
+])
+def test_non_veterinarians_cannot_use_clinical_ai(client, actors, monkeypatch, role, path, payload):
+    from app.services.ai_service import AIService
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Clinical AI must reject the actor before invoking the service")
+
+    monkeypatch.setattr(AIService, "rewrite_clinical_note", fail_if_called)
+    monkeypatch.setattr(AIService, "generate_consultation_summary", fail_if_called)
+    response = client.post(f"/api/v1/ai/{path}", headers=headers(actors[role]), json=payload)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "forbidden"
