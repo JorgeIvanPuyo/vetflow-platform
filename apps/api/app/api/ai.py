@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.permissions import clinical_read_or_veterinarian
+from app.core.tenant import TenantContext
 from app.schemas.ai import (
     GenerateConsultationSummaryRequest,
     GenerateConsultationSummaryResponse,
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.post("/rewrite-clinical-note")
 def rewrite_clinical_note(
     payload: RewriteClinicalNoteRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
 ) -> RewriteClinicalNoteResponse:
     suggestion = AIService().rewrite_clinical_note(
         field=payload.field,
@@ -30,7 +31,7 @@ def rewrite_clinical_note(
 @router.post("/generate-consultation-summary")
 def generate_consultation_summary(
     payload: GenerateConsultationSummaryRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
 ) -> GenerateConsultationSummaryResponse:
     summary = AIService().generate_consultation_summary(
         consultation=payload.consultation,

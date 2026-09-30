@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.permissions import ensure_veterinarian
 from app.models.sale_fiscal import FiscalIssuer
 from app.repositories.fiscal_issuer import FiscalIssuerRepository
 from app.repositories.user import UserRepository
@@ -22,7 +23,7 @@ class FiscalIssuerService:
     def create(
         self, tenant_id: uuid.UUID, payload: FiscalIssuerCreate
     ) -> FiscalIssuer:
-        self._require_user(tenant_id, payload.user_id)
+        self.validate_eligible_user(tenant_id, payload.user_id)
         if self.repository.get_by_user(tenant_id, payload.user_id) is not None:
             raise AppError(
                 409,
@@ -98,7 +99,7 @@ class FiscalIssuerService:
                 raise AppError(
                     422, "fiscal_issuer_invalid_configuration", str(exc)
                 ) from exc
-            self._require_user(tenant_id, validated.user_id)
+            self.validate_eligible_user(tenant_id, validated.user_id)
             duplicate = self.repository.get_by_user(tenant_id, validated.user_id)
             if duplicate is not None and duplicate.id != issuer.id:
                 raise AppError(
@@ -123,6 +124,8 @@ class FiscalIssuerService:
             raise
         return self.get(tenant_id, issuer_id)
 
-    def _require_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        if self.user_repository.get_by_id(tenant_id, user_id) is None:
+    def validate_eligible_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        user = self.user_repository.get_by_id(tenant_id, user_id)
+        if user is None:
             raise AppError(404, "user_not_found", "Usuario no encontrado")
+        ensure_veterinarian(user, fiscal=True)

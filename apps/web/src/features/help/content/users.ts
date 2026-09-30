@@ -94,6 +94,7 @@ export const guides: HelpGuide[] = [
       "medico",
       "veterinario",
       "contador",
+      "secretaria",
       "superadmin"
     ],
     "appRoute": "/help",
@@ -106,11 +107,15 @@ export const guides: HelpGuide[] = [
       },
       {
         "title": "Médico veterinario",
-        "description": "Utiliza los módulos de atención y consulta las opciones de la clínica. La edición de catálogos, servicios y preferencias está reservada al Administrador de clínica."
+        "description": "Gestiona la operación de la clínica y es el único rol que puede asumir responsabilidad clínica. Puede ser emisor fiscal si tiene una configuración fiscal válida."
+      },
+      {
+        "title": "Secretaria",
+        "description": "Gestiona agenda, propietarios, pacientes administrativos, inventario, proveedores, compras, ventas, cobros, catálogos y configuración operativa. Puede configurar emisores veterinarios y métodos de pago. Consulta la historia clínica sin asumir responsabilidad clínica ni fiscal. No administra usuarios o tenants ni elimina historia clínica."
       },
       {
         "title": "Contador",
-        "description": "La navegación específica del Contador incluye Contabilidad y el Centro de ayuda. Contabilidad muestra actualmente En construcción."
+        "description": "Gestiona los mismos módulos operativos que los demás roles de clínica, además de acceder a Contabilidad, actualmente En construcción. No asume responsabilidad clínica ni fiscal."
       },
       {
         "title": "Superadmin",

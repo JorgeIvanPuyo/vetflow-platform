@@ -1,5 +1,9 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
@@ -43,6 +47,8 @@ const examStatusOptions: Array<{ value: ExamStatus; label: string }> = [
 ];
 
 export function ExamDetail({ examId }: ExamDetailProps) {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   const [state, setState] = useState<ExamDetailState>(initialState);
   const [formState, setFormState] = useState<ExamFormState>({
     status: "requested",
@@ -219,7 +225,7 @@ export function ExamDetail({ examId }: ExamDetailProps) {
           <p className="muted-text">Actualización de estado y resultado en texto.</p>
         </div>
 
-        <form className="entity-form" onSubmit={handleSubmit}>
+        <form className="entity-form" onSubmit={handleSubmit}><fieldset disabled={isClinicalReadOnly}>
           <div className="form-grid">
             <label className="field">
               <span>Estado</span>
@@ -300,7 +306,7 @@ export function ExamDetail({ examId }: ExamDetailProps) {
           <button className="primary-button" disabled={state.isSaving} type="submit">
             {state.isSaving ? "Guardando..." : "Guardar examen"}
           </button>
-        </form>
+        </fieldset></form>
 
         {state.successMessage ? (
           <p className="success-state">{state.successMessage}</p>

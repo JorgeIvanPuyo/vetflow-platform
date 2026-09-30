@@ -1,5 +1,9 @@
 "use client";
 
+import { canDeleteClinicalHistory, canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import {
   ArrowLeft,
   CalendarDays,
@@ -323,6 +327,8 @@ const speciesOptions: Array<{ value: Exclude<SpeciesOption, "">; label: string; 
 ];
 
 export function PatientDetail({ patientId }: PatientDetailProps) {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   const router = useRouter();
   const [state, setState] = useState<PatientDetailState>(initialState);
   const [activeSection, setActiveSection] = useState<PatientDetailSection>("history");
@@ -397,7 +403,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         getPatientPreventiveCare(patientId),
         getPatientFileReferences(patientId),
         getOwners(),
-        getClinicTeam(),
+        getClinicTeam(true),
       ]);
       let owner: Owner | null = null;
 
@@ -1146,8 +1152,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       breed: patientEditFormState.breed.trim() || null,
       sex: patientEditFormState.sex.trim() || null,
       estimated_age: patientEditFormState.estimated_age.trim() || null,
-      allergies: editHasNoKnownAllergies ? null : allergies,
-      chronic_conditions: editHasNoKnownChronicConditions ? null : chronicConditions,
+      ...(!isClinicalReadOnly ? { allergies: editHasNoKnownAllergies ? null : allergies } : {}),
+      ...(!isClinicalReadOnly ? { chronic_conditions: editHasNoKnownChronicConditions ? null : chronicConditions } : {}),
     };
 
     const matchedSpecies = speciesCatalog.find(
@@ -1168,7 +1174,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
       }
     }
 
-    payload.weight_kg = patientEditFormState.weight_kg.trim()
+    if (!isClinicalReadOnly) payload.weight_kg = patientEditFormState.weight_kg.trim()
       ? Number(patientEditFormState.weight_kg)
       : null;
 
@@ -1288,7 +1294,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           </div>
         </div>
         <div className="button-row patient-detail-hero__actions">
-          <button
+          <button disabled={isClinicalReadOnly}
             className="primary-button patient-detail-hero__primary-action"
             type="button"
             onClick={() => router.push(`/patients/${patientId}/consultations/new`)}
@@ -1313,7 +1319,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               <CalendarDays aria-hidden="true" size={15} />
               Agendar turno
             </button>
-            <button
+            <button disabled={isClinicalReadOnly}
               className="secondary-button"
               type="button"
               onClick={() => openFollowUpModal(patient)}
@@ -1461,7 +1467,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                             >
                               Editar consulta
                             </Link>
-                            <button
+                            <button disabled={isClinicalReadOnly}
                               className="secondary-button secondary-button--compact"
                               onClick={() => openFollowUpConsultationModal(item)}
                               type="button"
@@ -1498,6 +1504,11 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   }
 
   function renderInfoSection(patient: Patient) {
+    const history = state.clinicalHistory;
+    const hasClinicalData = patient.weight_kg != null || patient.allergies != null ||
+      patient.chronic_conditions != null || Boolean(history?.consultations.length ||
+        history?.exams?.length || history?.preventive_care?.length || history?.follow_ups?.length);
+    const deletionRestricted = !canDeleteClinicalHistory(role) && hasClinicalData;
     return (
       <section className="panel patient-profile-info-card">
         <div className="patient-profile-info-card__header">
@@ -1515,6 +1526,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               <Edit aria-hidden="true" size={16} /> Editar
             </button>
             <button
+              disabled={deletionRestricted}
+              title={deletionRestricted ? "No puedes eliminar un paciente con historia clínica" : undefined}
               aria-label="Eliminar paciente"
               className="secondary-button secondary-button--danger"
               onClick={openPatientDeleteModal}
@@ -1888,6 +1901,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
               <label className="field">
                 <span>Peso (kg)</span>
                 <input
+                  disabled={isClinicalReadOnly}
                   inputMode="decimal"
                   value={patientEditFormState.weight_kg}
                   placeholder="Ej. 12.5"
@@ -1904,7 +1918,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <div className="clinical-toggle-card">
               <label className="checkbox-row">
                 <input
-                  checked={editHasNoKnownAllergies}
+                  disabled={isClinicalReadOnly} checked={editHasNoKnownAllergies}
                   type="checkbox"
                   onChange={(event) => {
                     setEditHasNoKnownAllergies(event.target.checked);
@@ -1919,6 +1933,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 <label className="field">
                   <span>Alergias</span>
                   <textarea
+                    disabled={isClinicalReadOnly}
                     rows={2}
                     value={patientEditFormState.allergies}
                     placeholder="Ej. Penicilina, pollo, lácteos"
@@ -1936,7 +1951,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <div className="clinical-toggle-card">
               <label className="checkbox-row">
                 <input
-                  checked={editHasNoKnownChronicConditions}
+                  disabled={isClinicalReadOnly} checked={editHasNoKnownChronicConditions}
                   type="checkbox"
                   onChange={(event) => {
                     setEditHasNoKnownChronicConditions(event.target.checked);
@@ -1954,6 +1969,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
                 <label className="field">
                   <span>Condiciones crónicas</span>
                   <textarea
+                    disabled={isClinicalReadOnly}
                     rows={2}
                     value={patientEditFormState.chronic_conditions}
                     placeholder="Ej. Diabetes, dermatitis, epilepsia"

@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import {
   Building2,
   CalendarClock,
@@ -158,8 +160,8 @@ export function SettingsScreen() {
   const [isTeamMemberSaving, setIsTeamMemberSaving] = useState(false);
   const [teamEditMessage, setTeamEditMessage] = useState<string | null>(null);
   const [isLogoDeleteOpen, setIsLogoDeleteOpen] = useState(false);
-  const canManageCatalog = role === "clinic_admin";
-  const canManageServices = canManageCatalog || role === "medico_veterinario" || role === "contador";
+  const canManageCatalog = canOperateClinic(role);
+  const canManageServices = canOperateClinic(role);
   const moneyPreferences = resolveMoneyPreferences(state.preferences);
 
   async function loadSettings() {

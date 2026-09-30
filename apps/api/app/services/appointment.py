@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.permissions import ensure_veterinarian
 from app.models.appointment import Appointment
 from app.models.owner import Owner
 from app.models.patient import Patient
@@ -48,7 +49,7 @@ class AppointmentService:
         self._validate_time_range(payload.start_at, appointment_data["end_at"])
         self._validate_optional_patient(tenant_id, payload.patient_id)
         self._validate_optional_owner(tenant_id, payload.owner_id)
-        self._validate_optional_user(tenant_id, payload.assigned_user_id)
+        self._validate_optional_user(tenant_id, payload.assigned_user_id, responsible=True)
         self._validate_optional_user(tenant_id, created_by_user_id)
 
         appointment = Appointment(
@@ -143,7 +144,7 @@ class AppointmentService:
         if "owner_id" in updates and updates["owner_id"] is not None:
             self._validate_optional_owner(tenant_id, updates["owner_id"])
         if "assigned_user_id" in updates and updates["assigned_user_id"] is not None:
-            self._validate_optional_user(tenant_id, updates["assigned_user_id"])
+            self._validate_optional_user(tenant_id, updates["assigned_user_id"], responsible=True)
 
         updated_appointment = self.appointment_repository.update(appointment, updates)
         self.db.commit()
@@ -222,11 +223,14 @@ class AppointmentService:
         self,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID | None,
+        *, responsible: bool = False,
     ) -> None:
         if user_id is None:
             return
         user = self.user_repository.get_by_id(tenant_id, user_id)
         if user is not None:
+            if responsible:
+                ensure_veterinarian(user)
             return
         user_any_tenant = self.db.get(User, user_id)
         if user_any_tenant is not None:

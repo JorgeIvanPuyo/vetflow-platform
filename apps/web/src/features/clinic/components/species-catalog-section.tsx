@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import {
   ChevronDown,
   ChevronUp,
@@ -45,7 +47,7 @@ export function SpeciesCatalogSection({
   onToggle,
 }: SpeciesCatalogSectionProps) {
   const { role } = useCurrentUser();
-  const canManageCatalog = role === "clinic_admin";
+  const canManageCatalog = canOperateClinic(role);
   const [species, setSpecies] = useState<CatalogItem[]>([]);
   const [breeds, setBreeds] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);

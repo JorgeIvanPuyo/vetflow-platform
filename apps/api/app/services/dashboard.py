@@ -212,7 +212,8 @@ class DashboardService:
         assigned_user_id: uuid.UUID | None,
         include_completed: bool,
     ) -> list[dict]:
-        users = self.user_repository.list_active_by_tenant(tenant_id)
+        users = [user for user in self.user_repository.list_active_by_tenant(tenant_id)
+                 if user.role == "medico_veterinario"]
         if assigned_user_id is not None:
             users = [user for user in users if user.id == assigned_user_id]
 

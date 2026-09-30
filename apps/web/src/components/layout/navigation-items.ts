@@ -43,12 +43,8 @@ export const navigationItems: NavigationItem[] = [
     roles: ["superadmin"],
   },
   { href: "/settings", label: "Ajustes", icon: Settings },
-  { href: "/help", label: "Centro de ayuda", icon: CircleHelp, roles: ["clinic_admin", "medico_veterinario", "contador", "superadmin"] },
+  { href: "/help", label: "Centro de ayuda", icon: CircleHelp, roles: ["clinic_admin", "medico_veterinario", "contador", "superadmin", "secretaria"] },
 ];
-
-// Roles that must ONLY see modules explicitly granted to them (via `roles`),
-// never the unrestricted base modules.
-export const SCOPED_ROLES: AppRole[] = ["contador"];
 
 export function filterNavigationByRole(
   items: NavigationItem[],
@@ -58,8 +54,6 @@ export function filterNavigationByRole(
     if (item.roles) {
       return role ? item.roles.includes(role) : false;
     }
-    // Unrestricted items: visible to everyone except scoped roles.
-    if (item.href === "/settings" && role === "contador") return true;
-    return role ? !SCOPED_ROLES.includes(role) : true;
+    return true;
   });
 }

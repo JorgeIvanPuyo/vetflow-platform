@@ -1,5 +1,9 @@
 "use client";
 
+import { canDeleteClinicalHistory, canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import { ArrowLeft, Edit, Mail, MapPin, PawPrint, Phone, Trash2, User, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -82,6 +86,8 @@ const initialFormState: OwnerFormState = {
 };
 
 export function OwnerDetail({ ownerId }: OwnerDetailProps) {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   const router = useRouter();
   const [state, setState] = useState<OwnerDetailState>(initialState);
   const [formState, setFormState] = useState<OwnerFormState>(initialFormState);
@@ -275,9 +281,11 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
       breed: petFormState.breed.trim() || null,
       sex: petFormState.sex.trim() || null,
       estimated_age: petFormState.estimated_age.trim() || null,
-      weight_kg,
-      allergies: petFormState.allergies.trim() || null,
-      chronic_conditions: petFormState.chronic_conditions.trim() || null,
+      ...(!isClinicalReadOnly ? {
+        weight_kg,
+        allergies: petFormState.allergies.trim() || null,
+        chronic_conditions: petFormState.chronic_conditions.trim() || null,
+      } : {}),
     };
 
     const matchedSpecies = speciesCatalog.find(
@@ -418,6 +426,8 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
           </button>
           <button
             aria-label="Eliminar propietario"
+            disabled={!canDeleteClinicalHistory(role) && state.pets.length > 0}
+            title={!canDeleteClinicalHistory(role) && state.pets.length > 0 ? "No puedes eliminar un propietario con pacientes e historia clínica" : undefined}
             className="secondary-button secondary-button--danger"
             onClick={openDeleteModal}
             type="button"
@@ -669,6 +679,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                     min="0"
                     step="0.01"
                     type="number"
+                    disabled={isClinicalReadOnly}
                     value={petFormState.weight_kg}
                     onChange={(event) =>
                       setPetFormState((current) => ({ ...current, weight_kg: event.target.value }))
@@ -680,6 +691,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                   <span>Alergias opcional</span>
                   <textarea
                     rows={2}
+                    disabled={isClinicalReadOnly}
                     value={petFormState.allergies}
                     onChange={(event) =>
                       setPetFormState((current) => ({ ...current, allergies: event.target.value }))
@@ -691,6 +703,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                   <span>Condiciones crónicas opcional</span>
                   <textarea
                     rows={2}
+                    disabled={isClinicalReadOnly}
                     value={petFormState.chronic_conditions}
                     onChange={(event) =>
                       setPetFormState((current) => ({

@@ -1,5 +1,7 @@
 "use client";
 
+import { canOperateClinic } from "@/lib/permissions";
+
 import {
   Boxes,
   ChevronDown,
@@ -44,7 +46,7 @@ export function InventoryCatalogsSection({
   onToggle,
 }: InventoryCatalogsSectionProps) {
   const { role } = useCurrentUser();
-  const canManageCatalog = role === "clinic_admin";
+  const canManageCatalog = canOperateClinic(role);
   const [categories, setCategories] = useState<CatalogItem[]>([]);
   const [subcategories, setSubcategories] = useState<CatalogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);

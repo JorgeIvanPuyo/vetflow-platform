@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.core.tenant import TenantContext, get_tenant_context, require_clinic_admin
+from app.core.permissions import require_clinic_operator
+from app.core.roles import Role
+from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.clinic import (
     ClinicConfigurationRead,
@@ -101,10 +103,13 @@ def delete_clinic_logo(
 
 @router.get("/team")
 def get_clinic_team(
+    responsible_only: bool = Query(default=False),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
     team = ClinicService(db).list_team(tenant.tenant_id)
+    if responsible_only:
+        team = [member for member in team if member.role == Role.MEDICO_VETERINARIO.value and member.is_active]
     return {
         "data": [
             ClinicTeamMemberRead.model_validate(member).model_dump(mode="json")
@@ -149,7 +154,7 @@ def get_clinic_preferences(
 @router.patch("/preferences")
 def update_clinic_preferences(
     payload: TenantPreferenceUpdate,
-    tenant: TenantContext = Depends(require_clinic_admin),
+    tenant: TenantContext = Depends(require_clinic_operator),
     db: Session = Depends(get_db),
 ) -> dict:
     preferences = ClinicService(db).update_preferences(tenant.tenant_id, payload)

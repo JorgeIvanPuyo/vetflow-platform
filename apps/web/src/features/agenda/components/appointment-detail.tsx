@@ -146,7 +146,7 @@ export function AppointmentDetail({ appointmentId }: AppointmentDetailProps) {
       ] =
         await Promise.all([
           getAppointment(appointmentId),
-          getClinicTeam(),
+          getClinicTeam(true),
           getServices({ bookable_only: true }),
         ]);
 

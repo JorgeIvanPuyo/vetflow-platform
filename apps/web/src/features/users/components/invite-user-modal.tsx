@@ -11,6 +11,7 @@ const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "clinic_admin", label: "Administrador de clínica" },
   { value: "medico_veterinario", label: "Médico veterinario" },
   { value: "contador", label: "Contador" },
+  { value: "secretaria", label: "Secretaria" },
   { value: "superadmin", label: "Superadmin" },
 ];
 

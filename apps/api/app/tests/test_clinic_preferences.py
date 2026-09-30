@@ -141,7 +141,7 @@ def test_currency_change_is_locked_after_monetary_activity(client, db_session, t
     assert response.json()["error"]["code"] == "currency_change_locked"
 
 
-def test_non_clinic_admin_cannot_patch_preferences(client, db_session, tenant):
+def test_veterinarian_can_patch_preferences(client, db_session, tenant):
     vet = _create_user(
         db_session,
         tenant,
@@ -156,8 +156,7 @@ def test_non_clinic_admin_cannot_patch_preferences(client, db_session, tenant):
         json={"default_appointment_duration_minutes": 45},
     )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
+    assert response.status_code == 200
 
 
 def test_preferences_validate_regional_pair(client, db_session, tenant):

@@ -3,8 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.errors import AppError
-from app.core.roles import Role
+from app.core.permissions import require_service_editor
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.service import (
@@ -16,14 +15,6 @@ from app.schemas.service import (
 from app.services.service_catalog import ServiceCatalogService
 
 router = APIRouter(prefix="/services", tags=["services"])
-
-
-def require_service_editor(
-    tenant: TenantContext = Depends(get_tenant_context),
-) -> TenantContext:
-    if tenant.role not in (Role.CLINIC_ADMIN.value, Role.MEDICO_VETERINARIO.value, Role.CONTADOR.value):
-        raise AppError(403, "forbidden", "No tienes permiso para esta acción")
-    return tenant
 
 
 @router.get("")

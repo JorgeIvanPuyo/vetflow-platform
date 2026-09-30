@@ -63,7 +63,7 @@ def test_clinic_admin_can_create_and_list_catalog_items(client, db_session, tena
     assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
 
 
-def test_non_clinic_admin_cannot_mutate_catalog_items(client, db_session, tenant):
+def test_veterinarian_can_mutate_catalog_items(client, db_session, tenant):
     vet = _create_user(
         db_session,
         tenant,
@@ -82,8 +82,7 @@ def test_non_clinic_admin_cannot_mutate_catalog_items(client, db_session, tenant
         headers=_headers(tenant),
     )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
+    assert response.status_code == 201
     assert read_response.status_code == 200
 
 

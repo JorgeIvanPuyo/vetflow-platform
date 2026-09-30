@@ -30,6 +30,7 @@ type FollowUpFormModalProps = {
   team: ClinicTeamMember[];
   isSubmitting: boolean;
   flowMessage: string | null;
+  administrativeOnly?: boolean;
   patientLocked?: boolean;
   ownerLocked?: boolean;
   showAppointmentOptions?: boolean;
@@ -48,6 +49,7 @@ export function FollowUpFormModal({
   team,
   isSubmitting,
   flowMessage,
+  administrativeOnly = false,
   patientLocked = false,
   ownerLocked = false,
   showAppointmentOptions = true,
@@ -186,6 +188,7 @@ export function FollowUpFormModal({
               <span>Tipo *</span>
               <select
                 required
+                disabled={administrativeOnly}
                 value={formState.follow_up_type}
                 onChange={(event) => {
                   const nextType = event.target.value as FollowUpType;
@@ -218,6 +221,7 @@ export function FollowUpFormModal({
             <label className="field">
               <span>Estado</span>
               <select
+                disabled={administrativeOnly}
                 value={formState.status}
                 onChange={(event) =>
                   onUpdateForm({
@@ -259,6 +263,7 @@ export function FollowUpFormModal({
             <label className="field">
               <span>Plantilla (opcional)</span>
               <select
+                disabled={administrativeOnly}
                 value=""
                 onChange={(event) => {
                   const selected = templates.find((item) => item.id === event.target.value);
@@ -282,7 +287,8 @@ export function FollowUpFormModal({
             <input
               required
               placeholder={getFollowUpTypeLabel(formState.follow_up_type)}
-              value={formState.title}
+              disabled={administrativeOnly}
+                value={formState.title}
               onChange={(event) => onUpdateForm({ ...formState, title: event.target.value })}
             />
           </label>
@@ -291,7 +297,8 @@ export function FollowUpFormModal({
             <span>Descripción</span>
             <textarea
               rows={3}
-              value={formState.description}
+              disabled={administrativeOnly}
+                value={formState.description}
               onChange={(event) =>
                 onUpdateForm({ ...formState, description: event.target.value })
               }
@@ -302,7 +309,8 @@ export function FollowUpFormModal({
             <span>Notas</span>
             <textarea
               rows={3}
-              value={formState.notes}
+              disabled={administrativeOnly}
+                value={formState.notes}
               onChange={(event) => onUpdateForm({ ...formState, notes: event.target.value })}
             />
           </label>

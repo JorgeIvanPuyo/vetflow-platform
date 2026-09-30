@@ -1,7 +1,9 @@
+from app.tests.role_helpers import veterinarian_headers
+
 def _create_owner(client, tenant, full_name="Owner"):
     response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": full_name, "phone": "555-1000"},
     )
     assert response.status_code == 201
@@ -11,7 +13,7 @@ def _create_owner(client, tenant, full_name="Owner"):
 def _create_patient(client, tenant, owner_id, name="Luna"):
     response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"owner_id": owner_id, "name": name, "species": "Canine"},
     )
     assert response.status_code == 201
@@ -35,7 +37,7 @@ def _create_preventive_care(client, tenant, patient_id, **overrides):
     payload.update(overrides)
     response = client.post(
         f"/api/v1/patients/{patient_id}/preventive-care",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -52,7 +54,7 @@ def _create_file_reference(client, tenant, patient_id, **overrides):
     payload.update(overrides)
     response = client.post(
         f"/api/v1/patients/{patient_id}/file-references",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -91,7 +93,7 @@ def test_list_preventive_care_by_patient(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/preventive-care",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -106,7 +108,7 @@ def test_get_preventive_care_by_id(client, tenant):
 
     response = client.get(
         f"/api/v1/preventive-care/{record['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -119,7 +121,7 @@ def test_update_preventive_care(client, tenant):
 
     response = client.patch(
         f"/api/v1/preventive-care/{record['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"name": "Rabia actualizada", "care_type": "other"},
     )
 
@@ -135,14 +137,14 @@ def test_delete_preventive_care(client, tenant):
 
     response = client.delete(
         f"/api/v1/preventive-care/{record['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 204
 
     get_response = client.get(
         f"/api/v1/preventive-care/{record['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
     assert get_response.json()["error"]["code"] == "preventive_care_not_found"
@@ -160,7 +162,7 @@ def test_prevent_cross_tenant_preventive_care_creation_and_access(
 
     create_response = client.post(
         f"/api/v1/patients/{foreign_patient['id']}/preventive-care",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Rabia",
             "care_type": "vaccine",
@@ -172,7 +174,7 @@ def test_prevent_cross_tenant_preventive_care_creation_and_access(
 
     get_response = client.get(
         f"/api/v1/preventive-care/{foreign_record['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
 
@@ -195,7 +197,7 @@ def test_list_file_references_by_patient(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/file-references",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -210,7 +212,7 @@ def test_get_file_reference_by_id(client, tenant):
 
     response = client.get(
         f"/api/v1/file-references/{file_reference['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -223,7 +225,7 @@ def test_update_file_reference(client, tenant):
 
     response = client.patch(
         f"/api/v1/file-references/{file_reference['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"name": "Laboratorio externo", "file_type": "lab_result"},
     )
 
@@ -239,14 +241,14 @@ def test_delete_file_reference(client, tenant):
 
     response = client.delete(
         f"/api/v1/file-references/{file_reference['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 204
 
     get_response = client.get(
         f"/api/v1/file-references/{file_reference['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
     assert get_response.json()["error"]["code"] == "file_reference_not_found"
@@ -264,7 +266,7 @@ def test_prevent_cross_tenant_file_reference_creation_and_access(
 
     create_response = client.post(
         f"/api/v1/patients/{foreign_patient['id']}/file-references",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"name": "Archivo", "file_type": "pdf"},
     )
     assert create_response.status_code == 409
@@ -272,7 +274,7 @@ def test_prevent_cross_tenant_file_reference_creation_and_access(
 
     get_response = client.get(
         f"/api/v1/file-references/{foreign_file_reference['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
 
@@ -283,7 +285,7 @@ def test_clinical_history_includes_preventive_care_timeline_item(client, tenant)
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -295,6 +297,8 @@ def test_clinical_history_includes_preventive_care_timeline_item(client, tenant)
         "date": "2026-04-24T10:30:00",
         "title": "Rabia anual",
         "summary": "LOT-123",
+        "created_by": {"id": record["created_by_user_id"], "full_name": "Test Veterinarian",
+                       "email": f"test-veterinarian-{tenant.id}@example.com"},
     } in body["timeline"]
 
 
@@ -304,7 +308,7 @@ def test_clinical_history_includes_file_reference_timeline_item(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -339,7 +343,7 @@ def test_clinical_history_does_not_leak_cross_tenant_detail_records(
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200

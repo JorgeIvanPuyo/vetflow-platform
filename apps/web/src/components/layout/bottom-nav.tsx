@@ -8,12 +8,12 @@ import {
   PawPrint,
   Settings,
   ShoppingBag,
+  ShoppingCart,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { SCOPED_ROLES } from "@/components/layout/navigation-items";
 import { useCurrentUser } from "@/features/auth/current-user-context";
 
 const navItems = [
@@ -21,6 +21,7 @@ const navItems = [
   { href: "/patients", label: "Pacientes", icon: PawPrint },
   { href: "/agenda", label: "Agenda", icon: Calendar },
   { href: "/inventory/dashboard", label: "Inventario", icon: Package },
+  { href: "/purchases/dashboard", label: "Compras", icon: ShoppingCart },
   { href: "/sales", label: "Ventas", icon: ShoppingBag },
   {
     href: "/accounting",
@@ -56,8 +57,7 @@ export function BottomNav() {
     if ("roles" in item) {
       return role ? (item.roles as readonly string[]).includes(role) : false;
     }
-    if (item.href === "/settings" && role === "contador") return true;
-    return role ? !SCOPED_ROLES.includes(role) : true;
+    return true;
   });
 
   return (

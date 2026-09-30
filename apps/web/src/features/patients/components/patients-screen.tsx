@@ -1,5 +1,9 @@
 "use client";
 
+import { canPerformClinicalActions } from "@/lib/permissions";
+
+import { useCurrentUser } from "@/features/auth/current-user-context";
+
 import {
   AlertCircle,
   Cat,
@@ -104,6 +108,8 @@ const initialOwnerFormState: OwnerFormState = {
 };
 
 export function PatientsScreen() {
+  const { role } = useCurrentUser();
+  const isClinicalReadOnly = !canPerformClinicalActions(role);
   const [state, setState] = useState<PatientsState>(initialPatientsState);
   const [formState, setFormState] = useState<PatientFormState>(
     initialPatientFormState,
@@ -276,17 +282,17 @@ export function PatientsScreen() {
     if (formState.estimated_age.trim()) {
       payload.estimated_age = formState.estimated_age.trim();
     }
-    if (formState.weight_kg.trim()) {
+    if (!isClinicalReadOnly && formState.weight_kg.trim()) {
       payload.weight_kg = Number(formState.weight_kg);
     }
     const allergies = normalizeOptionalClinicalText(formState.allergies);
-    if (!hasNoKnownAllergies && allergies) {
+    if (!isClinicalReadOnly && !hasNoKnownAllergies && allergies) {
       payload.allergies = allergies;
     }
     const chronicConditions = normalizeOptionalClinicalText(
       formState.chronic_conditions,
     );
-    if (!hasNoKnownChronicConditions && chronicConditions) {
+    if (!isClinicalReadOnly && !hasNoKnownChronicConditions && chronicConditions) {
       payload.chronic_conditions = chronicConditions;
     }
 
@@ -732,6 +738,7 @@ export function PatientsScreen() {
                   <label className="field">
                     <span>Peso (kg)</span>
                     <input
+                      disabled={isClinicalReadOnly}
                       inputMode="decimal"
                       value={formState.weight_kg}
                       placeholder="Ej. 12.5"
@@ -748,7 +755,7 @@ export function PatientsScreen() {
                 <div className="clinical-toggle-card">
                   <label className="checkbox-row">
                     <input
-                      checked={hasNoKnownAllergies}
+                      disabled={isClinicalReadOnly} checked={hasNoKnownAllergies}
                       type="checkbox"
                       onChange={(event) => {
                         setHasNoKnownAllergies(event.target.checked);
@@ -763,6 +770,7 @@ export function PatientsScreen() {
                     <label className="field">
                       <span>Alergias</span>
                       <textarea
+                        disabled={isClinicalReadOnly}
                         rows={2}
                         value={formState.allergies}
                         placeholder="Ej. Penicilina, pollo, lácteos"
@@ -777,7 +785,7 @@ export function PatientsScreen() {
                 <div className="clinical-toggle-card">
                   <label className="checkbox-row">
                     <input
-                      checked={hasNoKnownChronicConditions}
+                      disabled={isClinicalReadOnly} checked={hasNoKnownChronicConditions}
                       type="checkbox"
                       onChange={(event) => {
                         setHasNoKnownChronicConditions(event.target.checked);
@@ -795,6 +803,7 @@ export function PatientsScreen() {
                     <label className="field">
                       <span>Condiciones crónicas</span>
                       <textarea
+                        disabled={isClinicalReadOnly}
                         rows={2}
                         value={formState.chronic_conditions}
                         placeholder="Ej. Diabetes, dermatitis, epilepsia"

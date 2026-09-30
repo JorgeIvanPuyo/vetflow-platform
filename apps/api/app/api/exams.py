@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.permissions import clinical_read_or_veterinarian
+from app.core.tenant import TenantContext
 from app.db.session import get_db
 from app.schemas.common import ListMeta
 from app.schemas.exam import ExamCreate, ExamRead, ExamUpdate
@@ -15,7 +16,7 @@ router = APIRouter(tags=["exams"])
 @router.post("/exams", status_code=status.HTTP_201_CREATED)
 def create_exam(
     payload: ExamCreate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     exam = ExamService(db).create_exam(
@@ -29,7 +30,7 @@ def create_exam(
 @router.get("/exams/{exam_id}")
 def get_exam(
     exam_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     exam = ExamService(db).get_exam(tenant.tenant_id, exam_id)
@@ -40,7 +41,7 @@ def get_exam(
 def update_exam(
     exam_id: uuid.UUID,
     payload: ExamUpdate,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     exam = ExamService(db).update_exam(tenant.tenant_id, exam_id, payload)
@@ -50,7 +51,7 @@ def update_exam(
 @router.get("/patients/{patient_id}/exams")
 def list_patient_exams(
     patient_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     exams, total = ExamService(db).list_patient_exams(tenant.tenant_id, patient_id)
@@ -63,7 +64,7 @@ def list_patient_exams(
 @router.get("/consultations/{consultation_id}/exams")
 def list_consultation_exams(
     consultation_id: uuid.UUID,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(clinical_read_or_veterinarian),
     db: Session = Depends(get_db),
 ) -> dict:
     exams, total = ExamService(db).list_consultation_exams(

@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from app.models.user import User
 
 
@@ -62,25 +64,77 @@ def test_clinic_admin_can_create_and_list_suppliers(client, db_session, tenant):
     assert response.json()["data"][0]["created_by_user_id"] == str(admin.id)
 
 
-def test_non_clinic_admin_cannot_mutate_suppliers(client, db_session, tenant):
-    vet = _create_user(
-        db_session,
-        tenant,
-        "sup-vet@example.com",
-        "Regular Vet",
-        "medico_veterinario",
-    )
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador", "secretaria"])
+def test_clinic_operators_can_manage_suppliers(client, db_session, tenant, role):
+    user = _create_user(db_session, tenant, "operator@example.com", "Operator", role)
+    headers = _user_headers(user.email)
+    supplier = _create_supplier(client, user)
+    supplier_url = f"/api/v1/suppliers/{supplier['id']}"
+    assert supplier["tenant_id"] == str(tenant.id)
+    assert supplier["created_by_user_id"] == str(user.id)
+    assert client.get(supplier_url, headers=headers).status_code == 200
+    listed = client.get("/api/v1/suppliers", headers=headers).json()
+    assert [item["id"] for item in listed["data"]] == [supplier["id"]]
 
-    response = client.post(
-        "/api/v1/suppliers",
-        headers=_user_headers(vet.email),
-        json=_supplier_payload(),
-    )
-    read_response = client.get("/api/v1/suppliers", headers=_headers(tenant))
+    updated = client.patch(supplier_url, headers=headers, json={"name": "Editado"})
+    assert updated.status_code == 200
+    assert updated.json()["data"]["name"] == "Editado"
+    for operation, active in [("deactivate", False), ("activate", True)]:
+        response = client.post(f"{supplier_url}/{operation}", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["data"]["is_active"] is active
+    # The dedicated detail/form screens also change status through PATCH.
+    for active in [False, True]:
+        response = client.patch(supplier_url, headers=headers, json={"is_active": active})
+        assert response.status_code == 200
+        assert response.json()["data"]["is_active"] is active
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
-    assert read_response.status_code == 200
+
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador", "secretaria"])
+def test_supplier_operations_do_not_cross_tenants(client, db_session, tenant, other_tenant, role):
+    user = _create_user(db_session, tenant, "operator@example.com", "Operator", role)
+    other_user = _create_user(db_session, other_tenant, "other@example.com", "Other", "clinic_admin")
+    supplier = _create_supplier(client, other_user)
+    supplier_url = f"/api/v1/suppliers/{supplier['id']}"
+    # An ordinary user cannot override the authenticated clinic with headers.
+    headers = {**_user_headers(user.email), "X-Tenant-Id": str(other_tenant.id),
+               "X-Acting-Tenant-Id": str(other_tenant.id)}
+    for params in [{}, {"include_inactive": True}, {"search": supplier["name"]}]:
+        response = client.get("/api/v1/suppliers", headers=headers, params=params)
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+        assert response.json()["meta"]["total"] == 0
+    responses = [
+        client.get(supplier_url, headers=headers),
+        client.patch(supplier_url, headers=headers, json={"name": "Ajeno"}),
+        client.patch(supplier_url, headers=headers, json={"is_active": False}),
+        client.post(f"{supplier_url}/deactivate", headers=headers),
+        client.post(f"{supplier_url}/activate", headers=headers),
+    ]
+    for response in responses:
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "supplier_not_found"
+    unchanged = client.get(supplier_url, headers=_user_headers(other_user.email)).json()["data"]
+    assert unchanged["name"] == supplier["name"]
+    assert unchanged["is_active"] is True
+    created = client.post("/api/v1/suppliers", headers=headers, json={"name": "Propio"})
+    assert created.status_code == 201
+    assert created.json()["data"]["tenant_id"] == str(tenant.id)
+
+
+def test_superadmin_supplier_mutations_remain_forbidden(client, db_session, tenant):
+    admin = _create_user(db_session, tenant, "admin@example.com", "Admin", "clinic_admin")
+    superadmin = _create_user(db_session, tenant, "super@example.com", "Super", "superadmin")
+    supplier = _create_supplier(client, admin)
+    headers = _user_headers(superadmin.email)
+    url = f"/api/v1/suppliers/{supplier['id']}"
+    responses = [
+        client.post("/api/v1/suppliers", headers=headers, json={"name": "Denied"}),
+        client.patch(url, headers=headers, json={"name": "Denied"}),
+        client.post(f"{url}/activate", headers=headers),
+        client.post(f"{url}/deactivate", headers=headers),
+    ]
+    assert all(response.status_code == 403 for response in responses)
 
 
 def test_duplicate_active_supplier_name_is_normalized_per_tenant(

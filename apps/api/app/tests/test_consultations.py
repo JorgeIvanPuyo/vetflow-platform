@@ -1,3 +1,5 @@
+from app.tests.role_helpers import veterinarian_headers
+
 import uuid
 from decimal import Decimal
 
@@ -48,7 +50,7 @@ def _create_user(
 def _create_owner(client, tenant, full_name="Owner"):
     response = client.post(
         "/api/v1/owners",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"full_name": full_name, "phone": "555-1000"},
     )
     assert response.status_code == 201
@@ -58,7 +60,7 @@ def _create_owner(client, tenant, full_name="Owner"):
 def _create_patient(client, tenant, owner_id, name="Luna"):
     response = client.post(
         "/api/v1/patients",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"owner_id": owner_id, "name": name, "species": "Canine"},
     )
     assert response.status_code == 201
@@ -86,7 +88,7 @@ def _consultation_payload(patient_id: str, **overrides) -> dict:
 def _create_consultation(client, tenant, patient_id, **overrides):
     response = client.post(
         "/api/v1/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=_consultation_payload(patient_id, **overrides),
     )
     assert response.status_code == 201
@@ -105,7 +107,7 @@ def _create_inventory_item(client, tenant, **overrides):
     payload.update(overrides)
     response = client.post(
         "/api/v1/inventory/items",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -115,14 +117,14 @@ def _create_inventory_item(client, tenant, **overrides):
 
     movement_response = client.post(
         f"/api/v1/inventory/items/{item['id']}/movements/entry",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"quantity": str(initial_stock)},
     )
     assert movement_response.status_code == 201
 
     item_response = client.get(
         f"/api/v1/inventory/items/{item['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert item_response.status_code == 200
     return item_response.json()["data"]
@@ -142,7 +144,7 @@ def test_create_and_get_consultation(client, tenant):
 
     response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -210,11 +212,11 @@ def test_list_consultations_is_tenant_scoped_ordered_and_paginated(
 
     first_page = client.get(
         "/api/v1/consultations?page=1&page_size=2",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     second_page = client.get(
         "/api/v1/consultations?page=2&page_size=2",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert first_page.status_code == 200
@@ -251,7 +253,7 @@ def test_list_consultations_searches_patient_owner_and_reason(client, tenant):
         response = client.get(
             "/api/v1/consultations",
             params={"search": search},
-            headers={"X-Tenant-Id": str(tenant.id)},
+            headers=veterinarian_headers(tenant),
         )
 
         assert response.status_code == 200
@@ -275,12 +277,12 @@ def test_list_consultations_supports_status_filter_and_empty_results(client, ten
     completed_response = client.get(
         "/api/v1/consultations",
         params={"status": "completed"},
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     empty_response = client.get(
         "/api/v1/consultations",
         params={"search": "sin coincidencias"},
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert completed_response.status_code == 200
@@ -295,7 +297,7 @@ def test_list_consultations_supports_status_filter_and_empty_results(client, ten
 
 
 def test_list_consultations_rejects_invalid_pagination_and_status(client, tenant):
-    headers = {"X-Tenant-Id": str(tenant.id)}
+    headers = veterinarian_headers(tenant)
 
     assert client.get(
         "/api/v1/consultations?page=0",
@@ -533,7 +535,7 @@ def test_create_consultation_with_diagnostic_results(client, tenant):
 
     list_response = client.get(
         f"/api/v1/patients/{patient['id']}/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert list_response.status_code == 200
     assert (
@@ -543,7 +545,7 @@ def test_create_consultation_with_diagnostic_results(client, tenant):
 
     history_response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert history_response.status_code == 200
     assert (
@@ -578,7 +580,7 @@ def test_prevent_consultation_creation_for_patient_in_another_tenant(
 
     response = client.post(
         "/api/v1/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "visit_date": "2026-04-24T10:30:00Z",
@@ -611,7 +613,7 @@ def test_list_patient_consultations_ordered_by_visit_date_desc(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/consultations",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -627,7 +629,7 @@ def test_patch_consultation_clinical_fields(client, tenant):
 
     response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "clinical_exam": "Redness improved",
             "final_diagnosis": "Contact dermatitis",
@@ -843,7 +845,7 @@ def test_update_consultation_with_diagnostic_results(client, tenant):
 
     response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "diagnostic_results": "Radiografía sin evidencia de fractura",
         },
@@ -857,7 +859,7 @@ def test_update_consultation_with_diagnostic_results(client, tenant):
 
     detail_response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert detail_response.status_code == 200
@@ -874,7 +876,7 @@ def test_partial_update_step_1_data(client, tenant):
 
     response = client.patch(
         f"/api/v1/consultations/{consultation['id']}/step",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "current_step": 1,
             "symptoms": "Vomiting",
@@ -900,7 +902,7 @@ def test_partial_update_clinical_exam_numeric_fields(client, tenant):
 
     response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "temperature_c": 39.2,
             "current_weight_kg": 12.5,
@@ -928,7 +930,7 @@ def test_update_diagnostic_plan_with_study_request(client, tenant):
 
     update_response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "diagnostic_tags": ["dermatology", "allergy"],
             "diagnostic_plan_notes": "Rule out parasites",
@@ -936,7 +938,7 @@ def test_update_diagnostic_plan_with_study_request(client, tenant):
     )
     study_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/study-requests",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Skin scraping",
             "study_type": "laboratory",
@@ -954,7 +956,7 @@ def test_update_diagnostic_plan_with_study_request(client, tenant):
 
     detail_response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     detail = detail_response.json()["data"]
     assert detail["diagnostic_tags"] == ["dermatology", "allergy"]
@@ -968,7 +970,7 @@ def test_add_and_delete_medication_entry(client, tenant):
 
     create_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "medication_name": "Cephalexin",
             "dose_or_quantity": "250 mg",
@@ -984,19 +986,19 @@ def test_add_and_delete_medication_entry(client, tenant):
 
     detail_response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert detail_response.json()["data"]["medications"][0]["id"] == medication["id"]
 
     delete_response = client.delete(
         f"/api/v1/consultation-medications/{medication['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert delete_response.status_code == 204
 
     missing_response = client.delete(
         f"/api/v1/consultation-medications/{medication['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert missing_response.status_code == 404
     assert missing_response.json()["error"]["code"] == "consultation_medication_not_found"
@@ -1010,7 +1012,7 @@ def test_add_medication_from_inventory_creates_movement_and_decreases_stock(clie
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "inventory_item_id": item["id"],
             "quantity_used": "3",
@@ -1033,14 +1035,14 @@ def test_add_medication_from_inventory_creates_movement_and_decreases_stock(clie
 
     item_response = client.get(
         f"/api/v1/inventory/items/{item['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert item_response.status_code == 200
     assert item_response.json()["data"]["current_stock"] == "7.00"
 
     movements_response = client.get(
         f"/api/v1/inventory/items/{item['id']}/movements",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert movements_response.status_code == 200
     movement = next(
@@ -1068,7 +1070,7 @@ def test_add_inventory_medication_allows_manual_name_override(client, tenant):
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "inventory_item_id": item["id"],
             "medication_name": "Meloxicam dosis clínica",
@@ -1088,7 +1090,7 @@ def test_inventory_medication_rejects_insufficient_stock(client, tenant):
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"inventory_item_id": item["id"], "quantity_used": "5"},
     )
 
@@ -1104,7 +1106,7 @@ def test_inventory_medication_requires_quantity_used(client, tenant):
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"inventory_item_id": item["id"]},
     )
 
@@ -1124,7 +1126,7 @@ def test_inventory_medication_rejects_item_from_another_tenant(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"inventory_item_id": foreign_item["id"], "quantity_used": "1"},
     )
 
@@ -1140,7 +1142,7 @@ def test_deleting_inventory_medication_preserves_movement_and_stock(client, tena
 
     create_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"inventory_item_id": item["id"], "quantity_used": "4"},
     )
     assert create_response.status_code == 201
@@ -1148,13 +1150,13 @@ def test_deleting_inventory_medication_preserves_movement_and_stock(client, tena
 
     delete_response = client.delete(
         f"/api/v1/consultation-medications/{medication['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert delete_response.status_code == 204
 
     movements_response = client.get(
         f"/api/v1/inventory/items/{item['id']}/movements",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert movements_response.status_code == 200
     assert any(
@@ -1164,7 +1166,7 @@ def test_deleting_inventory_medication_preserves_movement_and_stock(client, tena
 
     item_response = client.get(
         f"/api/v1/inventory/items/{item['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert item_response.status_code == 200
     assert item_response.json()["data"]["current_stock"] == "6.00"
@@ -1199,7 +1201,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
 
     manual_medication_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "medication_name": "Cetirizine",
             "dose_or_quantity": "5 mg",
@@ -1208,7 +1210,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     )
     inventory_medication_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "inventory_item_id": item["id"],
             "quantity_used": "4",
@@ -1218,7 +1220,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     )
     study_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/study-requests",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Skin scraping",
             "study_type": "laboratory",
@@ -1227,7 +1229,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     )
     exam_response = client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "consultation_id": consultation["id"],
@@ -1245,12 +1247,12 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     )
     stock_before = client.get(
         f"/api/v1/inventory/items/{item['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     ).json()["data"]["current_stock"]
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/follow-up",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 201
@@ -1294,7 +1296,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
 
     follow_up_exams_response = client.get(
         f"/api/v1/consultations/{follow_up['id']}/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert follow_up_exams_response.status_code == 200
     assert follow_up_exams_response.json()["data"] == []
@@ -1305,7 +1307,7 @@ def test_create_follow_up_consultation_copies_context_without_inventory_side_eff
     assert movements_after == movements_before
     stock_after = client.get(
         f"/api/v1/inventory/items/{item['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     ).json()["data"]["current_stock"]
     assert stock_before == "6.00"
     assert stock_after == stock_before
@@ -1322,7 +1324,7 @@ def test_follow_up_consultation_is_tenant_safe(client, tenant, other_tenant):
 
     response = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/follow-up",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 404
@@ -1336,7 +1338,7 @@ def test_complete_consultation_with_status_completed(client, tenant):
 
     response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "status": "completed",
             "current_step": 6,
@@ -1370,7 +1372,7 @@ def test_current_step_accepts_new_workflow_range(client, tenant):
 
         response = client.patch(
             f"/api/v1/consultations/{consultation['id']}/step",
-            headers={"X-Tenant-Id": str(tenant.id)},
+            headers=veterinarian_headers(tenant),
             json={"current_step": step},
         )
 
@@ -1386,7 +1388,7 @@ def test_current_step_rejects_values_outside_new_workflow_range(client, tenant):
     for step in [0, 7, 8, 99]:
         create_response = client.post(
             "/api/v1/consultations",
-            headers={"X-Tenant-Id": str(tenant.id)},
+            headers=veterinarian_headers(tenant),
             json=_consultation_payload(
                 patient["id"],
                 current_step=step,
@@ -1395,7 +1397,7 @@ def test_current_step_rejects_values_outside_new_workflow_range(client, tenant):
         )
         patch_response = client.patch(
             f"/api/v1/consultations/{consultation['id']}/step",
-            headers={"X-Tenant-Id": str(tenant.id)},
+            headers=veterinarian_headers(tenant),
             json={"current_step": step},
         )
 
@@ -1412,17 +1414,17 @@ def test_delete_consultation_safely_unlinks_exams_and_removes_dependents(
     consultation = _create_consultation(client, tenant, patient["id"])
     medication_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"medication_name": "Meloxicam"},
     )
     study_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/study-requests",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"name": "CBC", "study_type": "laboratory"},
     )
     exam_response = client.post(
         "/api/v1/exams",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={
             "patient_id": patient["id"],
             "consultation_id": consultation["id"],
@@ -1436,19 +1438,19 @@ def test_delete_consultation_safely_unlinks_exams_and_removes_dependents(
 
     delete_response = client.delete(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert delete_response.status_code == 204
     get_response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert get_response.status_code == 404
 
     exam_detail = client.get(
         f"/api/v1/exams/{exam_response.json()['data']['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     assert exam_detail.status_code == 200
     assert exam_detail.json()["data"]["consultation_id"] is None
@@ -1457,11 +1459,11 @@ def test_delete_consultation_safely_unlinks_exams_and_removes_dependents(
     study_request_id = study_response.json()["data"]["id"]
     assert client.delete(
         f"/api/v1/consultation-medications/{medication_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     ).status_code == 404
     assert client.delete(
         f"/api/v1/consultation-study-requests/{study_request_id}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     ).status_code == 404
 
 
@@ -1472,16 +1474,16 @@ def test_prevent_cross_tenant_consultation_access(client, tenant, other_tenant):
 
     get_response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     patch_response = client.patch(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"current_step": 2},
     )
     delete_response = client.delete(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert get_response.status_code == 404
@@ -1503,32 +1505,32 @@ def test_prevent_cross_tenant_medication_and_study_access(
     )
     medication = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"medication_name": "Foreign medication"},
     ).json()["data"]
     study_request = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/study-requests",
-        headers={"X-Tenant-Id": str(other_tenant.id)},
+        headers=veterinarian_headers(other_tenant),
         json={"name": "Foreign study", "study_type": "other"},
     ).json()["data"]
 
     create_med_response = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/medications",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"medication_name": "Blocked medication"},
     )
     delete_med_response = client.delete(
         f"/api/v1/consultation-medications/{medication['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     create_study_response = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/study-requests",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
         json={"name": "Blocked study", "study_type": "other"},
     )
     delete_study_response = client.delete(
         f"/api/v1/consultation-study-requests/{study_request['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert create_med_response.status_code == 404
@@ -1544,7 +1546,7 @@ def test_clinical_history_returns_patient_and_consultations(client, tenant):
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -1588,7 +1590,7 @@ def test_generate_consultation_ai_summary_persists_summary(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -1631,11 +1633,11 @@ def test_generate_consultation_ai_summary_regenerates_existing_summary(
 
     first_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
     second_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert first_response.status_code == 200
@@ -1660,12 +1662,12 @@ def test_consultation_detail_returns_ai_summary_fields(client, tenant, monkeypat
     )
     client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     response = client.get(
         f"/api/v1/consultations/{consultation['id']}",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -1692,12 +1694,12 @@ def test_clinical_history_includes_consultation_ai_summary(
     )
     client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -1730,7 +1732,7 @@ def test_generate_consultation_ai_summary_is_tenant_safe(
 
     response = client.post(
         f"/api/v1/consultations/{foreign_consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 404
@@ -1740,7 +1742,7 @@ def test_generate_consultation_ai_summary_is_tenant_safe(
 def test_generate_consultation_ai_summary_returns_404_when_missing(client, tenant):
     response = client.post(
         f"/api/v1/consultations/{uuid.uuid4()}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 404
@@ -1783,7 +1785,7 @@ def test_generate_consultation_ai_summary_requires_clinical_information(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 422
@@ -1817,7 +1819,7 @@ def test_generate_consultation_ai_summary_propagates_provider_429(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 429
@@ -1846,7 +1848,7 @@ def test_generate_consultation_ai_summary_propagates_provider_502(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 502
@@ -1872,7 +1874,7 @@ def test_generate_consultation_ai_summary_propagates_not_configured(
 
     response = client.post(
         f"/api/v1/consultations/{consultation['id']}/ai-summary",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 503
@@ -1896,7 +1898,7 @@ def test_clinical_history_consultation_item_uses_expected_summary_fallback(
 
     response = client.get(
         f"/api/v1/patients/{patient['id']}/clinical-history",
-        headers={"X-Tenant-Id": str(tenant.id)},
+        headers=veterinarian_headers(tenant),
     )
 
     assert response.status_code == 200
@@ -1907,4 +1909,8 @@ def test_clinical_history_consultation_item_uses_expected_summary_fallback(
         "date": "2026-04-24T10:30:00",
         "title": "Skin irritation",
         "summary": "Stable after treatment",
+        "created_by": {"id": consultation["created_by_user_id"], "full_name": "Test Veterinarian",
+                       "email": f"test-veterinarian-{tenant.id}@example.com"},
+        "attended_by": {"id": consultation["attending_user_id"], "full_name": "Test Veterinarian",
+                        "email": f"test-veterinarian-{tenant.id}@example.com"},
     }
