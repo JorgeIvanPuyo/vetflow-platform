@@ -6,6 +6,7 @@ from app.services.ai_service import (
     AIService,
     AI_PROVIDER_QUOTA_EXCEEDED_MESSAGE,
 )
+from app.tests.role_helpers import veterinarian_headers
 
 
 def _configure_ai(monkeypatch) -> None:
@@ -24,10 +25,6 @@ def _configure_gemini(monkeypatch, *, model: str = "gemini-2.5-flash") -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-api-key")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     get_settings.cache_clear()
-
-
-def _tenant_headers(tenant) -> dict[str, str]:
-    return {"X-Tenant-Id": str(tenant.id)}
 
 
 def _gemini_response(payload: dict, *, status_code: int = 200) -> httpx.Response:
@@ -68,7 +65,7 @@ def test_rewrite_clinical_note_returns_suggestion_when_configured(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "diagnostico_presuntivo",
             "text": "vomito hace dos dias, come poco, abdomen sensible",
@@ -110,7 +107,7 @@ def test_rewrite_clinical_note_returns_503_when_ai_is_not_configured(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "diagnostico_presuntivo",
             "text": "vomito hace dos dias",
@@ -144,7 +141,7 @@ def test_rewrite_clinical_note_logs_provider_metadata_without_sensitive_content(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "diagnostico_presuntivo",
             "text": "vomito hace dos dias, abdomen sensible",
@@ -173,7 +170,7 @@ def test_rewrite_clinical_note_logs_provider_metadata_without_sensitive_content(
 def test_rewrite_clinical_note_fails_validation_when_text_is_empty(client, tenant):
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "diagnostico_presuntivo",
             "text": "",
@@ -187,7 +184,7 @@ def test_rewrite_clinical_note_fails_validation_when_text_is_empty(client, tenan
 def test_rewrite_clinical_note_rejects_excessively_long_text(client, tenant):
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "diagnostico_presuntivo",
             "text": "a" * 4001,
@@ -218,7 +215,7 @@ def test_generate_consultation_summary_returns_summary_when_configured(
 
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "patient_name": "Elias",
@@ -270,7 +267,7 @@ def test_rewrite_clinical_note_returns_suggestion_with_gemini(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias, come poco",
@@ -308,7 +305,7 @@ def test_generate_consultation_summary_returns_summary_with_gemini(
 
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "reason": "Vomito y decaimiento",
@@ -341,7 +338,7 @@ def test_rewrite_clinical_note_returns_503_when_gemini_key_is_missing(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -366,7 +363,7 @@ def test_rewrite_clinical_note_returns_503_when_provider_is_unsupported(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -386,7 +383,7 @@ def test_rewrite_clinical_note_returns_503_when_gemini_model_is_empty(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -417,7 +414,7 @@ def test_rewrite_clinical_note_returns_429_when_gemini_quota_is_exceeded(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -451,7 +448,7 @@ def test_rewrite_clinical_note_returns_502_when_gemini_http_fails(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -476,7 +473,7 @@ def test_rewrite_clinical_note_returns_502_when_gemini_response_has_no_text(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "vomito hace dos dias",
@@ -512,7 +509,7 @@ def test_gemini_http_400_logs_provider_status_and_returns_502(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "dolor en extremidad anterior derecha",
@@ -621,7 +618,7 @@ def test_gemini_payload_with_max_tokens_returns_502(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "dolor en extremidad anterior derecha",
@@ -710,7 +707,7 @@ def test_gemini_rewrite_request_uses_expected_generation_config(
 
     response = client.post(
         "/api/v1/ai/rewrite-clinical-note",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "field": "anamnesis",
             "text": "dolor en extremidad anterior derecha",
@@ -749,7 +746,7 @@ def test_gemini_summary_request_uses_expected_generation_config(
 
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "reason": "Vomito y decaimiento",
@@ -802,7 +799,7 @@ def test_generate_consultation_summary_fails_without_clinical_information(
 ):
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "patient_name": "Elias",
@@ -834,7 +831,7 @@ def test_generate_consultation_summary_returns_503_when_ai_is_not_configured(
 
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "reason": "Vomito y decaimiento",
@@ -850,7 +847,7 @@ def test_generate_consultation_summary_returns_503_when_ai_is_not_configured(
 def test_generate_consultation_summary_rejects_invalid_summary_type(client, tenant):
     response = client.post(
         "/api/v1/ai/generate-consultation-summary",
-        headers=_tenant_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "consultation": {
                 "reason": "Vomito y decaimiento",

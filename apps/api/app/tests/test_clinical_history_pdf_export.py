@@ -10,6 +10,7 @@ from app.models.patient import Patient
 from app.schemas.patient import ClinicalHistoryPdfExportRequest
 from app.services.clinical_history_pdf import ClinicalHistoryPdfService
 from app.services.storage import get_storage_service
+from app.tests.role_helpers import clinic_admin_headers, veterinarian_headers
 
 
 TEST_LOGO_PNG = base64.b64decode(
@@ -39,10 +40,6 @@ class FakeLogoStorageService:
         return self.logo_bytes
 
 
-def _headers(tenant) -> dict:
-    return {"X-Tenant-Id": str(tenant.id)}
-
-
 def _create_owner(
     client,
     tenant,
@@ -54,7 +51,7 @@ def _create_owner(
 ) -> dict:
     response = client.post(
         "/api/v1/owners",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "full_name": full_name,
             "phone": phone,
@@ -69,7 +66,7 @@ def _create_owner(
 def _create_patient(client, tenant, owner_id: str, name: str = "Luna") -> dict:
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "owner_id": owner_id,
             "name": name,
@@ -109,7 +106,7 @@ def _create_consultation(client, tenant, patient_id: str, **overrides) -> dict:
     payload.update(overrides)
     response = client.post(
         "/api/v1/consultations",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -126,7 +123,7 @@ def _create_exam(client, tenant, patient_id: str, **overrides) -> dict:
     payload.update(overrides)
     response = client.post(
         "/api/v1/exams",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -145,7 +142,7 @@ def _create_preventive_care(client, tenant, patient_id: str, **overrides) -> dic
     payload.update(overrides)
     response = client.post(
         f"/api/v1/patients/{patient_id}/preventive-care",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -162,7 +159,7 @@ def _create_file_reference(client, tenant, patient_id: str, **overrides) -> dict
     payload.update(overrides)
     response = client.post(
         f"/api/v1/patients/{patient_id}/file-references",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json=payload,
     )
     assert response.status_code == 201
@@ -248,7 +245,7 @@ def test_export_pdf_success_with_default_options(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -271,7 +268,7 @@ def test_export_pdf_supports_page_sizes(client, tenant, page_size):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"page_size": page_size},
     )
 
@@ -306,7 +303,7 @@ def test_export_pdf_rejects_invalid_page_size(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"page_size": "tabloid"},
     )
 
@@ -320,7 +317,7 @@ def test_preview_pdf_success_uses_inline_disposition(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -352,7 +349,7 @@ def test_preview_pdf_passes_shared_export_options(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={
             "date_from": "2026-01-01",
             "date_to": "2026-12-31",
@@ -452,7 +449,7 @@ def test_pdf_continues_when_clinic_logo_storage_download_fails(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/{endpoint}",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -483,7 +480,7 @@ def test_pdf_loads_and_renders_clinic_logo_bytes(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/{endpoint}",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -632,7 +629,7 @@ def test_export_pdf_supports_full_detail(client, tenant, db_session):
     consultation = _create_consultation(client, tenant, patient["id"])
     medication_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/medications",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "medication_name": "Cefalexina",
             "dose_or_quantity": "250 mg",
@@ -642,7 +639,7 @@ def test_export_pdf_supports_full_detail(client, tenant, db_session):
     assert medication_response.status_code == 201
     study_response = client.post(
         f"/api/v1/consultations/{consultation['id']}/study-requests",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "name": "Citología",
             "study_type": "laboratory",
@@ -1069,7 +1066,7 @@ def test_export_pdf_invalid_date_range_returns_structured_error(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"date_from": "2026-05-01", "date_to": "2026-01-01"},
     )
 
@@ -1086,7 +1083,7 @@ def test_export_pdf_patient_from_another_tenant_cannot_be_exported(
 
     response = client.post(
         f"/api/v1/patients/{foreign_patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -1103,7 +1100,7 @@ def test_preview_pdf_patient_from_another_tenant_cannot_be_exported(
 
     response = client.post(
         f"/api/v1/patients/{foreign_patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -1116,7 +1113,7 @@ def test_preview_pdf_invalid_date_range_returns_same_structured_error(client, te
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"date_from": "2026-05-01", "date_to": "2026-01-01"},
     )
 
@@ -1148,7 +1145,7 @@ def test_preview_pdf_can_include_all_record_types(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"detail_level": "full"},
     )
 
@@ -1174,7 +1171,7 @@ def test_preview_pdf_renders_consultation_exam_data_block(client, tenant):
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/preview-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"detail_level": "full"},
     )
 
@@ -1248,7 +1245,7 @@ def test_template_omits_empty_fields_and_keeps_zero_values(
     owner = _create_owner(client, tenant, email=None, address=None)
     response = client.post(
         "/api/v1/patients",
-        headers=_headers(tenant),
+        headers=veterinarian_headers(tenant),
         json={
             "owner_id": owner["id"],
             "name": "Cero",
@@ -1565,7 +1562,7 @@ def test_export_pdf_handles_long_clinical_text(
 
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={"detail_level": "full"},
     )
 
@@ -1629,7 +1626,7 @@ def test_render_failure_returns_structured_pdf_export_error(
     )
     response = client.post(
         f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
-        headers=_headers(tenant),
+        headers=clinic_admin_headers(tenant),
         json={},
     )
 
@@ -1638,3 +1635,25 @@ def test_render_failure_returns_structured_pdf_export_error(
         "code": "pdf_export_failed",
         "message": "Clinical history PDF export failed",
     }
+
+
+@pytest.mark.parametrize("role", ["clinic_admin", "medico_veterinario", "contador", "secretaria"])
+def test_all_clinic_operators_can_export_clinical_history(client, tenant, db_session, role):
+    from app.models.user import User
+    from app.tests.role_helpers import headers_for_user
+
+    patient = _create_patient_for_tenant(client, tenant)
+    _create_consultation(client, tenant, patient["id"])
+    operator = User(
+        id=uuid.uuid4(), tenant_id=tenant.id, email=f"pdf-{role}@example.com",
+        full_name="PDF Operator", role=role, is_active=True,
+    )
+    db_session.add(operator)
+    db_session.commit()
+    response = client.post(
+        f"/api/v1/patients/{patient['id']}/clinical-history/export-pdf",
+        headers=headers_for_user(operator),
+        json={},
+    )
+    assert response.status_code == 200
+    assert response.content.startswith(b"%PDF")
