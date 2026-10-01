@@ -4,6 +4,7 @@ type RequestOptions = {
   body?: unknown;
   isMultipart?: boolean;
   retryTransient?: boolean;
+  idempotencyKey?: string;
   signal?: AbortSignal;
 };
 
@@ -90,6 +91,9 @@ async function request<T>(
 
   if (!options.isMultipart) {
     headers.set("Content-Type", "application/json");
+  }
+  if (options.idempotencyKey) {
+    headers.set("Idempotency-Key", options.idempotencyKey);
   }
 
   const requestInit: RequestInit = {
@@ -335,7 +339,7 @@ export const api = {
   post<T>(
     path: string,
     body: unknown,
-    options: Pick<RequestOptions, "retryTransient"> = {},
+    options: Pick<RequestOptions, "retryTransient" | "idempotencyKey"> = {},
   ): Promise<T> {
     return request<T>(path, "POST", { body, ...options });
   },

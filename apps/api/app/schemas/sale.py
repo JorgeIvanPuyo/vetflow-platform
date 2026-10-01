@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.core.sale_limits import INVENTORY_MONEY_MAX, SALE_QUANTITY_MAX
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
 from app.schemas.payment import PaymentStatus, SalePaymentRead
 
@@ -19,9 +20,9 @@ class SaleProductItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     line_type: Literal["product"]
     inventory_item_id: uuid.UUID
-    quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
-    unit_price_ars: Decimal | None = Field(default=None, ge=0)
-    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, le=SALE_QUANTITY_MAX, multiple_of=Decimal("1"), max_digits=12, decimal_places=2)
+    unit_price_ars: Decimal | None = Field(default=None, ge=0, le=INVENTORY_MONEY_MAX, max_digits=14, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
 
 
 class SaleServiceItemInput(BaseModel):
@@ -29,9 +30,9 @@ class SaleServiceItemInput(BaseModel):
     line_type: Literal["service"]
     service_id: uuid.UUID | None = None
     description: str = Field(min_length=1, max_length=255)
-    quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
-    unit_price_ars: Decimal = Field(ge=0)
-    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, le=SALE_QUANTITY_MAX, multiple_of=Decimal("1"), max_digits=12, decimal_places=2)
+    unit_price_ars: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
 
     @field_validator("description")
     @classmethod

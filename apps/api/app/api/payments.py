@@ -1,17 +1,19 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.payment import (
+    IdempotencyKey,
     PaymentMethodCreate,
     PaymentMethodRead,
     PaymentMethodType,
     PaymentMethodUpdate,
     SalePaymentCreate,
     SalePaymentRead,
+    SalePaymentSummary,
     SalePaymentVoid,
 )
 from app.services.payment import PaymentMethodService, SalePaymentService
@@ -53,9 +55,24 @@ def update_payment_method(method_id: uuid.UUID, payload: PaymentMethodUpdate, te
 
 
 @router.post("/sales/{sale_id}/payments", status_code=status.HTTP_201_CREATED)
-def create_sale_payment(sale_id: uuid.UUID, payload: SalePaymentCreate, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
-    payment = SalePaymentService(db).create(tenant.tenant_id, sale_id, payload, user_id=tenant.user_id)
-    return {"data": SalePaymentRead.model_validate(payment).model_dump(mode="json"), "meta": {}}
+def create_sale_payment(
+    sale_id: uuid.UUID,
+    payload: SalePaymentCreate,
+    response: Response,
+    idempotency_key: IdempotencyKey | None = Header(default=None, alias="Idempotency-Key"),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    service = SalePaymentService(db)
+    payment = service.create(tenant.tenant_id, sale_id, payload, user_id=tenant.user_id, idempotency_key=idempotency_key)
+    meta = {}
+    if idempotency_key is not None:
+        response.headers["Idempotency-Replayed"] = str(service.idempotency_replayed).lower()
+        if service.idempotency_replayed:
+            response.status_code = status.HTTP_200_OK
+        _, summary = service.list(tenant.tenant_id, sale_id)
+        meta = SalePaymentSummary.model_validate(summary).model_dump(mode="json")
+    return {"data": SalePaymentRead.model_validate(payment).model_dump(mode="json"), "meta": meta}
 
 
 @router.get("/sales/{sale_id}/payments")

@@ -1,23 +1,46 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from math import ceil
 
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.payment import PaymentMethod, SalePayment
+from app.models.sale import calculate_payment_status
 from app.repositories.payment import PaymentMethodRepository, SalePaymentRepository
 from app.repositories.sale import SaleRepository
 from app.repositories.user import UserRepository
-from app.schemas.payment import PaymentMethodCreate, PaymentMethodUpdate, SalePaymentCreate
+from app.schemas.payment import IdempotencyKey, PaymentMethodCreate, PaymentMethodUpdate, SalePaymentCreate
 
 
 def normalized_label(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def payment_request_hash(sale_id: uuid.UUID, payload: SalePaymentCreate) -> str:
+    received_at = payload.received_at
+    if received_at.tzinfo is not None:
+        received_at = received_at.astimezone(UTC)
+    # received_at is required, so no server-generated default enters this hash.
+    # Optional omitted/null text has the same meaning after schema normalization.
+    canonical = {
+        "version": 1,
+        "sale_id": str(sale_id),
+        "payment_method_id": str(payload.payment_method_id),
+        "amount_ars": format(payload.amount_ars, ".2f"),
+        "received_at": received_at.isoformat(timespec="microseconds"),
+        "reference": payload.reference,
+        "notes": payload.notes,
+    }
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class PaymentMethodService:
@@ -98,13 +121,30 @@ class SalePaymentService:
         self.method_repository = PaymentMethodRepository(db)
         self.sale_repository = SaleRepository(db)
         self.user_repository = UserRepository(db)
+        self.idempotency_replayed = False
 
-    def create(self, tenant_id: uuid.UUID, sale_id: uuid.UUID, payload: SalePaymentCreate, *, user_id: uuid.UUID | None) -> SalePayment:
+    def create(self, tenant_id: uuid.UUID, sale_id: uuid.UUID, payload: SalePaymentCreate, *, user_id: uuid.UUID | None, idempotency_key: str | None = None) -> SalePayment:
+        self.idempotency_replayed = False
         self._validate_user(tenant_id, user_id)
+        if idempotency_key is not None:
+            try:
+                idempotency_key = TypeAdapter(IdempotencyKey).validate_python(idempotency_key)
+            except ValidationError as exc:
+                raise AppError(422, "validation_error", "Clave de idempotencia inválida") from exc
+        request_hash = payment_request_hash(sale_id, payload) if idempotency_key is not None else None
         try:
+            if idempotency_key is not None:
+                existing = self.repository.get_by_idempotency_key(tenant_id, idempotency_key)
+                if existing is not None:
+                    return self._replay(existing, request_hash)
             sale = self.sale_repository.get_by_id(tenant_id, sale_id, for_update=True)
             if sale is None:
                 raise AppError(404, "sale_not_found", "Venta no encontrada")
+            # A request for this sale may have committed while we waited for its lock.
+            if idempotency_key is not None:
+                existing = self.repository.get_by_idempotency_key(tenant_id, idempotency_key)
+                if existing is not None:
+                    return self._replay(existing, request_hash)
             if sale.status != "confirmed":
                 raise AppError(409, "sale_payment_not_allowed", "Sólo se pueden registrar cobros en ventas confirmadas")
             method = self.method_repository.get_by_id(tenant_id, payload.payment_method_id)
@@ -121,13 +161,29 @@ class SalePaymentService:
                 payment_method_label_snapshot=method.label, payment_method_type_snapshot=method.type,
                 amount_ars=payload.amount_ars, received_at=payload.received_at,
                 reference=payload.reference, notes=payload.notes, created_by_user_id=user_id, is_active=True,
+                idempotency_key=idempotency_key, idempotency_request_hash=request_hash,
             )
             self.repository.create(payment)
             self.db.commit()
+        except IntegrityError:
+            # The same tenant/key can race on different sale locks. The unique
+            # index chooses the winner; release our lock before looking it up.
+            self.db.rollback()
+            if idempotency_key is not None:
+                existing = self.repository.get_by_idempotency_key(tenant_id, idempotency_key)
+                if existing is not None:
+                    return self._replay(existing, request_hash)
+            raise
         except Exception:
             self.db.rollback()
             raise
         return self.get(tenant_id, payment.id)
+
+    def _replay(self, payment: SalePayment, request_hash: str) -> SalePayment:
+        if payment.idempotency_request_hash != request_hash:
+            raise AppError(409, "sale_payment_idempotency_conflict", "La solicitud de cobro ya se utilizó con datos diferentes")
+        self.idempotency_replayed = True
+        return payment
 
     def get(self, tenant_id: uuid.UUID, payment_id: uuid.UUID) -> SalePayment:
         payment = self.repository.get_by_id(tenant_id, payment_id)
@@ -173,7 +229,7 @@ class SalePaymentService:
     @staticmethod
     def _summary(status: str, total: Decimal, paid: Decimal) -> dict:
         attention = status == "reversed" and paid > 0
-        payment_status = "requires_attention" if attention else ("unpaid" if paid == 0 else "paid" if paid == total else "partial") if status == "confirmed" else None
+        payment_status = calculate_payment_status(status, total, paid)
         return {"paid_total_ars": paid, "balance_due_ars": total - paid, "payment_status": payment_status, "payment_requires_attention": attention}
 
     def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:

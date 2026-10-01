@@ -8,9 +8,10 @@ from math import ceil
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.sale_limits import INVENTORY_MONEY_MAX, MONEY_QUANTUM, SALE_PRICE_MAX, SALE_TOTAL_MAX
 from app.models.owner import Owner
 from app.models.patient import Patient
-from app.models.sale import Sale, SaleItem
+from app.models.sale import Sale, SaleItem, calculate_payment_status
 from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.owner import OwnerRepository
@@ -23,7 +24,6 @@ from app.services.inventory import InventoryService
 from app.services.regional_settings import ensure_operational_money_settings
 
 
-MONEY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
 
 
@@ -308,12 +308,7 @@ class SaleService:
                 "created_by_user_email": sale.created_by_user_email, "created_at": sale.created_at, "updated_at": sale.updated_at,
                 "paid_total_ars": paid_total,
                 "balance_due_ars": sale.total_ars - paid_total,
-                "payment_status": (
-                    "requires_attention" if sale.status == "reversed" and paid_total > 0
-                    else "unpaid" if sale.status == "confirmed" and paid_total == 0
-                    else "paid" if sale.status == "confirmed" and paid_total == sale.total_ars
-                    else "partial" if sale.status == "confirmed" else None
-                ),
+                "payment_status": calculate_payment_status(sale.status, sale.total_ars, paid_total),
                 "payment_requires_attention": sale.status == "reversed" and paid_total > 0,
             }
             for sale, item_count, paid_total in rows
@@ -371,9 +366,16 @@ class SaleService:
                     validated_services.add(service_id)
                 price = item_input.unit_price_ars
                 description, code, unit, inventory_id = item_input.description, None, "service", None
+            price_limit = INVENTORY_MONEY_MAX if item_input.line_type == "product" else SALE_PRICE_MAX
+            self._validate_amount(price, price_limit, "precio unitario")
             line_subtotal = (item_input.quantity * price).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_discount = (line_subtotal * item_input.discount_percentage / HUNDRED).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_total = (line_subtotal - line_discount).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+            self._validate_amount(line_subtotal, SALE_TOTAL_MAX, "subtotal de línea")
+            self._validate_amount(line_discount, SALE_TOTAL_MAX, "descuento de línea")
+            self._validate_amount(line_total, SALE_TOTAL_MAX, "total de línea")
+            if item_input.line_type == "product":
+                self._validate_amount(line_total, INVENTORY_MONEY_MAX, "total de producto para inventario")
             items.append(SaleItem(
                 tenant_id=tenant_id, line_type=item_input.line_type, inventory_item_id=inventory_id, service_id=service_id,
                 description_snapshot=description, internal_code_snapshot=code, unit_snapshot=unit,
@@ -383,11 +385,28 @@ class SaleService:
             subtotal += line_subtotal
             discount_total += line_discount
             total += line_total
+        self._validate_amount(subtotal, SALE_TOTAL_MAX, "subtotal de venta")
+        self._validate_amount(discount_total, SALE_TOTAL_MAX, "descuentos de venta")
+        self._validate_amount(total, SALE_TOTAL_MAX, "total de venta")
         return items, {
             "subtotal_ars": subtotal.quantize(MONEY_QUANTUM),
             "discount_total_ars": discount_total.quantize(MONEY_QUANTUM),
             "total_ars": total.quantize(MONEY_QUANTUM),
         }
+
+    @staticmethod
+    def _validate_amount(value: Decimal, maximum: Decimal, label: str) -> None:
+        if (
+            not value.is_finite()
+            or value < 0
+            or value > maximum
+            or value != value.quantize(MONEY_QUANTUM)
+        ):
+            raise AppError(
+                422,
+                "sale_amount_out_of_range",
+                f"El {label} debe estar entre 0 y {maximum:.2f}, con hasta dos decimales",
+            )
 
     def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
         if user_id is not None and self.user_repository.get_by_id(tenant_id, user_id) is None:
@@ -438,6 +457,10 @@ class SaleService:
                     "sale_items_inconsistent",
                     "Las líneas de la venta repiten un producto",
                 )
+            # Legacy drafts may predate input limits. Reject incompatible new
+            # inventory writes without recalculating or changing their snapshots.
+            SaleService._validate_amount(line.unit_price_ars, INVENTORY_MONEY_MAX, "precio unitario para inventario")
+            SaleService._validate_amount(line.line_total_ars, INVENTORY_MONEY_MAX, "total de producto para inventario")
             seen_item_ids.add(line.inventory_item_id)
             product_lines.append(line)
         return product_lines

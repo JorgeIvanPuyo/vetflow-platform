@@ -65,6 +65,17 @@ class SalePaymentRepository:
 
     save = create
 
+    def get_by_idempotency_key(self, tenant_id: uuid.UUID, key: str) -> SalePayment | None:
+        return self.db.scalar(
+            select(SalePayment)
+            .where(SalePayment.tenant_id == tenant_id, SalePayment.idempotency_key == key)
+            .options(
+                selectinload(SalePayment.created_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(SalePayment.voided_by_user.and_(User.tenant_id == tenant_id)),
+            )
+            .execution_options(populate_existing=True)
+        )
+
     def get_by_id(self, tenant_id: uuid.UUID, payment_id: uuid.UUID, *, for_update: bool = False) -> SalePayment | None:
         statement = (
             select(SalePayment)

@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import asc, desc, exists, func, or_, select
+from sqlalchemy import and_, asc, desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
@@ -144,14 +144,19 @@ class SaleRepository:
             SalePayment.sale_id == Sale.id,
             SalePayment.is_active.is_(True),
         ).correlate(Sale).scalar_subquery()
+        # SQL equivalent of calculate_payment_status: zero totals are paid;
+        # confirmed overpayments and reversed sales with active payments need attention.
         if payment_status == "unpaid":
-            filters.extend((Sale.status == "confirmed", paid_total == 0))
+            filters.extend((Sale.status == "confirmed", paid_total == 0, Sale.total_ars > 0))
         elif payment_status == "partial":
             filters.extend((Sale.status == "confirmed", paid_total > 0, paid_total < Sale.total_ars))
         elif payment_status == "paid":
             filters.extend((Sale.status == "confirmed", paid_total == Sale.total_ars))
         elif payment_status == "requires_attention":
-            filters.extend((Sale.status == "reversed", paid_total > 0))
+            filters.append(or_(
+                and_(Sale.status == "confirmed", paid_total > Sale.total_ars),
+                and_(Sale.status == "reversed", paid_total > 0),
+            ))
 
         item_count = select(func.count(SaleItem.id)).where(SaleItem.tenant_id == tenant_id, SaleItem.sale_id == Sale.id).correlate(Sale).scalar_subquery()
         sort_columns = {"sale_date": Sale.sale_date, "created_at": Sale.created_at, "total_ars": Sale.total_ars, "status": Sale.status}

@@ -10,6 +10,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel
 
 
+def calculate_payment_status(status: str, total: Decimal, paid: Decimal) -> str | None:
+    """Classify active payments, preserving non-confirmed sale semantics."""
+    if status == "reversed" and paid > 0:
+        return "requires_attention"
+    if status != "confirmed":
+        return None
+    if paid > total:
+        return "requires_attention"
+    if total - paid == 0:
+        return "paid"
+    if paid == 0:
+        return "unpaid"
+    return "partial"
+
+
 class Sale(BaseModel):
     __tablename__ = "sales"
     __table_args__ = (
@@ -96,13 +111,7 @@ class Sale(BaseModel):
 
     @property
     def payment_status(self) -> str | None:
-        if self.payment_requires_attention:
-            return "requires_attention"
-        if self.status != "confirmed":
-            return None
-        if self.paid_total_ars == 0:
-            return "unpaid"
-        return "paid" if self.paid_total_ars == self.total_ars else "partial"
+        return calculate_payment_status(self.status, self.total_ars, self.paid_total_ars)
 
     @staticmethod
     def _user_value(user, tenant_id: uuid.UUID, field: str):

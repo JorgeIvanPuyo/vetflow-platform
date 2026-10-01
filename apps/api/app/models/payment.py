@@ -57,6 +57,18 @@ class SalePayment(BaseModel):
     __table_args__ = (
         CheckConstraint("amount_ars > 0", name="ck_sale_payments_amount_positive"),
         CheckConstraint(
+            "(idempotency_key IS NULL AND idempotency_request_hash IS NULL) OR "
+            "(idempotency_key IS NOT NULL AND length(idempotency_key) > 0 AND "
+            "idempotency_request_hash IS NOT NULL AND length(idempotency_request_hash) = 64)",
+            name="ck_sale_payments_idempotency_pair",
+        ),
+        Index(
+            "uq_sale_payments_tenant_idempotency_key", "tenant_id", "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+        ),
+        CheckConstraint(
             "payment_method_type_snapshot IN ('cash', 'bank_transfer', 'debit_card', 'credit_card', 'digital_wallet', 'other')",
             name="ck_sale_payments_method_type",
         ),
@@ -85,6 +97,8 @@ class SalePayment(BaseModel):
     payment_method_type_snapshot: Mapped[str] = mapped_column(String(30), nullable=False)
     amount_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
