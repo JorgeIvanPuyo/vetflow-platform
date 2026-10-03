@@ -12,6 +12,7 @@ from app.models.payment import SalePayment
 from app.models.sale import Sale, SaleItem
 from app.models.sale_fiscal import SaleFiscalDocument, SaleFiscalDocumentFileVersion
 from app.models.user import User
+from app.repositories.payment import active_payment_total_statement
 
 
 class SaleRepository:
@@ -139,10 +140,8 @@ class SaleRepository:
         elif fiscal_status == "requires_attention":
             filters.extend((Sale.status == "reversed", active_document))
 
-        paid_total = select(func.coalesce(func.sum(SalePayment.amount_ars), 0)).where(
-            SalePayment.tenant_id == tenant_id,
+        paid_total = active_payment_total_statement(tenant_id).where(
             SalePayment.sale_id == Sale.id,
-            SalePayment.is_active.is_(True),
         ).correlate(Sale).scalar_subquery()
         # SQL equivalent of calculate_payment_status: zero totals are paid;
         # confirmed overpayments and reversed sales with active payments need attention.

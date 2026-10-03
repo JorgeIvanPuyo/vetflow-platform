@@ -1,7 +1,8 @@
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.catalog_item import CatalogItemRead
 from app.schemas.service import ServiceRead
@@ -60,6 +61,7 @@ class TenantPreferenceRead(BaseModel):
 
     id: uuid.UUID
     tenant_id: uuid.UUID
+    receivables_tracking_started_at: datetime | None
     currency_code: str
     locale: str
     default_appointment_duration_minutes: int
@@ -72,6 +74,13 @@ class TenantPreferenceRead(BaseModel):
 
 
 class TenantPreferenceUpdate(BaseModel):
+    receivables_tracking_started_at: AwareDatetime | None = None
+
+    @field_validator("receivables_tracking_started_at")
+    @classmethod
+    def normalize_receivables_cutoff(cls, value: datetime | None) -> datetime | None:
+        return value.astimezone(UTC) if value is not None else None
+
     currency_code: str | None = None
     locale: str | None = None
     default_appointment_duration_minutes: int | None = Field(default=None, gt=0, le=480)

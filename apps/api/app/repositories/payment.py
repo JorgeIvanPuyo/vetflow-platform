@@ -6,8 +6,19 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.payment import PaymentMethod, SalePayment
+from app.models.payment import PaymentMethod, SalePayment, SalePaymentBatch
 from app.models.user import User
+
+
+def active_payment_total_statement(tenant_id: uuid.UUID):
+    """Canonical tenant-scoped SQL sum, excluding all voided payments.
+
+    Callers can constrain one sale, correlate a sale, or group by sale_id.
+    """
+    return select(func.coalesce(func.sum(SalePayment.amount_ars), Decimal("0.00")).label("paid_total_ars")).where(
+        SalePayment.tenant_id == tenant_id,
+        SalePayment.is_active.is_(True),
+    )
 
 
 class PaymentMethodRepository:
@@ -101,4 +112,25 @@ class SalePaymentRepository:
         ).all())
 
     def active_total(self, tenant_id: uuid.UUID, sale_id: uuid.UUID) -> Decimal:
-        return self.db.scalar(select(func.coalesce(func.sum(SalePayment.amount_ars), 0)).where(SalePayment.tenant_id == tenant_id, SalePayment.sale_id == sale_id, SalePayment.is_active.is_(True))) or Decimal("0")
+        return self.db.scalar(active_payment_total_statement(tenant_id).where(SalePayment.sale_id == sale_id)) or Decimal("0")
+
+
+class SalePaymentBatchRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def get_by_idempotency_key(self, tenant_id: uuid.UUID, key: str) -> SalePaymentBatch | None:
+        return self.db.scalar(select(SalePaymentBatch).where(
+            SalePaymentBatch.tenant_id == tenant_id,
+            SalePaymentBatch.idempotency_key == key,
+        ).execution_options(populate_existing=True))
+
+    def create(self, batch: SalePaymentBatch) -> SalePaymentBatch:
+        self.db.add(batch)
+        self.db.flush()
+        return batch
+
+    def list_payments(self, tenant_id: uuid.UUID, batch_id: uuid.UUID) -> list[SalePayment]:
+        return list(self.db.scalars(select(SalePayment).where(
+            SalePayment.tenant_id == tenant_id, SalePayment.batch_id == batch_id,
+        ).order_by(SalePayment.created_at, SalePayment.id)))

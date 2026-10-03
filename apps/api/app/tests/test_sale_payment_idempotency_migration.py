@@ -13,9 +13,9 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_payment_idempotency_is_single_head_after_secretary():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0052_sale_payment_idempotency"]
-    assert script.get_current_head() == "0052_sale_payment_idempotency"
-    assert script.get_revision(script.get_current_head()).down_revision == "0051_secretary_role"
+    assert script.get_heads() == ["0054_receivables_foundation"]
+    assert script.get_revision("0052_sale_payment_idempotency").down_revision == "0051_secretary_role"
+    assert script.get_revision("0053_sale_payment_batches").down_revision == "0052_sale_payment_idempotency"
 
 
 def test_payment_idempotency_upgrade_preserves_history_unique_scope_and_downgrade(monkeypatch):
@@ -51,7 +51,7 @@ def test_payment_idempotency_upgrade_preserves_history_unique_scope_and_downgrad
                 VALUES (:id, :tenant, :sale, :method, 'Historic cash', 'cash', 20, '2026-10-01T12:00:00Z', 'Legacy')
             """), {"id": historical_id, "tenant": tenant_ids[0], "sale": sale_ids[0], "method": method_ids[0]})
             before = connection.execute(sa.text("SELECT * FROM sale_payments WHERE id=:id"), {"id": historical_id}).mappings().one()
-        command.upgrade(config, "head")
+        command.upgrade(config, "0052_sale_payment_idempotency")
         columns = {column["name"]: column for column in sa.inspect(engine).get_columns("sale_payments")}
         for name, length in (("idempotency_key", 128), ("idempotency_request_hash", 64)):
             assert columns[name]["nullable"] is True

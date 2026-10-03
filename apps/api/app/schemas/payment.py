@@ -67,6 +67,12 @@ class SalePaymentCreate(BaseModel):
         return _trim(value)
 
 
+class SaleInitialPaymentCreate(SalePaymentCreate):
+    """Checkout reuses payment validation, with an optional effective date."""
+
+    received_at: datetime | None = None
+
+
 class SalePaymentVoid(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=1, max_length=1000)

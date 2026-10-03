@@ -149,7 +149,8 @@ def test_fiscal_configuration_and_operator_are_separate(client, actors, role):
     for invalid in NON_CLINICAL:
         assert client.patch(f"/api/v1/fiscal-issuers/{issuer['id']}", headers=auth,
                             json={"user_id": str(actors[invalid].id)}).status_code == 422
-    sale = data(client.post("/api/v1/sales", headers=auth, json=sale_payload()), 201)
+    owner = data(client.post("/api/v1/owners", headers=auth, json={"full_name": "Cliente venta", "phone": "555"}), 201)
+    sale = data(client.post("/api/v1/sales", headers=auth, json={**sale_payload(), "owner_id": owner["id"]}), 201)
     url = f"/api/v1/sales/{sale['id']}"
     confirmed = data(client.post(url + "/confirm", headers=auth, json={"confirm": True}))
     assert confirmed["confirmed_by_user_id"] == str(actors[role].id)

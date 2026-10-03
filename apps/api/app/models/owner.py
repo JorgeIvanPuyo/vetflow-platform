@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text, Uuid
+from sqlalchemy import Boolean, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -22,6 +22,7 @@ class Owner(BaseModel):
     phone: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     tenant: Mapped[Tenant] = relationship("Tenant", back_populates="owners")
     patients: Mapped[list[Patient]] = relationship("Patient", back_populates="owner")

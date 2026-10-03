@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from app.core.sale_limits import INVENTORY_MONEY_MAX, SALE_QUANTITY_MAX
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
-from app.schemas.payment import PaymentStatus, SalePaymentRead
+from app.schemas.payment import PaymentStatus, SaleInitialPaymentCreate, SalePaymentRead
 
 
 SaleStatus = Literal["draft", "confirmed", "cancelled", "reversed"]
@@ -97,6 +97,16 @@ class SaleCancel(BaseModel):
 class SaleConfirm(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: Literal[True]
+    initial_payment: SaleInitialPaymentCreate | None = None
+    initial_payments: list[SaleInitialPaymentCreate] | None = Field(default=None, min_length=2, max_length=20)
+
+    @model_validator(mode="after")
+    def exclusive_initial_payments(self):
+        if {"initial_payment", "initial_payments"} <= self.model_fields_set:
+            raise ValueError("Enviar sólo initial_payment o initial_payments, no ambos")
+        if "initial_payments" in self.model_fields_set and self.initial_payments is None:
+            raise ValueError("initial_payments no puede ser null")
+        return self
 
 
 class SaleReverse(BaseModel):

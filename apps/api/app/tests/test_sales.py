@@ -183,7 +183,7 @@ def test_confirm_mixed_sale_is_atomic_traceable_allows_inactive_and_closes_draft
     user = _user(db_session, tenant)
     product = _product(client, tenant, price="123.45")
     _add_stock(client, tenant, product["id"], 5)
-    sale = _create(client, tenant, product["id"])
+    sale = _create(client, tenant, product["id"], owner_id=_owner(client, tenant)["id"])
     product_model = db_session.get(InventoryItem, uuid.UUID(product["id"]))
     product_model.is_active = False
     product_model.purchase_price_ars = Decimal("30.00")
@@ -365,7 +365,7 @@ def test_service_only_sale_confirms_and_reverses_without_inventory_operations(
 ):
     _setup_auth(monkeypatch)
     user = _user(db_session, tenant)
-    sale = _create(client, tenant)
+    sale = _create(client, tenant, owner_id=_owner(client, tenant)["id"])
 
     confirmed = client.post(
         f"/api/v1/sales/{sale['id']}/confirm",
@@ -397,7 +397,7 @@ def test_reverse_sale_restores_stock_links_movements_and_rejects_invalid_reversa
     user = _user(db_session, tenant)
     product = _product(client, tenant)
     _add_stock(client, tenant, product["id"], 2)
-    sale = _create(client, tenant, product["id"])
+    sale = _create(client, tenant, product["id"], owner_id=_owner(client, tenant)["id"])
     confirmed = client.post(
         f"/api/v1/sales/{sale['id']}/confirm",
         headers=_auth_headers(user.email), json={"confirm": True}
@@ -477,7 +477,7 @@ def _catalog_line(service, *, price="25.00"):
 
 def test_catalog_service_snapshots_survive_changes_deactivation_and_draft_edit(client, db_session, tenant):
     service = _catalog_service(db_session, tenant)
-    sale = _create(client, tenant, items=[_catalog_line(service)])
+    sale = _create(client, tenant, owner_id=_owner(client, tenant)["id"], items=[_catalog_line(service)])
     assert sale["items"][0]["service_id"] == str(service.id)
     service.name = "Nombre posterior"; service.price = Decimal("90.00"); service.is_active = False
     db_session.commit()
@@ -531,7 +531,7 @@ def test_catalog_service_mixed_sale_preserves_product_stock_and_totals(client, d
     product = _product(client, tenant)
     _add_stock(client, tenant, product["id"], 3)
     product_line = {"line_type": "product", "inventory_item_id": product["id"], "quantity": "2", "unit_price_ars": "100.00", "discount_percentage": "10"}
-    sale = _create(client, tenant, items=[product_line, _catalog_line(service)])
+    sale = _create(client, tenant, owner_id=_owner(client, tenant)["id"], items=[product_line, _catalog_line(service)])
     assert sale["total_ars"] == "205.00"
     confirmed = client.post(f"/api/v1/sales/{sale['id']}/confirm", headers=_headers(tenant), json={"confirm": True})
     assert confirmed.status_code == 200

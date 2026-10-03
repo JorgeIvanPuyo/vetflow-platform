@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from app.core.errors import AppError
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
+from app.models.owner import Owner
 from app.models.sale import Sale, SaleItem
 from app.models.tenant import Tenant
 from app.services.sale import SaleService
@@ -104,13 +105,16 @@ def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation(
         sale_tax_rate_percentage=Decimal("0"),
         is_active=True,
     )
-    setup.add_all([tenant, first_item, duplicate_item])
+    owner = Owner(tenant_id=tenant.id, full_name="Concurrency customer", phone="555")
+    setup.add_all([tenant, first_item, duplicate_item, owner])
     setup.flush()
     competing_sales = [
         _sale(tenant.id, first_item, Decimal("4")),
         _sale(tenant.id, first_item, Decimal("4")),
     ]
     single_sale = _sale(tenant.id, duplicate_item, Decimal("2"))
+    for sale in [*competing_sales, single_sale]:
+        sale.owner_id = owner.id
     setup.add_all([*competing_sales, single_sale])
     setup.commit()
     tenant_id = tenant.id
@@ -169,6 +173,7 @@ def test_postgresql_locks_prevent_overselling_and_duplicate_confirmation(
         cleanup.execute(
             delete(InventoryItem).where(InventoryItem.tenant_id == tenant_id)
         )
+        cleanup.execute(delete(Owner).where(Owner.tenant_id == tenant_id))
         cleanup.execute(delete(Tenant).where(Tenant.id == tenant_id))
         cleanup.commit()
         cleanup.close()

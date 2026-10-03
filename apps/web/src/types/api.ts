@@ -26,6 +26,7 @@ export type HealthResponse = {
 export type Owner = {
   id: string;
   tenant_id: string;
+  is_active: boolean;
   full_name: string;
   document_id: string | null;
   phone: string;
@@ -33,6 +34,33 @@ export type Owner = {
   address: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OwnerReceivableSale = {
+  sale_id: string;
+  sale_date: string;
+  confirmed_at: string;
+  patient_id: string | null;
+  patient_name_snapshot: string | null;
+  currency: "USD" | "ARS";
+  total_ars: string;
+  paid_total_ars: string;
+  balance_due_ars: string;
+  payment_status: SalePaymentStatus;
+};
+
+export type OwnerReceivablesResponse = {
+  data: {
+    owner_id: string;
+    tracking_configured: boolean;
+    tracking_started_at: string | null;
+    currency: "USD" | "ARS" | null;
+    locale: string | null;
+    total_outstanding_ars: string;
+    open_sales_count: number;
+    sales: OwnerReceivableSale[];
+  };
+  meta: { page: number; page_size: number; total: number; total_pages: number };
 };
 
 export type UserTrace = {

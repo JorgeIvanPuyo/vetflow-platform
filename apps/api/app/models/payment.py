@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, Uuid, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, String, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -52,9 +52,37 @@ class PaymentMethod(BaseModel):
     payments: Mapped[list[SalePayment]] = relationship("SalePayment", back_populates="payment_method")
 
 
+class SalePaymentBatch(BaseModel):
+    """Persistent identity for one atomic split-payment confirmation."""
+
+    __tablename__ = "sale_payment_batches"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_sale_payment_batches_tenant_key"),
+        UniqueConstraint("tenant_id", "sale_id", "id", name="uq_sale_payment_batches_membership"),
+        ForeignKeyConstraint(
+            ["tenant_id", "sale_id"], ["sales.tenant_id", "sales.id"],
+            name="fk_sale_payment_batches_tenant_sale", ondelete="RESTRICT",
+        ),
+        CheckConstraint("length(idempotency_key) BETWEEN 1 AND 128", name="ck_sale_payment_batches_key"),
+        CheckConstraint("length(request_hash) = 64", name="ck_sale_payment_batches_hash"),
+        Index("ix_sale_payment_batches_tenant_sale", "tenant_id", "sale_id"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    sale_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class SalePayment(BaseModel):
     __tablename__ = "sale_payments"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "sale_id", "batch_id"],
+            ["sale_payment_batches.tenant_id", "sale_payment_batches.sale_id", "sale_payment_batches.id"],
+            name="fk_sale_payments_batch_membership", ondelete="RESTRICT",
+        ),
+        Index("ix_sale_payments_tenant_batch", "tenant_id", "batch_id"),
         CheckConstraint("amount_ars > 0", name="ck_sale_payments_amount_positive"),
         CheckConstraint(
             "(idempotency_key IS NULL AND idempotency_request_hash IS NULL) OR "
@@ -99,6 +127,7 @@ class SalePayment(BaseModel):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     idempotency_request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

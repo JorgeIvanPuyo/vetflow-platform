@@ -74,7 +74,7 @@ class ClinicService:
         preferences = self.get_preferences(tenant_id)
         updates = payload.model_dump(exclude_unset=True)
         for field, value in updates.items():
-            if value is None:
+            if value is None and field != "receivables_tracking_started_at":
                 raise AppError(422, "validation_error", f"{field} cannot be null")
 
         resolved = {

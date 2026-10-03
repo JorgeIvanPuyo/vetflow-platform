@@ -12,6 +12,7 @@ from app.core.sale_limits import INVENTORY_MONEY_MAX, SALE_PRICE_MAX, SALE_QUANT
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 from app.models.payment import PaymentMethod, SalePayment
+from app.models.owner import Owner
 from app.models.sale import Sale, SaleItem
 from app.models.tenant import Tenant
 from app.models.tenant_preference import TenantPreference
@@ -19,6 +20,7 @@ from app.schemas.payment import SalePaymentCreate
 from app.schemas.sale import SaleCreate, SaleProductItemInput, SaleServiceItemInput
 from app.services.payment import SalePaymentService
 from app.services.sale import SaleService
+from app.tests.test_sales import _owner
 
 
 def _line(kind="service", **overrides):
@@ -143,7 +145,7 @@ def test_exact_sale_total_limit_is_calculated_without_float_conversion(db_sessio
 def test_product_at_inventory_money_limit_confirms_safely(client, db_session, tenant, default_price):
     item = _inventory(db_session, tenant, price=INVENTORY_MONEY_MAX)
     line = _line("product", inventory_item_id=str(item.id), unit_price_ars=None if default_price else str(INVENTORY_MONEY_MAX))
-    response = client.post("/api/v1/sales", headers=_headers(tenant), json=_payload([line]))
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json={**_payload([line]), "owner_id": _owner(client, tenant)["id"]})
     assert response.status_code == 201, response.text
     sale_id = response.json()["data"]["id"]
     confirmed = client.post(f"/api/v1/sales/{sale_id}/confirm", headers=_headers(tenant), json={"confirm": True})
@@ -168,9 +170,9 @@ def test_product_inventory_overflow_is_rejected_at_draft_creation(client, db_ses
 
 def test_product_discounted_gross_can_exceed_inventory_limit_when_net_fits(client, db_session, tenant):
     item = _inventory(db_session, tenant)
-    response = client.post("/api/v1/sales", headers=_headers(tenant), json=_payload([
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json={"owner_id": _owner(client, tenant)["id"], **_payload([
         _line("product", inventory_item_id=str(item.id), unit_price_ars=str(INVENTORY_MONEY_MAX), quantity="2", discount_percentage="50"),
-    ]))
+    ])})
     assert response.status_code == 201, response.text
     data = response.json()["data"]
     assert Decimal(data["subtotal_ars"]) == INVENTORY_MONEY_MAX * 2
@@ -229,6 +231,9 @@ def test_postgresql_sale_numeric_limits_and_confirmation(postgres_test_session_f
     db.add(tenant)
     db.commit()
     try:
+        owner = Owner(tenant_id=tenant.id, full_name="Numeric customer", phone="555")
+        db.add(owner)
+        db.commit()
         # Real Numeric columns must preserve the maximum service price and totals.
         service = SaleService(db)
         sale = service.create(tenant.id, SaleCreate.model_validate(_payload([
@@ -236,6 +241,8 @@ def test_postgresql_sale_numeric_limits_and_confirmation(postgres_test_session_f
         ])), created_by_user_id=None)
         assert sale.items[0].unit_price_ars == SALE_PRICE_MAX
         assert sale.subtotal_ars == sale.total_ars == SALE_TOTAL_MAX
+        sale.owner_id = owner.id
+        db.flush()
         service.confirm(tenant.id, sale.id, confirmed_by_user_id=None)
         method = PaymentMethod(tenant_id=tenant.id, label="Cash P.2", normalized_label="cash p.2", type="cash", is_active=True, sort_order=0)
         db.add(method)
@@ -253,6 +260,8 @@ def test_postgresql_sale_numeric_limits_and_confirmation(postgres_test_session_f
             product_sale = service.create(tenant.id, SaleCreate.model_validate(_payload([
                 _line("product", inventory_item_id=str(item.id), quantity=str(quantity), unit_price_ars=None),
             ])), created_by_user_id=None)
+            product_sale.owner_id = owner.id
+            db.flush()
             service.confirm(tenant.id, product_sale.id, confirmed_by_user_id=None)
             movement = db.scalar(select(InventoryMovement).where(InventoryMovement.tenant_id == tenant.id, InventoryMovement.source_id == str(product_sale.id)))
             assert movement.quantity == quantity
@@ -267,7 +276,7 @@ def test_postgresql_sale_numeric_limits_and_confirmation(postgres_test_session_f
                     db.execute(text(f"SELECT CAST(:amount AS NUMERIC({precision}, 2))"), {"amount": maximum + Decimal("0.01")})
     finally:
         db.rollback()
-        for model in (SalePayment, InventoryMovement, SaleItem, Sale, PaymentMethod, InventoryItem, TenantPreference, Tenant):
+        for model in (SalePayment, InventoryMovement, SaleItem, Sale, PaymentMethod, InventoryItem, TenantPreference, Owner, Tenant):
             column = model.id if model is Tenant else model.tenant_id
             db.execute(delete(model).where(column == tenant.id))
         db.commit()

@@ -27,7 +27,9 @@ def _method(client, tenant, **overrides):
 
 
 def _sale(client, tenant, *, status="confirmed", total="100.00"):
-    created = client.post("/api/v1/sales", headers=_headers(tenant), json={"owner_id": None, "patient_id": None, "sale_date": "2026-08-09", "items": [{"line_type": "service", "description": "Consulta", "quantity": "1", "unit_price_ars": total, "discount_percentage": "0"}]})
+    from app.tests.test_sales import _owner
+    owner_id = _owner(client, tenant)["id"] if status == "confirmed" else None
+    created = client.post("/api/v1/sales", headers=_headers(tenant), json={"owner_id": owner_id, "patient_id": None, "sale_date": "2026-08-09", "items": [{"line_type": "service", "description": "Consulta", "quantity": "1", "unit_price_ars": total, "discount_percentage": "0"}]})
     assert created.status_code == 201, created.text
     sale = created.json()["data"]
     if status == "confirmed":

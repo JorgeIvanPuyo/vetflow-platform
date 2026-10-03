@@ -4,6 +4,7 @@ import type {
   ApiListResponse,
   CreateOwnerPayload,
   Owner,
+  OwnerReceivablesResponse,
   UpdateOwnerPayload,
 } from "@/types/api";
 
@@ -42,6 +43,11 @@ export function getOwners(options: GetOwnersOptions = {}) {
 
 export function getOwner(ownerId: string) {
   return api.get<ApiItemResponse<Owner>>(`/api/v1/owners/${ownerId}`);
+}
+
+export function getOwnerReceivables(ownerId: string, { page = 1, pageSize = 20 }: { page?: number; pageSize?: number } = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  return api.get<OwnerReceivablesResponse>(`/api/v1/owners/${ownerId}/receivables?${params}`);
 }
 
 export function createOwner(payload: CreateOwnerPayload) {

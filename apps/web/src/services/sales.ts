@@ -14,7 +14,14 @@ export function getSale(id: string) { return api.get<ApiItemResponse<Sale>>(`/ap
 export function createSale(payload: SaleWritePayload) { return api.post<ApiItemResponse<Sale>>("/api/v1/sales", payload); }
 export function updateSale(id: string, payload: SaleWritePayload) { return api.patch<ApiItemResponse<Sale>>(`/api/v1/sales/${id}`, payload); }
 export function cancelSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/cancel`, { reason }, { retryTransient: false }); }
-export function confirmSale(id: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, { confirm: true }, { retryTransient: false }); }
+export type SaleInitialPaymentInput = Omit<SalePaymentInput, "received_at"> & { received_at?: string | null };
+export type SaleConfirmInput = { confirm: true } & (
+  | { initial_payment?: SaleInitialPaymentInput | null; initial_payments?: never }
+  | { initial_payment?: never; initial_payments: SaleInitialPaymentInput[] }
+);
+export function confirmSale(id: string, payload: SaleConfirmInput = { confirm: true }, idempotencyKey?: string) {
+  return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, payload, { retryTransient: false, idempotencyKey });
+}
 export function reverseSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/reverse`, { reason }, { retryTransient: false }); }
 export function getSaleFilterOptions() { return api.get<{ data: { creators: PurchaseCreatorOption[] }; meta: Record<string, never> }>("/api/v1/sales/filter-options"); }
 

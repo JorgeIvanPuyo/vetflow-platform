@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.schemas.common import ListMeta
 from app.schemas.owner import OwnerCreate, OwnerRead, OwnerSortBy, OwnerUpdate
 from app.services.owner import OwnerService
+from app.services.receivables import OwnerReceivablesService
 
 router = APIRouter(prefix="/owners", tags=["owners"])
 
@@ -58,6 +59,18 @@ def get_owner(
 ) -> dict:
     owner = OwnerService(db).get_owner(tenant.tenant_id, owner_id)
     return {"data": OwnerRead.model_validate(owner).model_dump(mode="json"), "meta": {}}
+
+
+@router.get("/{owner_id}/receivables")
+def get_owner_receivables(
+    owner_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    data, meta = OwnerReceivablesService(db).get(tenant.tenant_id, owner_id, page=page, page_size=page_size)
+    return {"data": data.model_dump(mode="json"), "meta": meta}
 
 
 @router.patch("/{owner_id}")

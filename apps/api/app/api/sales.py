@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -22,9 +22,10 @@ from app.schemas.sale import (
     SaleUpdate,
 )
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
-from app.schemas.payment import PaymentStatus
+from app.schemas.payment import IdempotencyKey, PaymentStatus
 from app.services.purchase_attachment import MAX_PURCHASE_ATTACHMENT_SIZE_BYTES
 from app.services.sale import SaleService
+from app.services.sale_confirmation import SaleConfirmationService
 from app.services.sale_fiscal_document import SaleFiscalDocumentService
 from app.services.storage import (
     ObjectStorageService,
@@ -100,14 +101,21 @@ def cancel_sale(sale_id: uuid.UUID, payload: SaleCancel, tenant: TenantContext =
 def confirm_sale(
     sale_id: uuid.UUID,
     payload: SaleConfirm,
+    response: Response,
+    idempotency_key: IdempotencyKey | None = Header(default=None, alias="Idempotency-Key"),
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
-    sale = SaleService(db).confirm(
+    service = SaleConfirmationService(db)
+    sale = service.confirm(
         tenant.tenant_id,
         sale_id,
-        confirmed_by_user_id=tenant.user_id,
+        payload,
+        user_id=tenant.user_id,
+        idempotency_key=idempotency_key,
     )
+    if payload.initial_payment is not None or payload.initial_payments is not None:
+        response.headers["Idempotency-Replayed"] = str(service.idempotency_replayed).lower()
     return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
 
 

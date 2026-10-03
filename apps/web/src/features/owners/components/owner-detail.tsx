@@ -13,6 +13,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { getCatalogItems } from "@/services/catalogs";
 import { deleteOwner, getOwner, updateOwner } from "@/services/owners";
 import { getPatient, getPatients, updatePatient } from "@/services/patients";
+import { OwnerReceivablesPanel } from "./owner-receivables-panel";
 import type {
   CatalogItem,
   Owner,
@@ -497,6 +498,8 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
           )}
         </article>
       </section>
+
+      <OwnerReceivablesPanel key={ownerId} ownerId={ownerId} isArchived={state.owner.is_active === false} />
 
       {isEditOpen ? (
         <div className="modal-backdrop" role="presentation">

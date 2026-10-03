@@ -4572,6 +4572,45 @@ code {
   flex-wrap: wrap;
 }
 
+.sale-confirmation-modal { background: var(--color-surface); }
+.sale-confirmation-extras summary { cursor: pointer; font-weight: 600; }
+.sale-confirmation-extras .field { margin-top: 0.75rem; }
+.sale-confirmation-balance { display: flex; justify-content: space-between; gap: 1rem; }
+
+.sale-confirmation-total {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-input);
+  background: var(--color-surface-soft);
+}
+
+.sale-confirmation-total strong { font-size: 1.5rem; overflow-wrap: anywhere; }
+.sale-confirmation-options, .sale-confirmation-fields { border: 0; margin: 0; padding: 0; }
+.sale-confirmation-fields { display: grid; gap: 0.85rem; min-width: 0; }
+.sale-confirmation-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.sale-confirmation-options legend { margin-bottom: 0.75rem; font-weight: 600; }
+.sale-confirmation-options label { display: flex; align-items: center; gap: 0.5rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius-input); cursor: pointer; }
+.sale-confirmation-options label:has(input:checked) { border-color: var(--color-primary); background: var(--color-success-soft); }
+.sale-confirmation-options input { width: 1rem; min-height: auto; margin: 0; flex-shrink: 0; accent-color: var(--color-primary); }
+.sale-confirmation-summary { display: grid; gap: 0.6rem; margin: 0; padding: 1rem; border-radius: var(--radius-input); background: var(--color-surface-soft); }
+.sale-confirmation-summary > div { display: flex; justify-content: space-between; gap: 1rem; }
+.sale-confirmation-summary dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.sale-confirmation-summary > div:last-child { border-top: 1px solid var(--color-border); padding-top: 0.6rem; }
+.sale-confirmation-row { min-width: 0; margin: 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-input); display: grid; gap: 0.75rem; }
+.sale-confirmation-row legend { padding: 0 0.35rem; font-weight: 600; }
+.sale-confirmation-row__fields { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 0.75rem; }
+.sale-confirmation-row .field { min-width: 0; }
+.sale-confirmation-row__error { color: var(--color-danger); }
+.sale-confirmation-row__remove { justify-self: end; }
+.sale-confirmation-add { justify-self: start; }
+
+@media (max-width: 640px) {
+  .sale-confirmation-options { grid-template-columns: 1fr; }
+  .sale-confirmation-row__fields { grid-template-columns: 1fr; }
+  .sale-confirmation-modal .purchase-modal__actions { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
 .purchase-attachment-form,
 .purchase-attachment-panel {
   display: grid;
@@ -9818,6 +9857,18 @@ a.purchase-dashboard-metric:focus-visible {
   color: var(--color-text-muted);
   -webkit-line-clamp: 1;
 }
+
+.owner-receivables-panel { min-width: 0; }
+.owner-receivables-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.owner-receivables-summary > strong { font-size: 1.7rem; font-variant-numeric: tabular-nums; }
+.owner-receivables-summary > span, .owner-receivables-scope { color: var(--color-text-muted); }
+.owner-receivables-details summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.owner-receivables-table-scroll { overflow-x: auto; margin: 12px 0; }
+.owner-receivables-table-scroll table { width: 100%; border-collapse: collapse; }
+.owner-receivables-table-scroll th, .owner-receivables-table-scroll td { text-align: right; white-space: nowrap; padding: 12px; border-bottom: 1px solid var(--color-border); font-variant-numeric: tabular-nums; }
+.owner-receivables-table-scroll th:first-child, .owner-receivables-table-scroll td:first-child { text-align: left; }
+.owner-receivables-table-scroll small { display: block; color: var(--color-text-muted); margin-top: 4px; }
+.owner-receivables-scope { font-size: .85rem; margin-top: 16px; }
 
 .list-pagination {
   display: grid;

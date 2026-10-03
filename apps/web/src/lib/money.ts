@@ -24,6 +24,18 @@ export function formatCurrency(
   }).format(numericValue);
 }
 
+/** Format exact cents even near Numeric(16, 2)'s limit, without Number rounding. */
+export function formatExactCurrency(value: string, { currencyCode, locale }: MoneyPreferences): string {
+  const match = /^(-?)(\d+)(?:[.,](\d{1,2}))?$/.exec(value.trim());
+  if (!match) return `${currencyCode} —`;
+  const whole = BigInt(match[2]);
+  const negative = match[1] === "-";
+  const formatter = new Intl.NumberFormat(locale, { style: "currency", currency: currencyCode, currencyDisplay: "code", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fraction = new Intl.NumberFormat(locale, { minimumIntegerDigits: 2, useGrouping: false }).format(BigInt((match[3] ?? "").padEnd(2, "0")));
+  return formatter.formatToParts(negative ? (whole === BigInt(0) ? -0 : -whole) : whole)
+    .map((part) => part.type === "fraction" ? fraction : part.value).join("");
+}
+
 export function formatPercentage(
   value: string | number | null | undefined,
   locale: string,
