@@ -10850,3 +10850,75 @@ a.inventory-dashboard-kpi:focus-visible {
   gap: 0.25rem 0.75rem;
   overflow-wrap: anywhere;
 }
+
+.receivables-settings,
+.receivables-settings__fields {
+  min-width: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.receivables-settings__fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.receivables-settings h2,
+.receivables-settings p,
+.receivables-settings-dialog p { margin: 0; overflow-wrap: anywhere; }
+.receivables-settings__status { font-weight: 600; }
+.receivables-settings input[type="date"] { min-width: 0; width: 100%; max-width: 100%; }
+.receivables-settings__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.receivables-settings-dialog[open] { display: grid; gap: 1rem; }
+
+@media (max-width: 480px) {
+  .receivables-settings__actions { flex-direction: column; }
+  .receivables-settings__actions button { width: 100%; white-space: normal; }
+}
+
+/* P.13: payments report, with stacked detail at compact widths. */
+.payment-report-page { min-width: 0; }
+.payment-report-sales-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.payment-report-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 1rem; align-items: end; }
+.payment-report-filters .field, .payment-report-filters input, .payment-report-filters select { min-width: 0; width: 100%; }
+.payment-report-filter-error { grid-column: 1 / -1; }
+.payment-report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 1rem; }
+.payment-report-summary article { display: flex; flex-direction: column; gap: 0.5rem; overflow-wrap: anywhere; }
+.payment-report-total > strong { font-size: 1.5rem; }
+.payment-report-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }
+.payment-report-table th, .payment-report-table td { padding: 0.75rem 0.5rem; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--color-border); }
+.payment-report-table td span { display: block; margin-top: 0.35rem; }
+.payment-report-money { font-weight: 600; }
+.payment-report-mobile { display: none; }
+.payment-report-period { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .payment-report-desktop { display: none; }
+  .payment-report-mobile { display: grid; gap: 1rem; min-width: 0; }
+  .payment-report-mobile article { min-width: 0; overflow-wrap: anywhere; }
+  .payment-report-card-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .payment-report-mobile dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.75rem; margin: 0.5rem 0; }
+  .payment-report-mobile dd { margin: 0; }
+  .payment-report-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .payment-report-filters .primary-button { width: 100%; }
+}
+@media (max-width: 480px) {
+  .payment-report-filters { grid-template-columns: minmax(0, 1fr); }
+  .payment-report-page .purchase-pagination { flex-wrap: wrap; gap: 0.75rem; }
+}
+
+/* Structured payment method administration. */
+.payment-methods-page, .payment-methods-fields { min-width: 0; }
+.payment-methods-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 1rem; }
+.payment-methods-fields .field, .payment-methods-fields input:not([type="checkbox"]), .payment-methods-fields select { min-width: 0; width: 100%; }
+.payment-methods-table { width: 100%; min-width: 0; table-layout: fixed; }
+.payment-methods-table :is(th, td) { overflow-wrap: anywhere; white-space: normal; }
+.payment-methods-table .purchase-attachment-actions { flex-wrap: wrap; }
+.payment-methods-mobile { display: none; }
+@media (max-width: 900px) {
+  .payment-methods-desktop { display: none; }
+  .payment-methods-mobile { display: grid; gap: 1rem; min-width: 0; }
+  .payment-methods-mobile article { display: grid; gap: 0.75rem; min-width: 0; overflow-wrap: anywhere; }
+  .payment-methods-mobile .purchase-attachment-actions { display: flex; flex-wrap: wrap; }
+  .payment-methods-page .settings-breadcrumb { flex-wrap: wrap; }
+}

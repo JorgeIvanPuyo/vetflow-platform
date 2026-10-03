@@ -10,14 +10,17 @@ from app.models.payment import PaymentMethod, SalePayment, SalePaymentBatch
 from app.models.user import User
 
 
+def active_payment_criteria(tenant_id: uuid.UUID):
+    return (SalePayment.tenant_id == tenant_id, SalePayment.is_active.is_(True))
+
+
 def active_payment_total_statement(tenant_id: uuid.UUID):
     """Canonical tenant-scoped SQL sum, excluding all voided payments.
 
     Callers can constrain one sale, correlate a sale, or group by sale_id.
     """
     return select(func.coalesce(func.sum(SalePayment.amount_ars), Decimal("0.00")).label("paid_total_ars")).where(
-        SalePayment.tenant_id == tenant_id,
-        SalePayment.is_active.is_(True),
+        *active_payment_criteria(tenant_id),
     )
 
 

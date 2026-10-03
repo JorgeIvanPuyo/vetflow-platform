@@ -420,6 +420,7 @@ export type ConsultationAiSummaryResponse = {
 };
 
 export type ClinicProfile = {
+  timezone?: string;
   id: string;
   name: string;
   display_name: string | null;
@@ -451,6 +452,7 @@ export type UpdateClinicTeamMemberPayload = {
 };
 
 export type TenantPreferences = {
+  receivables_tracking_started_at?: string | null;
   id: string;
   tenant_id: string;
   currency_code: "USD" | "ARS";
@@ -465,6 +467,8 @@ export type TenantPreferences = {
 };
 
 export type UpdateTenantPreferencesPayload = Partial<{
+  receivables_tracking_started_at: string | null;
+  receivables_tracking_start_date: string;
   currency_code: "USD" | "ARS";
   locale: "es-PA" | "es-AR";
   default_appointment_duration_minutes: number;
@@ -2140,4 +2144,35 @@ export type SaleListFilters = {
   page_size?: number;
   sort_by?: "sale_date" | "created_at" | "total_ars" | "status";
   sort_direction?: "asc" | "desc";
+};
+
+export type PaymentReportMethod = { payment_method_id: string; label: string; is_active: boolean };
+export type PaymentReportEntry = {
+  payment_id: string;
+  received_at: string;
+  payment_method_id: string;
+  payment_method_label: string;
+  amount_ars: string;
+  sale_id: string;
+  owner_id: string | null;
+  owner_name: string | null;
+  patient_id: string | null;
+  patient_name: string | null;
+  reference: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+};
+export type PaymentReport = {
+  date_from: string;
+  date_to: string;
+  timezone: string;
+  currency_code: string;
+  locale: string;
+  methods: PaymentReportMethod[];
+  summary: {
+    total_amount_ars: string;
+    payment_count: number;
+    by_method: (PaymentReportMethod & { amount_ars: string; payment_count: number })[];
+  };
+  payments: PaymentReportEntry[];
 };

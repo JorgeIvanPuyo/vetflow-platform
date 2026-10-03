@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -72,9 +72,25 @@ class TenantPreferenceRead(BaseModel):
     default_profit_margin: Decimal
     money_rounding_increment: Decimal
 
+    @field_validator("receivables_tracking_started_at")
+    @classmethod
+    def read_cutoff_as_utc(cls, value: datetime | None) -> datetime | None:
+        # SQLite test/dev storage loses tzinfo; stored naive values are UTC.
+        return (value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)) if value else None
+
 
 class TenantPreferenceUpdate(BaseModel):
     receivables_tracking_started_at: AwareDatetime | None = None
+    receivables_tracking_start_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_cutoff_input(self) -> "TenantPreferenceUpdate":
+        if "receivables_tracking_start_date" in self.model_fields_set:
+            if self.receivables_tracking_start_date is None:
+                raise ValueError("La fecha de inicio es obligatoria")
+            if "receivables_tracking_started_at" in self.model_fields_set:
+                raise ValueError("Envía una fecha de inicio o un timestamp, no ambos")
+        return self
 
     @field_validator("receivables_tracking_started_at")
     @classmethod
