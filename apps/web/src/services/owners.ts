@@ -4,6 +4,7 @@ import type {
   ApiListResponse,
   CreateOwnerPayload,
   Owner,
+  OwnerReceivablesActivityResponse,
   OwnerReceivablesResponse,
   UpdateOwnerPayload,
 } from "@/types/api";
@@ -45,9 +46,17 @@ export function getOwner(ownerId: string) {
   return api.get<ApiItemResponse<Owner>>(`/api/v1/owners/${ownerId}`);
 }
 
-export function getOwnerReceivables(ownerId: string, { page = 1, pageSize = 20 }: { page?: number; pageSize?: number } = {}) {
+export function getOwnerReceivables(ownerId: string, { page = 1, pageSize = 20, dateFrom, dateTo, patientId }: { page?: number; pageSize?: number; dateFrom?: string; dateTo?: string; patientId?: string } = {}) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  if (patientId) params.set("patient_id", patientId);
   return api.get<OwnerReceivablesResponse>(`/api/v1/owners/${ownerId}/receivables?${params}`);
+}
+
+export function getOwnerReceivablesActivity(ownerId: string, { page = 1, pageSize = 20 }: { page?: number; pageSize?: number } = {}) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  return api.get<OwnerReceivablesActivityResponse>(`/api/v1/owners/${ownerId}/receivables/activity?${params}`);
 }
 
 export function createOwner(payload: CreateOwnerPayload) {

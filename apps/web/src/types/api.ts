@@ -27,6 +27,7 @@ export type Owner = {
   id: string;
   tenant_id: string;
   is_active: boolean;
+  has_active_receivable?: boolean | null;
   full_name: string;
   document_id: string | null;
   phone: string;
@@ -63,6 +64,36 @@ export type OwnerReceivablesResponse = {
   meta: { page: number; page_size: number; total: number; total_pages: number };
 };
 
+export type OwnerReceivablesActivityEvent = {
+  event_id: string;
+  type: "sale_confirmed" | "payment_recorded" | "payment_cancelled" | "sale_reversed";
+  occurred_at: string;
+  sale_id: string;
+  sale_date: string;
+  patient_id: string | null;
+  patient_name_snapshot: string | null;
+  currency: "USD" | "ARS";
+  payment_id: string | null;
+  amount_ars: string | null;
+  payment_method_label: string | null;
+  reference: string | null;
+  notes: string | null;
+  reason: string | null;
+  payment_is_active: boolean | null;
+};
+
+export type OwnerReceivablesActivityResponse = {
+  data: {
+    owner_id: string;
+    tracking_configured: boolean;
+    tracking_started_at: string | null;
+    currency: "USD" | "ARS" | null;
+    locale: string | null;
+    events: OwnerReceivablesActivityEvent[];
+  };
+  meta: OwnerReceivablesResponse["meta"];
+};
+
 export type UserTrace = {
   id?: string | null;
   full_name?: string | null;
@@ -73,6 +104,7 @@ export type UserTrace = {
 
 export type Patient = {
   owner_name?: string | null;
+  owner_has_active_receivable?: boolean | null;
   id: string;
   tenant_id: string;
   owner_id: string;
@@ -2016,6 +2048,7 @@ export type SaleItem = {
   id: string;
   line_type: SaleLineType;
   fiscal_line_type: SaleLineType;
+  current_stock?: string | null;
   inventory_item_id: string | null;
   service_id: string | null;
   description_snapshot: string;

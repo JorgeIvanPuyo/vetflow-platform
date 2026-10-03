@@ -17,7 +17,7 @@ import { SaleCustomerSelector } from "./sale-customer-selector";
 import { SaleServiceSelector } from "./sale-service-selector";
 import { hasValidServicePrice, serviceLineFromCatalog, serviceLineFromSnapshot, serviceLineToInput, type ServiceLine } from "./sale-service-helpers";
 
-type ProductLine = { key: string; type: "product"; inventoryItemId: string; description: string; code: string; unit: string; stock: string; quantity: string; price: string; discount: string };
+type ProductLine = { key: string; type: "product"; inventoryItemId: string; description: string; code: string; unit: string; stock: string | null; quantity: string; price: string; discount: string };
 
 type Line = ProductLine | ServiceLine;
 
@@ -47,6 +47,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   const [isServiceSelectorOpen, setIsServiceSelectorOpen] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const savingRef = useRef(false);
   const productSelectorRef = useRef<HTMLDivElement>(null);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productRequestIdRef = useRef(0);
@@ -209,6 +210,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (savingRef.current) return;
     const validation = validate(lines);
     if (validation) { setErrorMessage(validation); return; }
     const payload: SaleWritePayload = {
@@ -217,16 +219,21 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
         ? { line_type: "product", inventory_item_id: line.inventoryItemId, quantity: line.quantity, unit_price_ars: line.price, discount_percentage: line.discount }
         : serviceLineToInput(line)),
     };
+    savingRef.current = true;
     setIsSaving(true); setErrorMessage(null);
+    closeProductSelector(); setIsServiceSelectorOpen(false);
     try { const response = saleId ? await updateSale(saleId, payload) : await createSale(payload); router.push(`/sales/${response.data.id}`); }
-    catch (error) { setErrorMessage(getApiErrorMessage(error)); }
-    finally { setIsSaving(false); }
+    catch (error) {
+      setErrorMessage(getApiErrorMessage(error));
+      savingRef.current = false; setIsSaving(false);
+    }
   }
 
   if (isLoading) return <div className="loading-card" aria-label="Cargando venta" />;
   if (unavailable) return <div className="page-stack sales-page"><section className="error-state">Esta venta ya no está en borrador y no puede editarse.</section><Link className="secondary-button" href={`/sales/${saleId}`}>Volver al detalle</Link></div>;
 
-  return <form className="page-stack sales-page" onSubmit={handleSubmit}>
+  return <form className="page-stack sales-page" onSubmit={handleSubmit} aria-busy={isSaving}>
+    <fieldset className="sale-form-controls" disabled={isSaving} aria-label="Borrador de venta">
     <section className="screen-heading list-page__header"><div><Link className="back-link" href={saleId ? `/sales/${saleId}` : "/sales"}><ArrowLeft size={18} /> {saleId ? "Detalle" : "Ventas"}</Link><h1>{saleId ? "Editar venta" : "Nueva venta"}</h1><p>El borrador no descuenta stock ni genera movimientos o comprobantes.</p></div></section>
     {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
     <section className="panel sale-form-section"><div className="section-heading"><h2>Cliente y datos</h2><p>El cliente y paciente son opcionales para permitir ventas de mostrador.</p></div><div className="sale-header-grid">
@@ -292,17 +299,19 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
           {!isSearchingProducts && !productSearchError && productPage < productTotalPages ? <div className="sale-product-selector__footer"><button className="secondary-button" type="button" disabled={isLoadingMoreProducts} onMouseDown={(event) => event.preventDefault()} onClick={() => void loadMoreProducts()}>{isLoadingMoreProducts ? "Cargando..." : "Cargar más"}</button></div> : null}
         </div> : null}
       </div>
-      <div className="sale-lines">{lines.map((line) => <article className="sale-line" key={line.key}><div className="sale-line__heading"><span>{line.type === "product" ? <><strong>{line.description}</strong><small>{line.code} · Stock actual {line.stock} {line.unit}</small></> : <label className="field"><span>Descripción del servicio *</span><input maxLength={255} value={line.description} onChange={(event) => updateLine(line.key, { description: event.target.value })} /></label>}</span><button className="icon-button" type="button" aria-label="Quitar línea" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 size={17} /></button></div><div className="sale-line__fields">
+      {lines.some(hasInsufficientStock) ? <p className="purchase-reversal-warning" role="status">Hay productos con stock insuficiente. Puedes guardar el borrador, pero no podrás confirmar la venta hasta disponer del stock necesario.</p> : null}
+      <div className="sale-lines">{lines.map((line) => <article className="sale-line" key={line.key}><div className="sale-line__heading"><span>{line.type === "product" ? <><strong>{line.description}</strong><small>{line.code} · Stock actual {line.stock ?? "No disponible"} {line.unit}</small></> : <label className="field"><span>Descripción del servicio *</span><input maxLength={255} value={line.description} onChange={(event) => updateLine(line.key, { description: event.target.value })} /></label>}</span><button className="icon-button" type="button" aria-label="Quitar línea" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 size={17} /></button></div><div className="sale-line__fields">
         <label className="field"><span>Cantidad *</span><input required type="number" min="1" max="9999999999" step="1" inputMode="numeric" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} /></label>
         <label className="field"><span>Precio unitario *</span>{line.type === "service" && !line.price.trim() ? <small>Precio no configurado. Ingresa el precio para esta venta.</small> : null}<input required type="number" min="0" max={line.type === "product" ? "9999999999.99" : "999999999999.99"} step="0.01" value={line.price} onChange={(event) => updateLine(line.key, { price: event.target.value })} /></label>
         <label className="field"><span>Descuento %</span><input required type="number" min="0" max="100" step="0.01" value={line.discount} onChange={(event) => updateLine(line.key, { discount: event.target.value })} /></label>
         <div className="sale-line__total"><span>Total estimado</span><strong>{formatPurchaseCurrency(lineTotal(line), moneyPreferences)}</strong></div>
-      </div></article>)}</div>
+      </div>{hasInsufficientStock(line) && line.type === "product" ? <p className="purchase-reversal-warning sale-stock-warning" role="status"><strong>Stock insuficiente</strong><span>Disponible: {line.stock} · En borrador: {line.quantity}</span></p> : null}</article>)}</div>
       {!lines.length ? <p className="empty-state empty-state--compact">Agrega al menos un producto o servicio.</p> : null}
     </section>
     <section className="panel purchase-summary"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(totals.subtotal, moneyPreferences)}</strong></div><div><span>Descuentos</span><strong>{formatPurchaseCurrency(totals.discount, moneyPreferences)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(totals.total, moneyPreferences)}</strong></div><p>Los importes definitivos se calculan en el backend.</p></section>
-    <section className="purchase-form-actions"><Link className="secondary-button" href={saleId ? `/sales/${saleId}` : "/sales"}>Cancelar</Link><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Guardando..." : "Guardar borrador"}</button></section>
+    <section className="purchase-form-actions"><Link className="secondary-button" href={saleId ? `/sales/${saleId}` : "/sales"} aria-disabled={isSaving} tabIndex={isSaving ? -1 : undefined} onClick={(event) => { if (savingRef.current) event.preventDefault(); }}>Cancelar</Link><button className="primary-button" type="submit" disabled={isSaving} aria-live="polite">{isSaving ? <><span className="vf-spinner vf-spinner--sm vf-spinner--button" aria-hidden="true" />Guardando…</> : "Guardar borrador"}</button></section>
     {isServiceSelectorOpen ? <SaleServiceSelector moneyPreferences={moneyPreferences} onSelect={addService} onClose={() => setIsServiceSelectorOpen(false)} /> : null}
+    </fieldset>
   </form>;
 }
 
@@ -310,4 +319,8 @@ function safeNumber(value: string) { const parsed = Number(value); return Number
 function lineTotal(line: Line) { const subtotal = safeNumber(line.quantity) * safeNumber(line.price); return subtotal * (1 - safeNumber(line.discount) / 100); }
 function todayIso() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 function validate(lines: Line[]) { if (!lines.length) return "Agrega al menos una línea."; for (const line of lines) { if (!Number.isInteger(Number(line.quantity)) || Number(line.quantity) <= 0) return "Todas las cantidades deben ser enteros positivos."; if (line.type === "service" && !line.description.trim()) return "Ingresa la descripción de cada servicio."; if (line.type === "service" && !hasValidServicePrice(line.price)) return "Ingresa un precio válido para cada servicio."; if (Number(line.price) < 0) return "El precio no puede ser negativo."; if (Number(line.discount) < 0 || Number(line.discount) > 100) return "El descuento debe estar entre 0 y 100."; } return null; }
-function lineFromSaleItem(item: SaleItem): Line { return item.line_type === "product" ? { key: item.inventory_item_id!, type: "product", inventoryItemId: item.inventory_item_id!, description: item.description_snapshot, code: item.internal_code_snapshot ?? "Sin código", unit: item.unit_snapshot, stock: "Referencia no actualizada", quantity: item.quantity, price: item.unit_price_ars, discount: item.discount_percentage } : serviceLineFromSnapshot(item); }
+function lineFromSaleItem(item: SaleItem): Line { return item.line_type === "product" ? { key: item.inventory_item_id!, type: "product", inventoryItemId: item.inventory_item_id!, description: item.description_snapshot, code: item.internal_code_snapshot ?? "Sin código", unit: item.unit_snapshot, stock: item.current_stock ?? null, quantity: item.quantity, price: item.unit_price_ars, discount: item.discount_percentage } : serviceLineFromSnapshot(item); }
+
+function hasInsufficientStock(line: Line) {
+  return line.type === "product" && line.stock !== null && Number.isFinite(Number(line.stock)) && Number(line.quantity) > Number(line.stock);
+}

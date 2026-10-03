@@ -7,13 +7,15 @@ import { useCurrentUser } from "@/features/auth/current-user-context";
 import { ArrowLeft, Edit, Mail, MapPin, PawPrint, Phone, Trash2, User, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { getCatalogItems } from "@/services/catalogs";
 import { deleteOwner, getOwner, updateOwner } from "@/services/owners";
 import { getPatient, getPatients, updatePatient } from "@/services/patients";
 import { OwnerReceivablesPanel } from "./owner-receivables-panel";
+import { ReceivableBadge } from "./receivable-badge";
+import { useRefreshOnReturn } from "../hooks/use-refresh-on-return";
 import type {
   CatalogItem,
   Owner,
@@ -87,6 +89,7 @@ const initialFormState: OwnerFormState = {
 };
 
 export function OwnerDetail({ ownerId }: OwnerDetailProps) {
+  const readVersion = useRef(0);
   const { role } = useCurrentUser();
   const isClinicalReadOnly = !canPerformClinicalActions(role);
   const router = useRouter();
@@ -133,6 +136,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
   }, []);
 
   const loadOwnerDetail = useCallback(async () => {
+    const version = ++readVersion.current;
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
 
     try {
@@ -140,6 +144,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
         getOwner(ownerId),
         getPatients({ ownerId }),
       ]);
+      if (version !== readVersion.current) return;
 
       setState((current) => ({
         ...current,
@@ -148,6 +153,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
         pets: petsResponse.data,
       }));
     } catch (error) {
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -158,8 +164,11 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
     }
   }, [ownerId]);
 
+  useRefreshOnReturn(loadOwnerDetail);
+
   useEffect(() => {
     void loadOwnerDetail();
+    return () => { readVersion.current += 1; };
   }, [loadOwnerDetail]);
 
   function openEditModal() {
@@ -388,7 +397,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
     }
   }
 
-  if (state.isLoading) {
+  if (state.isLoading && !state.owner) {
     return <div className="loading-card" aria-label="Cargando propietario" />;
   }
 
@@ -401,7 +410,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
   }
 
   return (
-    <div className="page-stack owner-detail-page">
+    <div className="page-stack owner-detail-page" aria-busy={state.isLoading}>
       <section className="detail-hero owner-detail-hero">
         <Link className="back-link" href="/owners">
           <ArrowLeft aria-hidden="true" size={17} /> Volver a propietarios
@@ -412,6 +421,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
           </span>
           <div>
             <h1>{state.owner.full_name}</h1>
+            <ReceivableBadge ownerId={ownerId} hasActiveReceivable={!state.isLoading && state.owner.has_active_receivable} />
             <p>Contacto principal y mascotas asociadas</p>
           </div>
         </div>
@@ -477,6 +487,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
                   <span className="pet-avatar" aria-hidden="true"><PawPrint size={22} /></span>
                   <span className="patient-card__body">
                     <strong>{pet.name}</strong>
+                    <ReceivableBadge ownerId={pet.owner_id} hasActiveReceivable={!state.isLoading && pet.owner_has_active_receivable} forPatient />
                     <span className="patient-card__meta">
                       {pet.species}
                       {pet.breed ? ` · ${pet.breed}` : ""}
@@ -499,7 +510,7 @@ export function OwnerDetail({ ownerId }: OwnerDetailProps) {
         </article>
       </section>
 
-      <OwnerReceivablesPanel key={ownerId} ownerId={ownerId} isArchived={state.owner.is_active === false} />
+      <OwnerReceivablesPanel key={ownerId} ownerId={ownerId} isArchived={state.owner.is_active === false} onRefresh={loadOwnerDetail} refreshToken={readVersion.current} />
 
       {isEditOpen ? (
         <div className="modal-backdrop" role="presentation">

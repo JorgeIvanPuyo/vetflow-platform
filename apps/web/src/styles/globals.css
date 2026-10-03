@@ -9870,6 +9870,51 @@ a.purchase-dashboard-metric:focus-visible {
 .owner-receivables-table-scroll small { display: block; color: var(--color-text-muted); margin-top: 4px; }
 .owner-receivables-scope { font-size: .85rem; margin-top: 16px; }
 
+.owner-account-link { margin: 8px 0; }
+.receivable-entity-card { position: relative; }
+.receivable-entity-card:focus-within { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.receivable-badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.receivable-badge:hover { text-decoration: underline; }
+.receivable-badge:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.owner-account-page, .owner-account-page .panel { min-width: 0; }
+.owner-account-summary { display: flex; flex-wrap: wrap; gap: 24px 48px; margin: 0; }
+.owner-account-summary dt, .owner-account-amounts dt { color: var(--color-text-muted); }
+.owner-account-summary dd { margin: 6px 0 0; font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.owner-account-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.owner-account-filter-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; }
+.owner-account-sales, .owner-account-activity { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 16px; }
+.owner-account-sale, .owner-account-activity > li { border: 1px solid var(--color-border); border-radius: 16px; padding: 20px; min-width: 0; }
+.owner-account-sale-heading, .owner-account-event-heading { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.owner-account-page h3 { margin: 0 0 8px; font-size: 1rem; }
+.owner-account-page p, .owner-account-event-heading time { color: var(--color-text-muted); overflow-wrap: anywhere; }
+.owner-account-amounts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.owner-account-amounts dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.owner-account-event-amount { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; }
+@media (max-width: 600px) {
+  .owner-account-filters { grid-template-columns: 1fr; }
+  .owner-account-sale, .owner-account-activity > li { padding: 16px; }
+  .owner-account-amounts { grid-template-columns: 1fr; gap: 12px; }
+  .owner-account-amounts > div { display: flex; justify-content: space-between; gap: 12px; }
+  .owner-account-amounts dd { margin: 0; text-align: right; }
+  .owner-account-event-heading { flex-direction: column; }
+  .owner-account-event-amount { align-self: flex-end; }
+  .owner-account-summary { flex-direction: column; gap: 16px; }
+  .owner-account-summary dd { font-size: 1.5rem; }
+}
+
 .list-pagination {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -10786,4 +10831,22 @@ a.inventory-dashboard-kpi:focus-visible {
   .list-page-size-control--toolbar {
     padding-left: 0;
   }
+}
+
+/* Draft saving keeps the layout stable while native controls are disabled. */
+.sale-form-controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.sale-stock-warning {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  overflow-wrap: anywhere;
 }

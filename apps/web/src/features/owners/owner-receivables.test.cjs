@@ -93,6 +93,22 @@ function setup(t, outcome = () => wire(response()), props = {}) {
 }
 const button = (tree, label) => find(tree, node => node.type === "button" && content(node).includes(label));
 
+test("owner summary opens the dedicated account route", async t => {
+  const tree = await setup(t).ready();
+  assert.ok(find(tree, node => node.props?.href === "/owners/owner/receivables" && content(node) === "Ver cuenta corriente"));
+});
+
+test("owner revalidation refreshes the summary while preserving its open page", async t => {
+  const h = setup(t, () => wire(response({}, { total: 37, total_pages: 2 })));
+  let tree = await h.ready();
+  find(tree, node => node.type === "details").props.onToggle({ currentTarget: { open: true } });
+  button(h.render(), "Siguiente").props.onClick(); tree = await h.ready();
+  assert.equal(h.requests.at(-1).url.searchParams.get("page"), "2");
+  h.props = { ...h.props, refreshToken: 1 }; tree = await h.ready();
+  assert.equal(find(tree, node => node.type === "details").props.open, true);
+  assert.equal(h.requests.at(-1).url.searchParams.get("page"), "2");
+});
+
 test("shows global balance and count returned by the server", async t => {
   const h = setup(t); const tree = await h.ready();
   assert.match(content(tree), /135\.000,00/);

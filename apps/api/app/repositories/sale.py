@@ -87,6 +87,16 @@ class SaleRepository:
             return []
         return list(self.db.scalars(select(InventoryItem).where(InventoryItem.tenant_id == tenant_id, InventoryItem.id.in_(ids))).all())
 
+    def current_stocks(self, tenant_id: uuid.UUID, ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """Read draft availability in one query without caching ORM inventory rows."""
+        if not ids:
+            return {}
+        return dict(self.db.execute(
+            select(InventoryItem.id, InventoryItem.current_stock).where(
+                InventoryItem.tenant_id == tenant_id, InventoryItem.id.in_(ids)
+            )
+        ).all())
+
     def list(
         self,
         tenant_id: uuid.UUID,

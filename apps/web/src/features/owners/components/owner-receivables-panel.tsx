@@ -17,7 +17,7 @@ type ReceivablesState = {
   error: string | null;
 };
 
-export function OwnerReceivablesPanel({ ownerId, isArchived = false }: { ownerId: string; isArchived?: boolean }) {
+export function OwnerReceivablesPanel({ ownerId, isArchived = false, onRefresh, refreshToken = 0 }: { ownerId: string; isArchived?: boolean; onRefresh?: () => unknown; refreshToken?: number }) {
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -37,7 +37,7 @@ export function OwnerReceivablesPanel({ ownerId, isArchived = false }: { ownerId
       if (current) setState({ ownerId, page, loading: false, response: null, error: getApiErrorMessage(error) });
     });
     return () => { current = false; };
-  }, [ownerId, page, refresh]);
+  }, [ownerId, page, refresh, refreshToken]);
 
   const loading = state.loading || state.ownerId !== ownerId || state.page !== page;
   const response = loading ? null : state.response;
@@ -47,12 +47,14 @@ export function OwnerReceivablesPanel({ ownerId, isArchived = false }: { ownerId
 
   return <section className="panel owner-receivables-panel" aria-labelledby="owner-receivables-title" aria-busy={loading}>
     <div className="section-heading section-heading--row">
-      <div><h2 id="owner-receivables-title">Saldo pendiente</h2>{isArchived ? <p>Propietario archivado · historial conservado</p> : null}</div>
+      <div><h2 id="owner-receivables-title">Cuenta corriente</h2><p>Saldo pendiente</p>{isArchived ? <p>Propietario archivado · historial conservado</p> : null}</div>
       <button className="secondary-button" type="button" disabled={loading} onClick={() => {
         setState({ ownerId, page, loading: true, response: null, error: null });
         setRefresh((value) => value + 1);
+        void onRefresh?.();
       }}><RefreshCw size={15} aria-hidden="true" /> Actualizar saldo</button>
     </div>
+    <Link className="secondary-button owner-account-link" href={`/owners/${ownerId}/receivables`}>Ver cuenta corriente</Link>
     {loading ? <p role="status">Cargando saldo pendiente…</p> : error ? <div className="error-state" role="alert">{error}</div> : data ? (
       !data.tracking_configured ? <p className="empty-state">Control de cuentas por cobrar no configurado.</p> : <>
         <div className="owner-receivables-summary">

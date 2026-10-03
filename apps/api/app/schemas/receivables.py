@@ -38,3 +38,34 @@ class OwnerReceivablesRead(BaseModel):
     @field_serializer("total_outstanding_ars", when_used="json")
     def serialize_money(self, value: Decimal) -> str:
         return format(value, ".2f")
+
+
+class ReceivablesActivityEventRead(BaseModel):
+    event_id: str
+    type: Literal["sale_confirmed", "payment_recorded", "payment_cancelled", "sale_reversed"]
+    occurred_at: datetime
+    sale_id: uuid.UUID
+    sale_date: date
+    patient_id: uuid.UUID | None
+    patient_name_snapshot: str | None
+    currency: Literal["USD", "ARS"]
+    payment_id: uuid.UUID | None
+    amount_ars: Decimal | None
+    payment_method_label: str | None
+    reference: str | None
+    notes: str | None
+    reason: str | None
+    payment_is_active: bool | None
+
+    @field_serializer("amount_ars", when_used="json")
+    def serialize_money(self, value: Decimal | None) -> str | None:
+        return format(value, ".2f") if value is not None else None
+
+
+class OwnerReceivablesActivityRead(BaseModel):
+    owner_id: uuid.UUID
+    tracking_configured: bool
+    tracking_started_at: datetime | None
+    currency: Literal["USD", "ARS"] | None
+    locale: str | None
+    events: list[ReceivablesActivityEventRead]

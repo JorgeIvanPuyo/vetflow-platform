@@ -14,13 +14,25 @@ from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.models.sale import Sale
 from app.repositories.owner import OwnerRepository
-from app.schemas.owner import OwnerCreate, OwnerSortBy, OwnerUpdate
+from app.repositories.receivables import ReceivablesRepository
+from app.schemas.owner import OwnerCreate, OwnerRead, OwnerSortBy, OwnerUpdate
 
 
 class OwnerService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.owner_repository = OwnerRepository(db)
+
+    def build_owner_list_response(self, tenant_id: uuid.UUID, owners: list[Owner]) -> list[dict]:
+        signals = ReceivablesRepository(self.db).owner_signals(tenant_id, {owner.id for owner in owners})
+        return [
+            {**OwnerRead.model_validate(owner).model_dump(mode="json"),
+             "has_active_receivable": bool(signals.get(owner.id, {}).get("has_active_receivable", False))}
+            for owner in owners
+        ]
+
+    def build_owner_response(self, tenant_id: uuid.UUID, owner: Owner) -> dict:
+        return self.build_owner_list_response(tenant_id, [owner])[0]
 
     def create_owner(self, tenant_id: uuid.UUID, payload: OwnerCreate) -> Owner:
         owner = Owner(tenant_id=tenant_id, **payload.model_dump())

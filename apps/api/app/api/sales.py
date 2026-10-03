@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
+from app.repositories.sale import SaleRepository
 from app.schemas.sale import (
     SaleCancel,
     SaleConfirm,
@@ -36,10 +37,23 @@ from app.services.storage import (
 router = APIRouter(prefix="/sales", tags=["sales"])
 
 
+def _detail_response(sale, tenant_id: uuid.UUID, db: Session) -> dict:
+    detail = SaleDetailRead.model_validate(sale)
+    if detail.status == "draft":
+        stocks = SaleRepository(db).current_stocks(tenant_id, [
+            item.inventory_item_id for item in detail.items
+            if item.line_type == "product" and item.inventory_item_id is not None
+        ])
+        for item in detail.items:
+            if item.line_type == "product":
+                item.current_stock = stocks.get(item.inventory_item_id)
+    return {"data": detail.model_dump(mode="json"), "meta": {}}
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_sale(payload: SaleCreate, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
     sale = SaleService(db).create(tenant.tenant_id, payload, created_by_user_id=tenant.user_id)
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.get("/filter-options")
@@ -82,19 +96,19 @@ def list_sales(
 @router.get("/{sale_id}")
 def get_sale(sale_id: uuid.UUID, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
     sale = SaleService(db).get(tenant.tenant_id, sale_id)
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.patch("/{sale_id}")
 def update_sale(sale_id: uuid.UUID, payload: SaleUpdate, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
     sale = SaleService(db).update(tenant.tenant_id, sale_id, payload)
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.post("/{sale_id}/cancel")
 def cancel_sale(sale_id: uuid.UUID, payload: SaleCancel, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
     sale = SaleService(db).cancel(tenant.tenant_id, sale_id, reason=payload.reason, cancelled_by_user_id=tenant.user_id)
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.post("/{sale_id}/confirm")
@@ -116,7 +130,7 @@ def confirm_sale(
     )
     if payload.initial_payment is not None or payload.initial_payments is not None:
         response.headers["Idempotency-Replayed"] = str(service.idempotency_replayed).lower()
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.post("/{sale_id}/reverse")
@@ -132,7 +146,7 @@ def reverse_sale(
         reason=payload.reason,
         reversed_by_user_id=tenant.user_id,
     )
-    return {"data": SaleDetailRead.model_validate(sale).model_dump(mode="json"), "meta": {}}
+    return _detail_response(sale, tenant.tenant_id, db)
 
 
 @router.post("/{sale_id}/fiscal-document", status_code=status.HTTP_201_CREATED)
