@@ -10,8 +10,9 @@ from app.core.config import get_settings
 from app.tests.test_service_pricing_migration import _config
 
 
-def test_secretary_is_only_migration_head():
-    assert ScriptDirectory.from_config(_config()).get_heads() == ["0051_secretary_role"]
+def test_secretary_is_followed_by_payment_idempotency():
+    script = ScriptDirectory.from_config(_config())
+    assert script.get_revision("0052_sale_payment_idempotency").down_revision == "0051_secretary_role"
 
 
 def test_secretary_upgrade_and_safe_downgrade(monkeypatch):

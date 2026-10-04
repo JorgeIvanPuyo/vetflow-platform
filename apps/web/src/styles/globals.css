@@ -4572,6 +4572,45 @@ code {
   flex-wrap: wrap;
 }
 
+.sale-confirmation-modal { background: var(--color-surface); }
+.sale-confirmation-extras summary { cursor: pointer; font-weight: 600; }
+.sale-confirmation-extras .field { margin-top: 0.75rem; }
+.sale-confirmation-balance { display: flex; justify-content: space-between; gap: 1rem; }
+
+.sale-confirmation-total {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-input);
+  background: var(--color-surface-soft);
+}
+
+.sale-confirmation-total strong { font-size: 1.5rem; overflow-wrap: anywhere; }
+.sale-confirmation-options, .sale-confirmation-fields { border: 0; margin: 0; padding: 0; }
+.sale-confirmation-fields { display: grid; gap: 0.85rem; min-width: 0; }
+.sale-confirmation-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.sale-confirmation-options legend { margin-bottom: 0.75rem; font-weight: 600; }
+.sale-confirmation-options label { display: flex; align-items: center; gap: 0.5rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius-input); cursor: pointer; }
+.sale-confirmation-options label:has(input:checked) { border-color: var(--color-primary); background: var(--color-success-soft); }
+.sale-confirmation-options input { width: 1rem; min-height: auto; margin: 0; flex-shrink: 0; accent-color: var(--color-primary); }
+.sale-confirmation-summary { display: grid; gap: 0.6rem; margin: 0; padding: 1rem; border-radius: var(--radius-input); background: var(--color-surface-soft); }
+.sale-confirmation-summary > div { display: flex; justify-content: space-between; gap: 1rem; }
+.sale-confirmation-summary dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.sale-confirmation-summary > div:last-child { border-top: 1px solid var(--color-border); padding-top: 0.6rem; }
+.sale-confirmation-row { min-width: 0; margin: 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-input); display: grid; gap: 0.75rem; }
+.sale-confirmation-row legend { padding: 0 0.35rem; font-weight: 600; }
+.sale-confirmation-row__fields { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 0.75rem; }
+.sale-confirmation-row .field { min-width: 0; }
+.sale-confirmation-row__error { color: var(--color-danger); }
+.sale-confirmation-row__remove { justify-self: end; }
+.sale-confirmation-add { justify-self: start; }
+
+@media (max-width: 640px) {
+  .sale-confirmation-options { grid-template-columns: 1fr; }
+  .sale-confirmation-row__fields { grid-template-columns: 1fr; }
+  .sale-confirmation-modal .purchase-modal__actions { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
 .purchase-attachment-form,
 .purchase-attachment-panel {
   display: grid;
@@ -9819,6 +9858,63 @@ a.purchase-dashboard-metric:focus-visible {
   -webkit-line-clamp: 1;
 }
 
+.owner-receivables-panel { min-width: 0; }
+.owner-receivables-summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.owner-receivables-summary > strong { font-size: 1.7rem; font-variant-numeric: tabular-nums; }
+.owner-receivables-summary > span, .owner-receivables-scope { color: var(--color-text-muted); }
+.owner-receivables-details summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.owner-receivables-table-scroll { overflow-x: auto; margin: 12px 0; }
+.owner-receivables-table-scroll table { width: 100%; border-collapse: collapse; }
+.owner-receivables-table-scroll th, .owner-receivables-table-scroll td { text-align: right; white-space: nowrap; padding: 12px; border-bottom: 1px solid var(--color-border); font-variant-numeric: tabular-nums; }
+.owner-receivables-table-scroll th:first-child, .owner-receivables-table-scroll td:first-child { text-align: left; }
+.owner-receivables-table-scroll small { display: block; color: var(--color-text-muted); margin-top: 4px; }
+.owner-receivables-scope { font-size: .85rem; margin-top: 16px; }
+
+.owner-account-link { margin: 8px 0; }
+.receivable-entity-card { position: relative; }
+.receivable-entity-card:focus-within { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+.receivable-badge {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.receivable-badge:hover { text-decoration: underline; }
+.receivable-badge:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.owner-account-page, .owner-account-page .panel { min-width: 0; }
+.owner-account-summary { display: flex; flex-wrap: wrap; gap: 24px 48px; margin: 0; }
+.owner-account-summary dt, .owner-account-amounts dt { color: var(--color-text-muted); }
+.owner-account-summary dd { margin: 6px 0 0; font-size: 1.8rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.owner-account-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.owner-account-filter-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 12px; }
+.owner-account-sales, .owner-account-activity { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 16px; }
+.owner-account-sale, .owner-account-activity > li { border: 1px solid var(--color-border); border-radius: 16px; padding: 20px; min-width: 0; }
+.owner-account-sale-heading, .owner-account-event-heading { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+.owner-account-page h3 { margin: 0 0 8px; font-size: 1rem; }
+.owner-account-page p, .owner-account-event-heading time { color: var(--color-text-muted); overflow-wrap: anywhere; }
+.owner-account-amounts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.owner-account-amounts dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.owner-account-event-amount { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; }
+@media (max-width: 600px) {
+  .owner-account-filters { grid-template-columns: 1fr; }
+  .owner-account-sale, .owner-account-activity > li { padding: 16px; }
+  .owner-account-amounts { grid-template-columns: 1fr; gap: 12px; }
+  .owner-account-amounts > div { display: flex; justify-content: space-between; gap: 12px; }
+  .owner-account-amounts dd { margin: 0; text-align: right; }
+  .owner-account-event-heading { flex-direction: column; }
+  .owner-account-event-amount { align-self: flex-end; }
+  .owner-account-summary { flex-direction: column; gap: 16px; }
+  .owner-account-summary dd { font-size: 1.5rem; }
+}
+
 .list-pagination {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -10735,4 +10831,94 @@ a.inventory-dashboard-kpi:focus-visible {
   .list-page-size-control--toolbar {
     padding-left: 0;
   }
+}
+
+/* Draft saving keeps the layout stable while native controls are disabled. */
+.sale-form-controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.sale-stock-warning {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.receivables-settings,
+.receivables-settings__fields {
+  min-width: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.receivables-settings__fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.receivables-settings h2,
+.receivables-settings p,
+.receivables-settings-dialog p { margin: 0; overflow-wrap: anywhere; }
+.receivables-settings__status { font-weight: 600; }
+.receivables-settings input[type="date"] { min-width: 0; width: 100%; max-width: 100%; }
+.receivables-settings__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.receivables-settings-dialog[open] { display: grid; gap: 1rem; }
+
+@media (max-width: 480px) {
+  .receivables-settings__actions { flex-direction: column; }
+  .receivables-settings__actions button { width: 100%; white-space: normal; }
+}
+
+/* P.13: payments report, with stacked detail at compact widths. */
+.payment-report-page { min-width: 0; }
+.payment-report-sales-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.payment-report-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 1rem; align-items: end; }
+.payment-report-filters .field, .payment-report-filters input, .payment-report-filters select { min-width: 0; width: 100%; }
+.payment-report-filter-error { grid-column: 1 / -1; }
+.payment-report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 1rem; }
+.payment-report-summary article { display: flex; flex-direction: column; gap: 0.5rem; overflow-wrap: anywhere; }
+.payment-report-total > strong { font-size: 1.5rem; }
+.payment-report-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }
+.payment-report-table th, .payment-report-table td { padding: 0.75rem 0.5rem; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--color-border); }
+.payment-report-table td span { display: block; margin-top: 0.35rem; }
+.payment-report-money { font-weight: 600; }
+.payment-report-mobile { display: none; }
+.payment-report-period { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .payment-report-desktop { display: none; }
+  .payment-report-mobile { display: grid; gap: 1rem; min-width: 0; }
+  .payment-report-mobile article { min-width: 0; overflow-wrap: anywhere; }
+  .payment-report-card-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .payment-report-mobile dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.75rem; margin: 0.5rem 0; }
+  .payment-report-mobile dd { margin: 0; }
+  .payment-report-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .payment-report-filters .primary-button { width: 100%; }
+}
+@media (max-width: 480px) {
+  .payment-report-filters { grid-template-columns: minmax(0, 1fr); }
+  .payment-report-page .purchase-pagination { flex-wrap: wrap; gap: 0.75rem; }
+}
+
+/* Structured payment method administration. */
+.payment-methods-page, .payment-methods-fields { min-width: 0; }
+.payment-methods-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 1rem; }
+.payment-methods-fields .field, .payment-methods-fields input:not([type="checkbox"]), .payment-methods-fields select { min-width: 0; width: 100%; }
+.payment-methods-table { width: 100%; min-width: 0; table-layout: fixed; }
+.payment-methods-table :is(th, td) { overflow-wrap: anywhere; white-space: normal; }
+.payment-methods-table .purchase-attachment-actions { flex-wrap: wrap; }
+.payment-methods-mobile { display: none; }
+@media (max-width: 900px) {
+  .payment-methods-desktop { display: none; }
+  .payment-methods-mobile { display: grid; gap: 1rem; min-width: 0; }
+  .payment-methods-mobile article { display: grid; gap: 0.75rem; min-width: 0; overflow-wrap: anywhere; }
+  .payment-methods-mobile .purchase-attachment-actions { display: flex; flex-wrap: wrap; }
+  .payment-methods-page .settings-breadcrumb { flex-wrap: wrap; }
 }

@@ -217,12 +217,13 @@ class ConsultationService:
             )
         self._validate_update_numbers(updates)
 
-        updated_consultation = self.consultation_repository.update(
+        self.consultation_repository.update(
             consultation,
             updates,
         )
         self.db.commit()
-        return updated_consultation
+        # Commit expires ORM state; reload through the scoped read before serialization.
+        return self.get_consultation(tenant_id, consultation_id)
 
     def generate_ai_summary(
         self,

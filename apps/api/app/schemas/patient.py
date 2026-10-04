@@ -44,6 +44,7 @@ class PatientUpdate(BaseModel):
 
 class PatientRead(PatientBase):
     owner_name: str | None = None
+    owner_has_active_receivable: bool | None = None
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

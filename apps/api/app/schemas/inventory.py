@@ -1,9 +1,11 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+from app.schemas.tenant_relations import tenant_scoped_relation_values
 
 
 InventoryCategory = Literal["medication", "vaccine", "supply", "food", "accessory", "other"]
@@ -330,6 +332,15 @@ class InventoryMovementRead(BaseModel):
     created_by_user_name: str | None = None
     created_by_user_email: str | None = None
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def scope_optional_references(cls, value: Any) -> Any:
+        return tenant_scoped_relation_values(value, cls.model_fields, {
+            "related_patient_id": "related_patient",
+            "related_consultation_id": "related_consultation",
+            "reverses_movement_id": "reverses_movement",
+        })
 
     @field_serializer("created_by_user_id")
     def serialize_created_by_user_id(

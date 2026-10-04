@@ -1,5 +1,8 @@
 "use client";
 
+import { ReceivableBadge } from "@/features/owners/components/receivable-badge";
+import { useRefreshOnReturn } from "@/features/owners/hooks/use-refresh-on-return";
+
 import { canDeleteClinicalHistory, canPerformClinicalActions } from "@/lib/permissions";
 
 import { useCurrentUser } from "@/features/auth/current-user-context";
@@ -327,6 +330,7 @@ const speciesOptions: Array<{ value: Exclude<SpeciesOption, "">; label: string; 
 ];
 
 export function PatientDetail({ patientId }: PatientDetailProps) {
+  const readVersion = useRef(0);
   const { role } = useCurrentUser();
   const isClinicalReadOnly = !canPerformClinicalActions(role);
   const router = useRouter();
@@ -387,6 +391,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const isPdfConfigurationBusy = isGeneratingPdfPreview || isDownloadingPdf;
 
   const loadPatientDetail = useCallback(async () => {
+    const version = ++readVersion.current;
     setState((current) => ({ ...current, isLoading: true, errorMessage: null }));
 
     try {
@@ -418,6 +423,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         }
       }
 
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -433,6 +439,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
         errorMessage: null,
       }));
     } catch (error) {
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -447,6 +454,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
     }
   }, [patientId]);
 
+  useRefreshOnReturn(loadPatientDetail);
+
   const preventive = usePreventiveCare({
     patientId,
     onChanged: async (message) => {
@@ -458,6 +467,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
 
   useEffect(() => {
     void loadPatientDetail();
+    return () => { readVersion.current += 1; };
   }, [loadPatientDetail]);
 
   useEffect(() => {
@@ -1278,7 +1288,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
   const { patient } = state.clinicalHistory;
 
   return (
-    <div className="page-stack patient-detail-page">
+    <div className="page-stack patient-detail-page" aria-busy={state.isLoading}>
       <section className="detail-hero patient-detail-hero">
         <Link className="back-link" href="/patients">
           <ArrowLeft aria-hidden="true" size={17} /> Volver a pacientes
@@ -1287,6 +1297,8 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
           <PatientAvatar patient={patient} size="large" />
           <div>
             <h1>{patient.name}</h1>
+            {patient.owner_name ? <p>Propietario: {patient.owner_name}</p> : null}
+            <ReceivableBadge ownerId={patient.owner_id} hasActiveReceivable={!state.isLoading && patient.owner_has_active_receivable} forPatient />
             <p>
               {patient.breed ? `${patient.breed} · ` : ""}
               {patient.species}

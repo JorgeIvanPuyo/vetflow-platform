@@ -27,6 +27,7 @@ import { useCurrentUser } from "@/features/auth/current-user-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 import { ClinicalCatalogsSection } from "@/features/clinic/components/clinical-catalogs-section";
 import { InventoryCatalogsSection } from "@/features/clinic/components/inventory-catalogs-section";
+import { ReceivablesSettingsSection } from "@/features/clinic/components/receivables-settings-section";
 import { SpeciesCatalogSection } from "@/features/clinic/components/species-catalog-section";
 import { SuppliersSection } from "@/features/clinic/components/suppliers-section";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
@@ -650,14 +651,18 @@ export function SettingsScreen() {
                 <ReceiptText size={20} />
               </span>
               <span className="settings-section-card__copy">
-                <strong>Ventas y facturación</strong>
-                <small>Formas de pago, emisores y comprobantes manuales.</small>
+                <strong>Ventas y cobros</strong>
+                <small>Formas de pago, cuentas por cobrar y comprobantes manuales.</small>
               </span>
               <ChevronDown aria-hidden="true" size={16} />
             </button>
 
             {expandedSettingsSections.salesBilling ? (
               <div className="settings-section-card__content">
+                {state.preferences ? <ReceivablesSettingsSection preferences={state.preferences} timezone={state.profile.timezone ?? "America/Panama"} onSaved={(preferences) => {
+                  setState((current) => ({ ...current, preferences }));
+                  void refreshPreferences();
+                }} /> : null}
                 <Link className="settings-navigation-row" href="/settings/sales/payment-methods">
                   <span><strong>Formas de pago</strong><small>Configura las opciones disponibles para registrar cobros.</small></span>
                   <span aria-hidden="true">→</span>

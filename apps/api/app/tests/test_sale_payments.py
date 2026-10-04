@@ -27,7 +27,9 @@ def _method(client, tenant, **overrides):
 
 
 def _sale(client, tenant, *, status="confirmed", total="100.00"):
-    created = client.post("/api/v1/sales", headers=_headers(tenant), json={"owner_id": None, "patient_id": None, "sale_date": "2026-08-09", "items": [{"line_type": "service", "description": "Consulta", "quantity": "1", "unit_price_ars": total, "discount_percentage": "0"}]})
+    from app.tests.test_sales import _owner
+    owner_id = _owner(client, tenant)["id"] if status == "confirmed" else None
+    created = client.post("/api/v1/sales", headers=_headers(tenant), json={"owner_id": owner_id, "patient_id": None, "sale_date": "2026-08-09", "items": [{"line_type": "service", "description": "Consulta", "quantity": "1", "unit_price_ars": total, "discount_percentage": "0"}]})
     assert created.status_code == 201, created.text
     sale = created.json()["data"]
     if status == "confirmed":
@@ -128,6 +130,177 @@ def test_list_payment_filters_and_non_applicable_status(client, tenant):
     assert client.get(f"/api/v1/sales/{draft['id']}", headers=_headers(tenant)).json()["data"]["payment_status"] is None
     assert [item["id"] for item in client.get("/api/v1/sales?payment_status=unpaid", headers=_headers(tenant)).json()["data"]] == [unpaid["id"]]
     assert [item["id"] for item in client.get("/api/v1/sales?payment_status=partial", headers=_headers(tenant)).json()["data"]] == [partial["id"]]
+
+
+def test_zero_total_confirmation_is_paid_without_creating_payments(client, tenant):
+    sale = _sale(client, tenant, total="0.00")
+    assert sale["paid_total_ars"] == sale["balance_due_ars"] == "0.00"
+    assert sale["payment_status"] == "paid"
+    assert sale["payments"] == []
+    response = _pay(client, tenant, sale, _method(client, tenant), "0.01")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sale_payment_exceeds_balance"
+    history = client.get(f"/api/v1/sales/{sale['id']}/payments", headers=_headers(tenant)).json()
+    assert history["data"] == []
+    assert history["meta"]["payment_status"] == "paid"
+
+
+@pytest.mark.parametrize(
+    "total,active,voided,expected",
+    [
+        ("0.00", "0.00", "0.00", "paid"),
+        ("100.00", "0.00", "0.00", "unpaid"),
+        ("100.00", "40.00", "0.00", "partial"),
+        ("100.00", "100.00", "0.00", "paid"),
+        ("100.00", "120.00", "0.00", "requires_attention"),
+        ("0.00", "1.00", "0.00", "requires_attention"),
+        ("0.00", "0.00", "50.00", "paid"),
+        ("100.00", "0.00", "100.00", "unpaid"),
+        ("100.00", "40.00", "60.00", "partial"),
+        ("100.00", "100.00", "20.00", "paid"),
+    ],
+)
+def test_confirmed_payment_properties_and_summary(total, active, voided, expected):
+    total, active, voided = map(Decimal, (total, active, voided))
+    sale = Sale(status="confirmed", total_ars=total)
+    if active:
+        sale.payments.append(SalePayment(amount_ars=active, is_active=True))
+    if voided:
+        sale.payments.append(SalePayment(amount_ars=voided, is_active=False))
+
+    assert sale.paid_total_ars == active
+    assert sale.balance_due_ars == total - active
+    assert sale.payment_status == expected
+    # This flag retains its existing meaning: active payments on a reversed sale.
+    assert sale.payment_requires_attention is False
+    assert SalePaymentService._summary(sale.status, total, sale.paid_total_ars) == {
+        "paid_total_ars": active,
+        "balance_due_ars": total - active,
+        "payment_status": expected,
+        "payment_requires_attention": False,
+    }
+
+
+@pytest.mark.parametrize("status", ["draft", "cancelled", "invoiced", "reversed"])
+@pytest.mark.parametrize("total,paid", [("0", "0"), ("100", "0"), ("100", "40"), ("100", "120")])
+def test_non_confirmed_payment_semantics_are_preserved(status, total, paid):
+    total, paid = Decimal(total), Decimal(paid)
+    sale = Sale(status=status, total_ars=total)
+    if paid:
+        sale.payments.append(SalePayment(amount_ars=paid, is_active=True))
+    attention = status == "reversed" and paid > 0
+    expected = "requires_attention" if attention else None
+    assert sale.payment_status == expected
+    assert sale.payment_requires_attention is attention
+    assert SalePaymentService._summary(status, total, paid) == {
+        "paid_total_ars": paid,
+        "balance_due_ars": total - paid,
+        "payment_status": expected,
+        "payment_requires_attention": attention,
+    }
+
+
+def _historical_payment(db_session, tenant, sale, method, amount):
+    """Seed inconsistent history in the test DB, bypassing overpayment validation."""
+    payment = SalePayment(
+        tenant_id=tenant.id,
+        sale_id=uuid.UUID(sale["id"]),
+        payment_method_id=uuid.UUID(method["id"]),
+        payment_method_label_snapshot=method["label"],
+        payment_method_type_snapshot=method["type"],
+        amount_ars=Decimal(amount),
+        received_at=datetime(2026, 8, 9, 12, tzinfo=UTC),
+        is_active=True,
+    )
+    db_session.add(payment)
+    db_session.commit()
+    return {"id": str(payment.id)}
+
+
+def test_payment_reads_and_exact_filter_sets_agree_across_tenants(client, db_session, tenant, other_tenant):
+    scenarios = [
+        # Lifecycle, total, payment, void payment, expected classification.
+        ("confirmed", "0.00", "0.00", False, "paid"),
+        ("confirmed", "100.00", "0.00", False, "unpaid"),
+        ("confirmed", "100.00", "40.00", False, "partial"),
+        ("confirmed", "100.00", "100.00", False, "paid"),
+        ("confirmed", "100.00", "120.00", False, "requires_attention"),
+        ("confirmed", "0.00", "1.00", False, "requires_attention"),
+        ("confirmed", "100.00", "100.00", True, "unpaid"),
+        ("confirmed", "0.00", "50.00", True, "paid"),
+        ("reversed", "100.00", "40.00", False, "requires_attention"),
+        ("reversed", "100.00", "0.00", False, None),
+        ("draft", "0.00", "0.00", False, None),
+        ("cancelled", "0.00", "0.00", False, None),
+    ]
+    expected_by_tenant = {}
+    methods = {}
+    for current_tenant in (tenant, other_tenant):
+        method = methods[current_tenant.id] = _method(client, current_tenant)
+        expected = expected_by_tenant[current_tenant.id] = {}
+        for status, total, amount, voided, payment_status in scenarios:
+            sale = _sale(client, current_tenant, status="confirmed" if status == "reversed" else status, total=total)
+            if Decimal(amount):
+                if Decimal(amount) > Decimal(total):
+                    payment = _historical_payment(db_session, current_tenant, sale, method, amount)
+                else:
+                    response = _pay(client, current_tenant, sale, method, amount)
+                    assert response.status_code == 201, response.text
+                    payment = response.json()["data"]
+                if voided:
+                    response = client.post(f"/api/v1/sale-payments/{payment['id']}/void", headers=_headers(current_tenant), json={"reason": "Corrección"})
+                    assert response.status_code == 200, response.text
+            if status == "reversed":
+                response = client.post(f"/api/v1/sales/{sale['id']}/reverse", headers=_headers(current_tenant), json={"reason": "Corrección"})
+                assert response.status_code == 200, response.text
+            paid = Decimal("0.00") if voided else Decimal(amount)
+            expected[sale["id"]] = {
+                "paid_total_ars": paid,
+                "balance_due_ars": Decimal(total) - paid,
+                "payment_status": payment_status,
+                "payment_requires_attention": status == "reversed" and paid > 0,
+            }
+
+    # An inconsistent foreign payment must not alter the local zero-total sale
+    # through detail relationships, aggregate subqueries, summaries or filters.
+    zero_sale_id = next(iter(expected_by_tenant[tenant.id]))
+    foreign_payment = _historical_payment(db_session, other_tenant, {"id": zero_sale_id}, methods[other_tenant.id], "30.00")
+
+    for current_tenant, foreign_tenant in ((tenant, other_tenant), (other_tenant, tenant)):
+        expected = expected_by_tenant[current_tenant.id]
+        response = client.get("/api/v1/sales?page_size=100", headers=_headers(current_tenant))
+        assert response.status_code == 200, response.text
+        listing = response.json()
+        assert listing["meta"]["total"] == len(expected)
+        assert {row["id"] for row in listing["data"]} == set(expected)
+        for row in listing["data"]:
+            sale_id = row["id"]
+            detail_response = client.get(f"/api/v1/sales/{sale_id}", headers=_headers(current_tenant))
+            history_response = client.get(f"/api/v1/sales/{sale_id}/payments", headers=_headers(current_tenant))
+            assert detail_response.status_code == history_response.status_code == 200
+            detail, history = detail_response.json()["data"], history_response.json()
+            for read in (row, detail, history["meta"]):
+                for field, value in expected[sale_id].items():
+                    actual = Decimal(str(read[field])) if field.endswith("_ars") else read[field]
+                    assert actual == value, (sale_id, field, read)
+            assert foreign_payment["id"] not in {payment["id"] for payment in detail["payments"]}
+            assert foreign_payment["id"] not in {payment["id"] for payment in history["data"]}
+            if sale_id == zero_sale_id:
+                assert detail["payments"] == history["data"] == []
+
+        for payment_status in ("paid", "partial", "unpaid", "requires_attention"):
+            response = client.get(f"/api/v1/sales?payment_status={payment_status}&page_size=100", headers=_headers(current_tenant))
+            assert response.status_code == 200, response.text
+            filtered = response.json()
+            expected_ids = {sale_id for sale_id, values in expected.items() if values["payment_status"] == payment_status}
+            assert {row["id"] for row in filtered["data"]} == expected_ids
+            assert filtered["meta"]["total"] == len(expected_ids)
+            assert all(row["payment_status"] == payment_status for row in filtered["data"])
+
+        foreign_sale_id = next(iter(expected_by_tenant[foreign_tenant.id]))
+        for suffix in ("", "/payments"):
+            response = client.get(f"/api/v1/sales/{foreign_sale_id}{suffix}", headers=_headers(current_tenant))
+            assert response.status_code == 404
 
 
 def test_concurrent_payments_cannot_overpay(postgres_test_session_factory):

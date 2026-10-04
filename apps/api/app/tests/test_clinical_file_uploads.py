@@ -245,8 +245,8 @@ def test_upload_rejects_patient_from_another_tenant(client, tenant, other_tenant
         files={"file": ("laboratorio.pdf", b"%PDF-1.4", "application/pdf")},
     )
 
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "invalid_cross_tenant_access"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "patient_not_found"
     assert storage.uploads == []
 
 

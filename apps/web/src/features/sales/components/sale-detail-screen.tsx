@@ -10,9 +10,10 @@ import { formatPurchaseCurrency, formatPurchaseDate, formatPurchaseDateTime, for
 import { labelSaleStatus } from "@/features/sales/components/sale-helpers";
 import { SaleFiscalDocumentPanel } from "@/features/sales/components/sale-fiscal-document-panel";
 import { SalePaymentsPanel } from "@/features/sales/components/sale-payments-panel";
+import { SaleConfirmationModal } from "@/features/sales/components/sale-confirmation-modal";
 import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
-import { cancelSale, confirmSale, getSale, reverseSale } from "@/services/sales";
+import { cancelSale, getSale, reverseSale } from "@/services/sales";
 import type { Sale } from "@/types/api";
 
 export function SaleDetailScreen({ saleId }: { saleId: string }) {
@@ -24,7 +25,6 @@ export function SaleDetailScreen({ saleId }: { saleId: string }) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showReversal, setShowReversal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [isReversing, setIsReversing] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +41,20 @@ export function SaleDetailScreen({ saleId }: { saleId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  const closeConfirmation = useCallback(() => setShowConfirmation(false), []);
+  const confirmed = useCallback((updated: Sale) => {
+    setSale(updated);
+    setError(null);
+    setShowConfirmation(false);
+  }, []);
+
   useEffect(() => {
-    if (!showConfirmation && !showReversal) return;
+    if (!showReversal) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.requestAnimationFrame(() => dialogRef.current?.focus());
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isConfirming || isReversing) return;
-      setShowConfirmation(false);
+      if (event.key !== "Escape" || isReversing) return;
       setShowReversal(false);
       setModalError(null);
     };
@@ -57,7 +63,7 @@ export function SaleDetailScreen({ saleId }: { saleId: string }) {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isConfirming, isReversing, showConfirmation, showReversal]);
+  }, [isReversing, showReversal]);
 
   async function handleCancel() {
     if (!reason.trim()) { setError("Ingresa un motivo de cancelación."); return; }
@@ -65,26 +71,6 @@ export function SaleDetailScreen({ saleId }: { saleId: string }) {
     try { setSale((await cancelSale(saleId, reason.trim())).data); setReason(""); }
     catch (value) { setError(getApiErrorMessage(value)); }
     finally { setIsCancelling(false); }
-  }
-
-  async function handleConfirm() {
-    if (isConfirming) return;
-    setIsConfirming(true); setModalError(null);
-    try {
-      setSale((await confirmSale(saleId)).data);
-      setShowConfirmation(false);
-    } catch (value) {
-      const message = getApiErrorMessage(value);
-      try {
-        const latest = (await getSale(saleId)).data;
-        setSale(latest);
-        if (latest.status === "confirmed") { setShowConfirmation(false); return; }
-        if (latest.status !== "draft") { setShowConfirmation(false); setError(message); return; }
-      } catch {
-        // Keep the original confirmation error because it is the actionable one.
-      }
-      setModalError(message);
-    } finally { setIsConfirming(false); }
   }
 
   async function handleReverse() {
@@ -124,7 +110,7 @@ export function SaleDetailScreen({ saleId }: { saleId: string }) {
     {sale.status === "cancelled" ? <section className="panel purchase-cancellation"><h2>Cancelación</h2><p>{sale.cancellation_reason}</p><small>{formatPurchaseUser(sale.cancelled_by_user_name, sale.cancelled_by_user_email)} · {formatPurchaseDateTime(sale.cancelled_at)}</small></section> : null}
     {sale.status === "draft" ? <section className="panel purchase-cancel-form"><div><h2>Cancelar borrador</h2><p>La venta permanecerá histórica; no se eliminarán sus líneas.</p></div><label className="field"><span>Motivo *</span><textarea rows={3} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="danger-button" type="button" disabled={isCancelling} onClick={() => void handleCancel()}><Ban size={17} /> {isCancelling ? "Cancelando..." : "Cancelar venta"}</button></section> : null}
 
-    {showConfirmation ? createPortal(<div className="purchase-modal-backdrop" role="presentation"><section ref={dialogRef} tabIndex={-1} className="panel purchase-modal" role="dialog" aria-modal="true" aria-labelledby="sale-confirm-title" aria-describedby="sale-confirm-description"><button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar confirmación" disabled={isConfirming} onClick={() => { setShowConfirmation(false); setModalError(null); }}><X size={18} /></button><div className="section-heading"><h2 id="sale-confirm-title">Confirmar venta</h2><p id="sale-confirm-description">Se aplicarán exactamente las líneas guardadas en este borrador.</p></div><ul className="purchase-receive-effects"><li>Se descontará inventario de cada producto.</li><li>Los servicios no afectarán stock.</li><li>La venta quedará cerrada y no podrá editarse.</li><li>La facturación se realizará en un paso posterior.</li></ul><div className="purchase-receive-summary"><div><span>Cliente</span><strong>{sale.owner_name_snapshot || "Venta de mostrador"}</strong></div><div><span>Paciente</span><strong>{sale.patient_name_snapshot || "Sin paciente"}</strong></div><div><span>Líneas</span><strong>{sale.items.length}</strong></div><div><span>Productos</span><strong>{productCount}</strong></div><div><span>Servicios</span><strong>{serviceCount}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(sale.total_ars, moneyPreferences)}</strong></div></div><div className="purchase-modal-lines">{sale.items.map((line) => <div key={line.id}><span><strong>{line.description_snapshot}</strong><small>{line.line_type === "product" ? `${line.quantity} ${line.unit_snapshot} · descuenta stock` : `${line.quantity} · sin movimiento de inventario`}</small></span><strong>{formatPurchaseCurrency(line.line_total_ars, moneyPreferences)}</strong></div>)}</div>{modalError ? <div className="error-state" role="alert">{modalError}</div> : null}<div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isConfirming} onClick={() => { setShowConfirmation(false); setModalError(null); }}>Volver</button><button className="primary-button" type="button" disabled={isConfirming} onClick={() => void handleConfirm()}><CheckCircle2 size={17} /> {isConfirming ? "Confirmando..." : "Confirmar venta"}</button></div></section></div>, document.body) : null}
+    {showConfirmation ? <SaleConfirmationModal sale={sale} onConfirmed={confirmed} onClose={closeConfirmation} /> : null}
     {showReversal ? createPortal(<div className="purchase-modal-backdrop" role="presentation"><section ref={dialogRef} tabIndex={-1} className="panel purchase-modal" role="dialog" aria-modal="true" aria-labelledby="sale-reverse-title"><button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar reversión" disabled={isReversing} onClick={() => { setShowReversal(false); setModalError(null); }}><X size={18} /></button><div className="section-heading"><h2 id="sale-reverse-title">Revertir venta completa</h2><p>Se restaurará el stock de todos los productos. Los movimientos originales permanecerán en el historial.</p></div><label className="field"><span>Motivo *</span><textarea rows={4} maxLength={1000} value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} /></label>{modalError ? <div className="error-state" role="alert">{modalError}</div> : null}<div className="purchase-modal__actions"><button className="secondary-button" type="button" disabled={isReversing} onClick={() => { setShowReversal(false); setModalError(null); }}>Volver</button><button className="danger-button" type="button" disabled={isReversing} onClick={() => void handleReverse()}><RotateCcw size={17} /> {isReversing ? "Revirtiendo..." : "Confirmar reversión"}</button></div></section></div>, document.body) : null}
   </div>;
 }

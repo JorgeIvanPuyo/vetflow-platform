@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
@@ -11,6 +12,7 @@ from app.schemas.follow_up import FollowUpRead
 from app.schemas.patient import PatientRead
 from app.schemas.preventive_care import PreventiveCareRead
 from app.schemas.ai import AI_DISCLAIMER
+from app.schemas.tenant_relations import tenant_scoped_relation_values
 
 
 CONSULTATION_STATUSES = {"draft", "completed"}
@@ -134,6 +136,14 @@ class ConsultationMedicationRead(ConsultationMedicationCreate):
     created_at: datetime
     updated_at: datetime
 
+    @model_validator(mode="before")
+    @classmethod
+    def scope_inventory_references(cls, value: Any) -> Any:
+        return tenant_scoped_relation_values(value, cls.model_fields, {
+            "inventory_item_id": "inventory_item",
+            "inventory_movement_id": "inventory_movement",
+        })
+
 
 class ConsultationStudyRequestCreate(BaseModel):
     name: str
@@ -151,6 +161,13 @@ class ConsultationStudyRequestRead(ConsultationStudyRequestCreate):
     exam_catalog_item_name: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def scope_catalog_reference(cls, value: Any) -> Any:
+        return tenant_scoped_relation_values(value, cls.model_fields, {
+            "exam_catalog_item_id": "exam_catalog_item",
+        })
 
 
 class ConsultationRead(ConsultationBase):
@@ -174,6 +191,13 @@ class ConsultationRead(ConsultationBase):
     updated_at: datetime
     medications: list[ConsultationMedicationRead] = Field(default_factory=list)
     study_requests: list[ConsultationStudyRequestRead] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def scope_parent_reference(cls, value: Any) -> Any:
+        return tenant_scoped_relation_values(
+            value, cls.model_fields, {"parent_consultation_id": "parent_consultation"},
+        )
 
     @field_serializer("created_by_user_id")
     def serialize_created_by_user_id(

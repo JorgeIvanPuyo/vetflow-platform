@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, select, tuple_
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -18,6 +18,7 @@ from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
+from app.repositories.receivables import ReceivablesRepository
 from app.schemas.patient import PatientCreate, PatientRead, PatientSortBy, PatientUpdate
 from app.services.storage import ClinicalFileStorageService
 
@@ -368,6 +369,11 @@ class PatientService:
         *,
         storage_service: ClinicalFileStorageService | None = None,
     ) -> dict:
+        return self.build_patient_list_response([patient], storage_service=storage_service)[0]
+
+    def _serialize_patient(
+        self, patient: Patient, *, storage_service: ClinicalFileStorageService | None,
+    ) -> dict:
         data = PatientRead.model_validate(patient).model_dump(mode="json")
         data["photo_url"] = self._build_signed_photo_url(
             patient,
@@ -384,15 +390,19 @@ class PatientService:
         if not patients:
             return []
         # Scope both sides of the relation, including inconsistent legacy links.
-        owner_keys = {(patient.tenant_id, patient.owner_id) for patient in patients}
-        owners = self.db.scalars(select(Owner).where(
-            tuple_(Owner.tenant_id, Owner.id).in_(owner_keys)
-        )).all()
-        owner_names = {(owner.tenant_id, owner.id): owner.full_name for owner in owners}
+        owners_by_tenant: dict[uuid.UUID, set[uuid.UUID]] = {}
+        for patient in patients:
+            owners_by_tenant.setdefault(patient.tenant_id, set()).add(patient.owner_id)
+        signals = {
+            (tenant_id, owner_id): signal
+            for tenant_id, owner_ids in owners_by_tenant.items()
+            for owner_id, signal in ReceivablesRepository(self.db).owner_signals(tenant_id, owner_ids).items()
+        }
         return [
             {
-                **self.build_patient_response(patient, storage_service=storage_service),
-                "owner_name": owner_names.get((patient.tenant_id, patient.owner_id)),
+                **self._serialize_patient(patient, storage_service=storage_service),
+                "owner_name": signals.get((patient.tenant_id, patient.owner_id), {}).get("full_name"),
+                "owner_has_active_receivable": bool(signals.get((patient.tenant_id, patient.owner_id), {}).get("has_active_receivable", False)),
             }
             for patient in patients
         ]

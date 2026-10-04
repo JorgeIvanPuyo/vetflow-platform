@@ -4,9 +4,11 @@ from decimal import Decimal
 from time import sleep
 
 import pytest
+from sqlalchemy import select
 
 from app.models.consultation import Consultation
 from app.models.inventory_item import InventoryItem
+from app.models.inventory_movement import InventoryMovement
 from app.models.user import User
 
 
@@ -1348,19 +1350,27 @@ def test_global_movement_list_filters_by_created_by_and_date(client, db_session,
         json=_item_payload(name="Producto con usuario"),
     )
     item = item_response.json()["data"]
-    client.post(
+    entry = client.post(
         f"/api/v1/inventory/items/{item['id']}/movements/entry",
         headers=_auth_headers(user.email),
         json={"quantity": "4"},
     )
+    assert entry.status_code == 201
+    movement = db_session.scalar(select(InventoryMovement).where(
+        InventoryMovement.tenant_id == tenant.id,
+        InventoryMovement.id == uuid.UUID(entry.json()["data"]["id"]),
+    ))
+    # Avoid mixing the host's local day with timestamps stored in UTC.
+    movement.created_at = datetime(2026, 10, 2, 13, tzinfo=UTC)
+    db_session.commit()
 
     response = client.get(
         "/api/v1/inventory/movements",
         headers=_headers(tenant),
         params={
             "created_by_user_id": str(user.id),
-            "date_from": date.today().isoformat(),
-            "date_to": date.today().isoformat(),
+            "date_from": "2026-10-02",
+            "date_to": "2026-10-02",
         },
     )
 

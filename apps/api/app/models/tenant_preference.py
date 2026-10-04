@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Integer, JSON, Numeric, String, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Numeric, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -11,6 +12,10 @@ from app.models.base import BaseModel
 
 class TenantPreference(BaseModel):
     __tablename__ = "tenant_preferences"
+
+    receivables_tracking_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),

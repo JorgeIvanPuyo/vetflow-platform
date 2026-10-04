@@ -2,12 +2,14 @@
 
 import { ChevronLeft, ChevronRight, Mail, MapPin, PawPrint, Phone, Plus, UserPlus, X } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { createOwner, getOwners } from "@/services/owners";
 import { getPatients } from "@/services/patients";
 import type { CreateOwnerPayload, Owner, Patient } from "@/types/api";
+import { ReceivableBadge } from "./receivable-badge";
+import { useRefreshOnReturn } from "../hooks/use-refresh-on-return";
 
 type OwnersState = {
   isLoading: boolean;
@@ -54,6 +56,7 @@ const initialFormState: OwnerFormState = {
 };
 
 export function OwnersScreen() {
+  const readVersion = useRef(0);
   const [state, setState] = useState<OwnersState>(initialOwnersState);
   const [formState, setFormState] = useState<OwnerFormState>(initialFormState);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -61,6 +64,7 @@ export function OwnersScreen() {
   const [pageSize, setPageSize] = useState(12);
 
   const loadOwners = useCallback(async (requestedPage = page) => {
+    const version = ++readVersion.current;
     setState((current) => ({
       ...current,
       isLoading: true,
@@ -72,6 +76,7 @@ export function OwnersScreen() {
         getOwners({ page: requestedPage, pageSize }),
         getPatients(),
       ]);
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -80,6 +85,7 @@ export function OwnersScreen() {
         meta: ownersResponse.meta,
       }));
     } catch (error) {
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -88,8 +94,11 @@ export function OwnersScreen() {
     }
   }, [page, pageSize]);
 
+  useRefreshOnReturn(loadOwners);
+
   useEffect(() => {
     void loadOwners();
+    return () => { readVersion.current += 1; };
   }, [loadOwners]);
 
   const petCountByOwner = useMemo(() => {
@@ -197,13 +206,15 @@ export function OwnersScreen() {
             const petCount = petCountByOwner[owner.id] ?? 0;
 
             return (
-              <Link className="owner-card-link" href={`/owners/${owner.id}`} key={owner.id}>
+              <div className="owner-card-link receivable-entity-card" key={owner.id}>
+                <Link className="patient-card__link-overlay" href={`/owners/${owner.id}`} aria-label={`Ver propietario ${owner.full_name}`} />
                 <span className="contact-avatar" aria-hidden="true">
                   {owner.full_name.charAt(0).toUpperCase()}
                 </span>
                 <span className="owner-card-link__body">
                   <span className="owner-card-link__title-row">
                     <strong>{owner.full_name}</strong>
+                    <ReceivableBadge ownerId={owner.id} hasActiveReceivable={owner.has_active_receivable} />
                     <span className="badge badge--success">
                       <PawPrint size={13} /> {petCount} mascota{petCount === 1 ? "" : "s"}
                     </span>
@@ -215,7 +226,7 @@ export function OwnersScreen() {
                 <span className="list-page__chevron" aria-hidden="true">
                   <ChevronRight size={16} />
                 </span>
-              </Link>
+              </div>
             );
           })}
         </section>

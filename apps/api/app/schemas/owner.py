@@ -20,6 +20,7 @@ class OwnerCreate(OwnerBase):
 
 
 class OwnerUpdate(BaseModel):
+    is_active: bool | None = None
     full_name: str | None = None
     document_id: str | None = None
     phone: str | None = None
@@ -32,5 +33,9 @@ class OwnerRead(OwnerBase):
 
     id: uuid.UUID
     tenant_id: uuid.UUID
+    is_active: bool
+    # Embedded domain snapshots may not compute this projection. Owner API
+    # response builders always supply a fresh boolean; NULL means not evaluated.
+    has_active_receivable: bool | None = None
     created_at: datetime
     updated_at: datetime

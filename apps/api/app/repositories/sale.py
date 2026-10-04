@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import asc, desc, exists, func, or_, select
+from sqlalchemy import and_, asc, desc, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory_item import InventoryItem
@@ -12,6 +12,7 @@ from app.models.payment import SalePayment
 from app.models.sale import Sale, SaleItem
 from app.models.sale_fiscal import SaleFiscalDocument, SaleFiscalDocumentFileVersion
 from app.models.user import User
+from app.repositories.payment import active_payment_total_statement
 
 
 class SaleRepository:
@@ -86,6 +87,16 @@ class SaleRepository:
             return []
         return list(self.db.scalars(select(InventoryItem).where(InventoryItem.tenant_id == tenant_id, InventoryItem.id.in_(ids))).all())
 
+    def current_stocks(self, tenant_id: uuid.UUID, ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+        """Read draft availability in one query without caching ORM inventory rows."""
+        if not ids:
+            return {}
+        return dict(self.db.execute(
+            select(InventoryItem.id, InventoryItem.current_stock).where(
+                InventoryItem.tenant_id == tenant_id, InventoryItem.id.in_(ids)
+            )
+        ).all())
+
     def list(
         self,
         tenant_id: uuid.UUID,
@@ -139,19 +150,22 @@ class SaleRepository:
         elif fiscal_status == "requires_attention":
             filters.extend((Sale.status == "reversed", active_document))
 
-        paid_total = select(func.coalesce(func.sum(SalePayment.amount_ars), 0)).where(
-            SalePayment.tenant_id == tenant_id,
+        paid_total = active_payment_total_statement(tenant_id).where(
             SalePayment.sale_id == Sale.id,
-            SalePayment.is_active.is_(True),
         ).correlate(Sale).scalar_subquery()
+        # SQL equivalent of calculate_payment_status: zero totals are paid;
+        # confirmed overpayments and reversed sales with active payments need attention.
         if payment_status == "unpaid":
-            filters.extend((Sale.status == "confirmed", paid_total == 0))
+            filters.extend((Sale.status == "confirmed", paid_total == 0, Sale.total_ars > 0))
         elif payment_status == "partial":
             filters.extend((Sale.status == "confirmed", paid_total > 0, paid_total < Sale.total_ars))
         elif payment_status == "paid":
             filters.extend((Sale.status == "confirmed", paid_total == Sale.total_ars))
         elif payment_status == "requires_attention":
-            filters.extend((Sale.status == "reversed", paid_total > 0))
+            filters.append(or_(
+                and_(Sale.status == "confirmed", paid_total > Sale.total_ars),
+                and_(Sale.status == "reversed", paid_total > 0),
+            ))
 
         item_count = select(func.count(SaleItem.id)).where(SaleItem.tenant_id == tenant_id, SaleItem.sale_id == Sale.id).correlate(Sale).scalar_subquery()
         sort_columns = {"sale_date": Sale.sale_date, "created_at": Sale.created_at, "total_ars": Sale.total_ars, "status": Sale.status}

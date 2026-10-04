@@ -169,8 +169,8 @@ def test_prevent_cross_tenant_preventive_care_creation_and_access(
             "applied_at": "2026-04-24T10:30:00Z",
         },
     )
-    assert create_response.status_code == 409
-    assert create_response.json()["error"]["code"] == "invalid_cross_tenant_access"
+    assert create_response.status_code == 404
+    assert create_response.json()["error"]["code"] == "patient_not_found"
 
     get_response = client.get(
         f"/api/v1/preventive-care/{foreign_record['id']}",
@@ -269,8 +269,8 @@ def test_prevent_cross_tenant_file_reference_creation_and_access(
         headers=veterinarian_headers(tenant),
         json={"name": "Archivo", "file_type": "pdf"},
     )
-    assert create_response.status_code == 409
-    assert create_response.json()["error"]["code"] == "invalid_cross_tenant_access"
+    assert create_response.status_code == 404
+    assert create_response.json()["error"]["code"] == "patient_not_found"
 
     get_response = client.get(
         f"/api/v1/file-references/{foreign_file_reference['id']}",

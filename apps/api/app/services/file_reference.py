@@ -288,13 +288,6 @@ class FileReferenceService:
     ) -> Patient:
         patient = self.patient_repository.get_by_id(tenant_id, patient_id)
         if patient is None:
-            patient_any_tenant = self.db.get(Patient, patient_id)
-            if patient_any_tenant is not None:
-                raise AppError(
-                    409,
-                    "invalid_cross_tenant_access",
-                    "Patient does not belong to the provided tenant",
-                )
             raise AppError(404, "patient_not_found", "Patient not found")
         return patient
 

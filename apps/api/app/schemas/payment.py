@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_serializer, field_validator
 
 
 PaymentMethodType = Literal["cash", "bank_transfer", "debit_card", "credit_card", "digital_wallet", "other"]
 PaymentStatus = Literal["unpaid", "partial", "paid", "requires_attention"]
+IdempotencyKey = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128, pattern=r"^[!-~]+$")]
 
 
 def _trim(value):
@@ -64,6 +65,12 @@ class SalePaymentCreate(BaseModel):
     @classmethod
     def normalize_optional_text(cls, value):
         return _trim(value)
+
+
+class SaleInitialPaymentCreate(SalePaymentCreate):
+    """Checkout reuses payment validation, with an optional effective date."""
+
+    received_at: datetime | None = None
 
 
 class SalePaymentVoid(BaseModel):

@@ -16,11 +16,24 @@ from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_import import InventoryImport, InventoryImportRow
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
+from app.models.patient import Patient
+from app.models.consultation import Consultation
+from app.models.user import User
 
 
 class InventoryRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _movement_read_options(self, tenant_id: uuid.UUID) -> tuple:
+        return (
+            selectinload(InventoryMovement.inventory_item.and_(InventoryItem.tenant_id == tenant_id)),
+            selectinload(InventoryMovement.created_by_user.and_(User.tenant_id == tenant_id)),
+            selectinload(InventoryMovement.related_patient.and_(Patient.tenant_id == tenant_id)),
+            selectinload(InventoryMovement.related_consultation.and_(Consultation.tenant_id == tenant_id)),
+            selectinload(InventoryMovement.reverses_movement.and_(InventoryMovement.tenant_id == tenant_id)),
+            selectinload(InventoryMovement.reversed_by_movement.and_(InventoryMovement.tenant_id == tenant_id)),
+        )
 
     def create_item(self, item: InventoryItem) -> InventoryItem:
         self.db.add(item)
@@ -626,12 +639,8 @@ class InventoryRepository:
                 InventoryMovement.created_at >= date_from,
                 InventoryMovement.created_at <= date_to,
             )
-            .options(
-                selectinload(InventoryMovement.inventory_item),
-                selectinload(InventoryMovement.created_by_user),
-                selectinload(InventoryMovement.reverses_movement),
-                selectinload(InventoryMovement.reversed_by_movement),
-            )
+            .options(*self._movement_read_options(tenant_id))
+            .execution_options(populate_existing=True)
             .order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc())
             .limit(limit)
         )
@@ -900,12 +909,8 @@ class InventoryRepository:
                 InventoryMovement.id == movement_id,
                 InventoryMovement.tenant_id == tenant_id,
             )
-            .options(
-                selectinload(InventoryMovement.inventory_item),
-                selectinload(InventoryMovement.created_by_user),
-                selectinload(InventoryMovement.reverses_movement),
-                selectinload(InventoryMovement.reversed_by_movement),
-            )
+            .options(*self._movement_read_options(tenant_id))
+            .execution_options(populate_existing=True)
         )
         if for_update:
             statement = statement.with_for_update()
@@ -1027,12 +1032,8 @@ class InventoryRepository:
                 & (InventoryItem.tenant_id == tenant_id),
             )
             .where(InventoryMovement.tenant_id == tenant_id)
-            .options(
-                selectinload(InventoryMovement.inventory_item),
-                selectinload(InventoryMovement.created_by_user),
-                selectinload(InventoryMovement.reverses_movement),
-                selectinload(InventoryMovement.reversed_by_movement),
-            )
+            .options(*self._movement_read_options(tenant_id))
+            .execution_options(populate_existing=True)
         )
         count_statement = (
             select(func.count())
