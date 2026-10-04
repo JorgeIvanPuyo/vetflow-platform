@@ -14,13 +14,15 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   PatientAvatar,
   PatientPhotoInput,
 } from "@/features/patients/components/patient-photo";
 import { getApiErrorMessage } from "@/lib/api";
+import { ReceivableBadge } from "@/features/owners/components/receivable-badge";
+import { useRefreshOnReturn } from "@/features/owners/hooks/use-refresh-on-return";
 import { getCatalogItems } from "@/services/catalogs";
 import { createOwner, getOwners } from "@/services/owners";
 import { createPatient, getPatients, uploadPatientPhoto } from "@/services/patients";
@@ -108,6 +110,7 @@ const initialOwnerFormState: OwnerFormState = {
 };
 
 export function PatientsScreen() {
+  const readVersion = useRef(0);
   const { role } = useCurrentUser();
   const isClinicalReadOnly = !canPerformClinicalActions(role);
   const [state, setState] = useState<PatientsState>(initialPatientsState);
@@ -160,6 +163,7 @@ export function PatientsScreen() {
   }, []);
 
   const loadPatientsScreen = useCallback(async (requestedPage = page) => {
+    const version = ++readVersion.current;
     setState((current) => ({
       ...current,
       isLoading: true,
@@ -171,6 +175,7 @@ export function PatientsScreen() {
         getPatients({ page: requestedPage, pageSize }),
         getOwners(),
       ]);
+      if (version !== readVersion.current) return;
 
       setState((current) => ({
         ...current,
@@ -180,6 +185,7 @@ export function PatientsScreen() {
         meta: patientsResponse.meta,
       }));
     } catch (error) {
+      if (version !== readVersion.current) return;
       setState((current) => ({
         ...current,
         isLoading: false,
@@ -188,8 +194,11 @@ export function PatientsScreen() {
     }
   }, [page, pageSize]);
 
+  useRefreshOnReturn(loadPatientsScreen);
+
   useEffect(() => {
     void loadPatientsScreen();
+    return () => { readVersion.current += 1; };
   }, [loadPatientsScreen]);
 
   useEffect(() => {
@@ -435,7 +444,8 @@ export function PatientsScreen() {
       {!state.isLoading && !state.errorMessage && state.patients.length > 0 ? (
         <section className="patient-card-list" aria-label="Lista de pacientes">
           {state.patients.map((patient) => (
-            <Link className="patient-card" href={`/patients/${patient.id}`} key={patient.id}>
+            <div className="patient-card receivable-entity-card" key={patient.id}>
+              <Link className="patient-card__link-overlay" href={`/patients/${patient.id}`} aria-label={`Ver paciente ${patient.name}`} />
               <PatientAvatar patient={patient} />
               <span className="patient-card__body">
                 <span className="patient-card__title-row">
@@ -455,11 +465,12 @@ export function PatientsScreen() {
                 <span className="patient-card__owner">
                   Propietario: {getOwnerName(patient.owner_id)}
                 </span>
+                <ReceivableBadge ownerId={patient.owner_id} hasActiveReceivable={patient.owner_has_active_receivable} forPatient />
               </span>
               <span className="list-page__chevron" aria-hidden="true">
                 <ChevronRight size={16} />
               </span>
-            </Link>
+            </div>
           ))}
         </section>
       ) : null}

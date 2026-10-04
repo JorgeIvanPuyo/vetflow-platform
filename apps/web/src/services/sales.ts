@@ -14,14 +14,27 @@ export function getSale(id: string) { return api.get<ApiItemResponse<Sale>>(`/ap
 export function createSale(payload: SaleWritePayload) { return api.post<ApiItemResponse<Sale>>("/api/v1/sales", payload); }
 export function updateSale(id: string, payload: SaleWritePayload) { return api.patch<ApiItemResponse<Sale>>(`/api/v1/sales/${id}`, payload); }
 export function cancelSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/cancel`, { reason }, { retryTransient: false }); }
-export function confirmSale(id: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, { confirm: true }, { retryTransient: false }); }
+export type SaleInitialPaymentInput = Omit<SalePaymentInput, "received_at"> & { received_at?: string | null };
+export type SaleConfirmInput = { confirm: true } & (
+  | { initial_payment?: SaleInitialPaymentInput | null; initial_payments?: never }
+  | { initial_payment?: never; initial_payments: SaleInitialPaymentInput[] }
+);
+export function confirmSale(id: string, payload: SaleConfirmInput = { confirm: true }, idempotencyKey?: string) {
+  return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/confirm`, payload, { retryTransient: false, idempotencyKey });
+}
 export function reverseSale(id: string, reason: string) { return api.post<ApiItemResponse<Sale>>(`/api/v1/sales/${id}/reverse`, { reason }, { retryTransient: false }); }
 export function getSaleFilterOptions() { return api.get<{ data: { creators: PurchaseCreatorOption[] }; meta: Record<string, never> }>("/api/v1/sales/filter-options"); }
 
-export function getPaymentMethods(active?: boolean) { const query = active === undefined ? "" : `?active=${active}`; return api.get<{ data: PaymentMethod[]; meta: { total: number } }>(`/api/v1/payment-methods${query}`); }
+export function getPaymentMethods(active?: boolean, page?: number) {
+  const params = new URLSearchParams();
+  if (active !== undefined) params.set("active", String(active));
+  if (page !== undefined) params.set("page", String(page));
+  return api.get<{ data: PaymentMethod[]; meta: { total: number } }>(`/api/v1/payment-methods${params.size ? `?${params}` : ""}`);
+}
 export function createPaymentMethod(payload: PaymentMethodWritePayload) { return api.post<ApiItemResponse<PaymentMethod>>("/api/v1/payment-methods", payload, { retryTransient: false }); }
 export function updatePaymentMethod(id: string, payload: Partial<PaymentMethodWritePayload>) { return api.patch<ApiItemResponse<PaymentMethod>>(`/api/v1/payment-methods/${id}`, payload); }
-export function createSalePayment(saleId: string, payload: { payment_method_id: string; amount_ars: string; received_at: string; reference?: string | null; notes?: string | null }) { return api.post<ApiItemResponse<SalePayment>>(`/api/v1/sales/${saleId}/payments`, payload, { retryTransient: false }); }
+export type SalePaymentInput = { payment_method_id: string; amount_ars: string; received_at: string; reference?: string | null; notes?: string | null };
+export function createSalePayment(saleId: string, payload: SalePaymentInput, idempotencyKey?: string) { return api.post<ApiItemResponse<SalePayment>>(`/api/v1/sales/${saleId}/payments`, payload, { retryTransient: false, idempotencyKey }); }
 export function voidSalePayment(id: string, reason: string) { return api.post<ApiItemResponse<SalePayment>>(`/api/v1/sale-payments/${id}/void`, { reason }, { retryTransient: false }); }
 
 export function getFiscalIssuers(activeOnly = false) {

@@ -1,10 +1,12 @@
 import uuid
+from datetime import datetime
 from pathlib import Path
 import re
 
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.clinic_time import clinic_day_start_utc, clinic_timezone
 from app.models.tenant import Tenant
 from app.models.tenant_preference import TenantPreference
 from app.models.user import User
@@ -71,10 +73,21 @@ class ClinicService:
         tenant_id: uuid.UUID,
         payload: TenantPreferenceUpdate,
     ) -> TenantPreference:
-        preferences = self.get_preferences(tenant_id)
         updates = payload.model_dump(exclude_unset=True)
+        start_date = updates.pop("receivables_tracking_start_date", None)
+        cutoff = updates.get("receivables_tracking_started_at")
+        if start_date is not None or cutoff is not None:
+            tenant = self.get_profile(tenant_id)
+            clinic_zone = clinic_timezone(tenant.timezone)
+            selected_date = start_date if start_date is not None else cutoff.astimezone(clinic_zone).date()
+            if selected_date > datetime.now(clinic_zone).date():
+                raise AppError(422, "receivables_start_date_in_future", "La fecha de inicio no puede estar en el futuro")
+            if start_date is not None:
+                normalized = clinic_day_start_utc(start_date, clinic_zone, error_code="invalid_receivables_start_date")
+                updates["receivables_tracking_started_at"] = normalized
+        preferences = self.get_preferences(tenant_id)
         for field, value in updates.items():
-            if value is None:
+            if value is None and field != "receivables_tracking_started_at":
                 raise AppError(422, "validation_error", f"{field} cannot be null")
 
         resolved = {

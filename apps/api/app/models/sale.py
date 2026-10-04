@@ -10,9 +10,30 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import BaseModel
 
 
+def calculate_balance_due(total, paid):
+    """Canonical subtraction for Decimal amounts and SQL numeric expressions."""
+    return total - paid
+
+
+def calculate_payment_status(status: str, total: Decimal, paid: Decimal) -> str | None:
+    """Classify active payments, preserving non-confirmed sale semantics."""
+    if status == "reversed" and paid > 0:
+        return "requires_attention"
+    if status != "confirmed":
+        return None
+    if paid > total:
+        return "requires_attention"
+    if calculate_balance_due(total, paid) == 0:
+        return "paid"
+    if paid == 0:
+        return "unpaid"
+    return "partial"
+
+
 class Sale(BaseModel):
     __tablename__ = "sales"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_sales_tenant_id_id"),
         CheckConstraint("status IN ('draft', 'cancelled', 'confirmed', 'invoiced', 'reversed')", name="ck_sales_status"),
         CheckConstraint("length(currency) = 3 AND currency = upper(currency)", name="ck_sales_currency"),
         CheckConstraint("subtotal_ars >= 0 AND discount_total_ars >= 0 AND total_ars >= 0", name="ck_sales_totals_non_negative"),
@@ -26,7 +47,7 @@ class Sale(BaseModel):
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("owners.id", name="fk_sales_owner_id_preserve_history", ondelete="RESTRICT"), nullable=True, index=True)
     patient_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("patients.id", ondelete="SET NULL"), nullable=True, index=True)
     owner_name_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
     owner_document_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -88,7 +109,7 @@ class Sale(BaseModel):
 
     @property
     def balance_due_ars(self) -> Decimal:
-        return self.total_ars - self.paid_total_ars
+        return calculate_balance_due(self.total_ars, self.paid_total_ars)
 
     @property
     def payment_requires_attention(self) -> bool:
@@ -96,13 +117,7 @@ class Sale(BaseModel):
 
     @property
     def payment_status(self) -> str | None:
-        if self.payment_requires_attention:
-            return "requires_attention"
-        if self.status != "confirmed":
-            return None
-        if self.paid_total_ars == 0:
-            return "unpaid"
-        return "paid" if self.paid_total_ars == self.total_ars else "partial"
+        return calculate_payment_status(self.status, self.total_ars, self.paid_total_ars)
 
     @staticmethod
     def _user_value(user, tenant_id: uuid.UUID, field: str):

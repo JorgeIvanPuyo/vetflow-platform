@@ -8,12 +8,14 @@ from math import ceil
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.sale_limits import INVENTORY_MONEY_MAX, MONEY_QUANTUM, SALE_PRICE_MAX, SALE_TOTAL_MAX
 from app.models.owner import Owner
 from app.models.patient import Patient
-from app.models.sale import Sale, SaleItem
+from app.models.sale import Sale, SaleItem, calculate_balance_due, calculate_payment_status
 from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
 from app.repositories.owner import OwnerRepository
+from app.repositories.payment import SalePaymentRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.sale import SaleRepository
 from app.repositories.service import ServiceRepository
@@ -23,7 +25,6 @@ from app.services.inventory import InventoryService
 from app.services.regional_settings import ensure_operational_money_settings
 
 
-MONEY_QUANTUM = Decimal("0.01")
 HUNDRED = Decimal("100")
 
 
@@ -143,59 +144,101 @@ class SaleService:
         *,
         confirmed_by_user_id: uuid.UUID | None,
     ) -> Sale:
-        self._validate_user(tenant_id, confirmed_by_user_id)
+        """Standalone operation: own the commit/rollback of the whole Session."""
         try:
-            sale = self.repository.get_by_id(tenant_id, sale_id, for_update=True)
-            if sale is None:
-                raise AppError(404, "sale_not_found", "Venta no encontrada")
-            self._require_draft(sale, "confirmar")
-
-            product_lines = self._validated_product_lines(tenant_id, sale)
-            lines_by_item_id = {
-                line.inventory_item_id: line for line in product_lines
-            }
-            locked_items = self.inventory_repository.list_items_by_ids_for_update(
-                tenant_id, sorted(lines_by_item_id)
+            self.confirm_in_transaction(
+                tenant_id, sale_id, confirmed_by_user_id=confirmed_by_user_id,
             )
-            if len(locked_items) != len(lines_by_item_id):
-                raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
-
-            for item in locked_items:
-                line = lines_by_item_id[item.id]
-                if item.current_stock < line.quantity:
-                    raise AppError(
-                        409,
-                        "sale_insufficient_stock",
-                        f"Stock insuficiente para {line.description_snapshot}. "
-                        f"Disponible: {item.current_stock}. Solicitado: {line.quantity}.",
-                    )
-
-            operation_id = uuid.uuid4() if product_lines else None
-            for item in locked_items:
-                line = lines_by_item_id[item.id]
-                self.inventory_service.register_sale_movement(
-                    tenant_id,
-                    item=item,
-                    sale_id=sale.id,
-                    operation_id=operation_id,
-                    quantity=line.quantity,
-                    unit_sale_price_ars=line.unit_price_ars,
-                    total_sale_price_ars=line.line_total_ars,
-                    created_by_user_id=confirmed_by_user_id,
-                )
-
-            now = datetime.now(UTC)
-            sale.status = "confirmed"
-            sale.confirmed_at = now
-            sale.confirmed_by_user_id = confirmed_by_user_id
-            sale.inventory_operation_id = operation_id
-            sale.updated_at = now
-            self.repository.save(sale)
+            self.validate_confirmation_balance_in_transaction(tenant_id, sale_id)
             self.db.commit()
         except Exception:
             self.db.rollback()
             raise
         return self.get(tenant_id, sale_id)
+
+    def confirm_in_transaction(
+        self,
+        tenant_id: uuid.UUID,
+        sale_id: uuid.UUID,
+        *,
+        confirmed_by_user_id: uuid.UUID | None,
+    ) -> Sale:
+        """Flush confirmation and inventory in the caller's transaction.
+
+        After all initial payments, the caller must validate the final balance
+        with validate_confirmation_balance_in_transaction before committing.
+        The caller must roll back after business errors.
+        Lock order remains Sale -> InventoryItem (ascending ID). Inventory uses
+        this same Session and register_sale_movement always passes commit=False.
+        """
+        self._validate_user(tenant_id, confirmed_by_user_id)
+        sale = self.repository.get_by_id(tenant_id, sale_id, for_update=True)
+        if sale is None:
+            raise AppError(404, "sale_not_found", "Venta no encontrada")
+        self._require_draft(sale, "confirmar")
+
+        product_lines = self._validated_product_lines(tenant_id, sale)
+        lines_by_item_id = {
+            line.inventory_item_id: line for line in product_lines
+        }
+        locked_items = self.inventory_repository.list_items_by_ids_for_update(
+            tenant_id, sorted(lines_by_item_id)
+        )
+        if len(locked_items) != len(lines_by_item_id):
+            raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
+
+        for item in locked_items:
+            line = lines_by_item_id[item.id]
+            if item.current_stock < line.quantity:
+                raise AppError(
+                    409,
+                    "sale_insufficient_stock",
+                    f"Stock insuficiente para {line.description_snapshot}. "
+                    f"Disponible: {item.current_stock}. Solicitado: {line.quantity}.",
+                )
+
+        operation_id = uuid.uuid4() if product_lines else None
+        for item in locked_items:
+            line = lines_by_item_id[item.id]
+            self.inventory_service.register_sale_movement(
+                tenant_id,
+                item=item,
+                sale_id=sale.id,
+                operation_id=operation_id,
+                quantity=line.quantity,
+                unit_sale_price_ars=line.unit_price_ars,
+                total_sale_price_ars=line.line_total_ars,
+                created_by_user_id=confirmed_by_user_id,
+            )
+
+        now = datetime.now(UTC)
+        sale.status = "confirmed"
+        sale.confirmed_at = now
+        sale.confirmed_by_user_id = confirmed_by_user_id
+        sale.inventory_operation_id = operation_id
+        sale.updated_at = now
+        self.repository.save(sale)
+        # The initial locked read loaded the previous confirmer relationship.
+        # Make actor serialization correct even before the caller commits.
+        self.db.expire(sale, ["confirmed_by_user"])
+        return sale
+
+    def validate_confirmation_balance_in_transaction(
+        self, tenant_id: uuid.UUID, sale_id: uuid.UUID,
+    ) -> None:
+        """Check the final active-payment balance in the same outer transaction."""
+        sale = self.repository.get_by_id(tenant_id, sale_id)
+        if sale is None:
+            raise AppError(404, "sale_not_found", "Venta no encontrada")
+        paid = SalePaymentRepository(self.db).active_total(tenant_id, sale_id)
+        if calculate_balance_due(sale.total_ars, paid) > 0 and (
+            sale.owner_id is None
+            or self.owner_repository.get_by_id(tenant_id, sale.owner_id) is None
+        ):
+            raise AppError(
+                409, "sale_owner_required_for_pending_balance",
+                "Para dejar un saldo pendiente, primero debes seleccionar un propietario.",
+            )
 
     def reverse(
         self,
@@ -307,13 +350,8 @@ class SaleService:
                 "created_by_user_id": sale.created_by_user_id, "created_by_user_name": sale.created_by_user_name,
                 "created_by_user_email": sale.created_by_user_email, "created_at": sale.created_at, "updated_at": sale.updated_at,
                 "paid_total_ars": paid_total,
-                "balance_due_ars": sale.total_ars - paid_total,
-                "payment_status": (
-                    "requires_attention" if sale.status == "reversed" and paid_total > 0
-                    else "unpaid" if sale.status == "confirmed" and paid_total == 0
-                    else "paid" if sale.status == "confirmed" and paid_total == sale.total_ars
-                    else "partial" if sale.status == "confirmed" else None
-                ),
+                "balance_due_ars": calculate_balance_due(sale.total_ars, paid_total),
+                "payment_status": calculate_payment_status(sale.status, sale.total_ars, paid_total),
                 "payment_requires_attention": sale.status == "reversed" and paid_total > 0,
             }
             for sale, item_count, paid_total in rows
@@ -371,9 +409,16 @@ class SaleService:
                     validated_services.add(service_id)
                 price = item_input.unit_price_ars
                 description, code, unit, inventory_id = item_input.description, None, "service", None
+            price_limit = INVENTORY_MONEY_MAX if item_input.line_type == "product" else SALE_PRICE_MAX
+            self._validate_amount(price, price_limit, "precio unitario")
             line_subtotal = (item_input.quantity * price).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_discount = (line_subtotal * item_input.discount_percentage / HUNDRED).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
             line_total = (line_subtotal - line_discount).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+            self._validate_amount(line_subtotal, SALE_TOTAL_MAX, "subtotal de línea")
+            self._validate_amount(line_discount, SALE_TOTAL_MAX, "descuento de línea")
+            self._validate_amount(line_total, SALE_TOTAL_MAX, "total de línea")
+            if item_input.line_type == "product":
+                self._validate_amount(line_total, INVENTORY_MONEY_MAX, "total de producto para inventario")
             items.append(SaleItem(
                 tenant_id=tenant_id, line_type=item_input.line_type, inventory_item_id=inventory_id, service_id=service_id,
                 description_snapshot=description, internal_code_snapshot=code, unit_snapshot=unit,
@@ -383,11 +428,28 @@ class SaleService:
             subtotal += line_subtotal
             discount_total += line_discount
             total += line_total
+        self._validate_amount(subtotal, SALE_TOTAL_MAX, "subtotal de venta")
+        self._validate_amount(discount_total, SALE_TOTAL_MAX, "descuentos de venta")
+        self._validate_amount(total, SALE_TOTAL_MAX, "total de venta")
         return items, {
             "subtotal_ars": subtotal.quantize(MONEY_QUANTUM),
             "discount_total_ars": discount_total.quantize(MONEY_QUANTUM),
             "total_ars": total.quantize(MONEY_QUANTUM),
         }
+
+    @staticmethod
+    def _validate_amount(value: Decimal, maximum: Decimal, label: str) -> None:
+        if (
+            not value.is_finite()
+            or value < 0
+            or value > maximum
+            or value != value.quantize(MONEY_QUANTUM)
+        ):
+            raise AppError(
+                422,
+                "sale_amount_out_of_range",
+                f"El {label} debe estar entre 0 y {maximum:.2f}, con hasta dos decimales",
+            )
 
     def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
         if user_id is not None and self.user_repository.get_by_id(tenant_id, user_id) is None:
@@ -438,6 +500,10 @@ class SaleService:
                     "sale_items_inconsistent",
                     "Las líneas de la venta repiten un producto",
                 )
+            # Legacy drafts may predate input limits. Reject incompatible new
+            # inventory writes without recalculating or changing their snapshots.
+            SaleService._validate_amount(line.unit_price_ars, INVENTORY_MONEY_MAX, "precio unitario para inventario")
+            SaleService._validate_amount(line.line_total_ars, INVENTORY_MONEY_MAX, "total de producto para inventario")
             seen_item_ids.add(line.inventory_item_id)
             product_lines.append(line)
         return product_lines

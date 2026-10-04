@@ -118,7 +118,8 @@ def test_secretary_commercial_operations_are_not_fiscal(client, actors):
     data(client.post(f"/api/v1/purchases/{purchase['id']}/receive", headers=auth, json={"confirm": True}))
     data(client.post(f"/api/v1/purchases/{purchase['id']}/reverse-receipt", headers=auth,
                      json={"reason": "Corrección"}))
-    sale = data(client.post("/api/v1/sales", headers=auth, json=sale_payload()), 201)
+    owner = data(client.post("/api/v1/owners", headers=auth, json={"full_name": "Cliente venta", "phone": "555"}), 201)
+    sale = data(client.post("/api/v1/sales", headers=auth, json={**sale_payload(), "owner_id": owner["id"]}), 201)
     url = f"/api/v1/sales/{sale['id']}"
     confirmed = data(client.post(url + "/confirm", headers=auth, json={"confirm": True}))
     assert confirmed["confirmed_by_user_id"] == str(actors["secretaria"].id)

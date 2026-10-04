@@ -26,6 +26,8 @@ export type HealthResponse = {
 export type Owner = {
   id: string;
   tenant_id: string;
+  is_active: boolean;
+  has_active_receivable?: boolean | null;
   full_name: string;
   document_id: string | null;
   phone: string;
@@ -33,6 +35,63 @@ export type Owner = {
   address: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type OwnerReceivableSale = {
+  sale_id: string;
+  sale_date: string;
+  confirmed_at: string;
+  patient_id: string | null;
+  patient_name_snapshot: string | null;
+  currency: "USD" | "ARS";
+  total_ars: string;
+  paid_total_ars: string;
+  balance_due_ars: string;
+  payment_status: SalePaymentStatus;
+};
+
+export type OwnerReceivablesResponse = {
+  data: {
+    owner_id: string;
+    tracking_configured: boolean;
+    tracking_started_at: string | null;
+    currency: "USD" | "ARS" | null;
+    locale: string | null;
+    total_outstanding_ars: string;
+    open_sales_count: number;
+    sales: OwnerReceivableSale[];
+  };
+  meta: { page: number; page_size: number; total: number; total_pages: number };
+};
+
+export type OwnerReceivablesActivityEvent = {
+  event_id: string;
+  type: "sale_confirmed" | "payment_recorded" | "payment_cancelled" | "sale_reversed";
+  occurred_at: string;
+  sale_id: string;
+  sale_date: string;
+  patient_id: string | null;
+  patient_name_snapshot: string | null;
+  currency: "USD" | "ARS";
+  payment_id: string | null;
+  amount_ars: string | null;
+  payment_method_label: string | null;
+  reference: string | null;
+  notes: string | null;
+  reason: string | null;
+  payment_is_active: boolean | null;
+};
+
+export type OwnerReceivablesActivityResponse = {
+  data: {
+    owner_id: string;
+    tracking_configured: boolean;
+    tracking_started_at: string | null;
+    currency: "USD" | "ARS" | null;
+    locale: string | null;
+    events: OwnerReceivablesActivityEvent[];
+  };
+  meta: OwnerReceivablesResponse["meta"];
 };
 
 export type UserTrace = {
@@ -45,6 +104,7 @@ export type UserTrace = {
 
 export type Patient = {
   owner_name?: string | null;
+  owner_has_active_receivable?: boolean | null;
   id: string;
   tenant_id: string;
   owner_id: string;
@@ -360,6 +420,7 @@ export type ConsultationAiSummaryResponse = {
 };
 
 export type ClinicProfile = {
+  timezone?: string;
   id: string;
   name: string;
   display_name: string | null;
@@ -391,6 +452,7 @@ export type UpdateClinicTeamMemberPayload = {
 };
 
 export type TenantPreferences = {
+  receivables_tracking_started_at?: string | null;
   id: string;
   tenant_id: string;
   currency_code: "USD" | "ARS";
@@ -405,6 +467,8 @@ export type TenantPreferences = {
 };
 
 export type UpdateTenantPreferencesPayload = Partial<{
+  receivables_tracking_started_at: string | null;
+  receivables_tracking_start_date: string;
   currency_code: "USD" | "ARS";
   locale: "es-PA" | "es-AR";
   default_appointment_duration_minutes: number;
@@ -1988,6 +2052,7 @@ export type SaleItem = {
   id: string;
   line_type: SaleLineType;
   fiscal_line_type: SaleLineType;
+  current_stock?: string | null;
   inventory_item_id: string | null;
   service_id: string | null;
   description_snapshot: string;
@@ -2079,4 +2144,35 @@ export type SaleListFilters = {
   page_size?: number;
   sort_by?: "sale_date" | "created_at" | "total_ars" | "status";
   sort_direction?: "asc" | "desc";
+};
+
+export type PaymentReportMethod = { payment_method_id: string; label: string; is_active: boolean };
+export type PaymentReportEntry = {
+  payment_id: string;
+  received_at: string;
+  payment_method_id: string;
+  payment_method_label: string;
+  amount_ars: string;
+  sale_id: string;
+  owner_id: string | null;
+  owner_name: string | null;
+  patient_id: string | null;
+  patient_name: string | null;
+  reference: string | null;
+  created_by_user_id: string | null;
+  created_by_user_name: string | null;
+};
+export type PaymentReport = {
+  date_from: string;
+  date_to: string;
+  timezone: string;
+  currency_code: string;
+  locale: string;
+  methods: PaymentReportMethod[];
+  summary: {
+    total_amount_ars: string;
+    payment_count: number;
+    by_method: (PaymentReportMethod & { amount_ars: string; payment_count: number })[];
+  };
+  payments: PaymentReportEntry[];
 };

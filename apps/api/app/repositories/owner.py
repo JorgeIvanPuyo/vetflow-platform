@@ -17,11 +17,13 @@ class OwnerRepository:
         self.db.refresh(owner)
         return owner
 
-    def get_by_id(self, tenant_id: uuid.UUID, owner_id: uuid.UUID) -> Owner | None:
+    def get_by_id(self, tenant_id: uuid.UUID, owner_id: uuid.UUID, *, for_update: bool = False) -> Owner | None:
         statement = select(Owner).where(
             Owner.id == owner_id,
             Owner.tenant_id == tenant_id,
         )
+        if for_update:
+            statement = statement.with_for_update()
         return self.db.scalar(statement)
 
     def list(

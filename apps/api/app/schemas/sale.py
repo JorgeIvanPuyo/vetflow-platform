@@ -5,8 +5,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.core.sale_limits import INVENTORY_MONEY_MAX, SALE_QUANTITY_MAX
 from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
-from app.schemas.payment import PaymentStatus, SalePaymentRead
+from app.schemas.payment import PaymentStatus, SaleInitialPaymentCreate, SalePaymentRead
 
 
 SaleStatus = Literal["draft", "confirmed", "cancelled", "reversed"]
@@ -19,9 +20,9 @@ class SaleProductItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     line_type: Literal["product"]
     inventory_item_id: uuid.UUID
-    quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
-    unit_price_ars: Decimal | None = Field(default=None, ge=0)
-    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, le=SALE_QUANTITY_MAX, multiple_of=Decimal("1"), max_digits=12, decimal_places=2)
+    unit_price_ars: Decimal | None = Field(default=None, ge=0, le=INVENTORY_MONEY_MAX, max_digits=14, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
 
 
 class SaleServiceItemInput(BaseModel):
@@ -29,9 +30,9 @@ class SaleServiceItemInput(BaseModel):
     line_type: Literal["service"]
     service_id: uuid.UUID | None = None
     description: str = Field(min_length=1, max_length=255)
-    quantity: Decimal = Field(gt=0, multiple_of=Decimal("1"))
-    unit_price_ars: Decimal = Field(ge=0)
-    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, le=SALE_QUANTITY_MAX, multiple_of=Decimal("1"), max_digits=12, decimal_places=2)
+    unit_price_ars: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
 
     @field_validator("description")
     @classmethod
@@ -96,6 +97,16 @@ class SaleCancel(BaseModel):
 class SaleConfirm(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: Literal[True]
+    initial_payment: SaleInitialPaymentCreate | None = None
+    initial_payments: list[SaleInitialPaymentCreate] | None = Field(default=None, min_length=2, max_length=20)
+
+    @model_validator(mode="after")
+    def exclusive_initial_payments(self):
+        if {"initial_payment", "initial_payments"} <= self.model_fields_set:
+            raise ValueError("Enviar sólo initial_payment o initial_payments, no ambos")
+        if "initial_payments" in self.model_fields_set and self.initial_payments is None:
+            raise ValueError("initial_payments no puede ser null")
+        return self
 
 
 class SaleReverse(BaseModel):
@@ -116,6 +127,7 @@ class SaleItemRead(BaseModel):
     id: uuid.UUID
     line_type: SaleLineType
     fiscal_line_type: SaleLineType
+    current_stock: Decimal | None = None
     inventory_item_id: uuid.UUID | None = None
     service_id: uuid.UUID | None = None
     description_snapshot: str

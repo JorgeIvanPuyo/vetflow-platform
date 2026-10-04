@@ -14,6 +14,7 @@ from app.models.sale_fiscal import (
 from app.models.user import User
 from app.repositories.sale_fiscal_document import SaleFiscalDocumentRepository
 from app.services.storage import get_purchase_attachment_storage_service
+from app.tests.test_sales import _owner
 
 
 PDF = b"%PDF-1.7\nsale receipt"
@@ -161,7 +162,7 @@ def _sale(client, tenant, *, kind="service", status="confirmed"):
         "/api/v1/sales",
         headers=_headers(tenant),
         json={
-            "owner_id": None,
+            "owner_id": _owner(client, tenant)["id"] if status in {"confirmed", "reversed"} else None,
             "patient_id": None,
             "sale_date": "2026-08-09",
             "items": items,
@@ -419,6 +420,7 @@ def test_fiscal_classification_uses_item_type_not_optional_clinic_category(
     inventory.category_catalog_item_id = catalog.id
     db_session.commit()
     payload = {
+        "owner_id": _owner(client, tenant)["id"],
         "sale_date": "2026-08-09",
         "items": [{
             "line_type": "product", "inventory_item_id": product["id"],
@@ -698,6 +700,7 @@ def test_operational_actor_is_distinct_from_issuer_and_snapshots_survive_changes
     issuer_user = _user(db_session, tenant, email="issuer-user@example.com", name="Emisora")
     actor = _user(db_session, tenant, email="actor@example.com", name="Operador")
     issuer = _issuer(client, tenant, issuer_user)
+    owner = _owner(client, tenant)
     monkeypatch.setenv("APP_ENV", "production")
     get_settings.cache_clear()
     monkeypatch.setattr(tenant_core, "verify_id_token", lambda token: {"email": token})
@@ -705,7 +708,7 @@ def test_operational_actor_is_distinct_from_issuer_and_snapshots_survive_changes
         "/api/v1/sales",
         headers=_auth_headers(actor.email),
         json={
-            "owner_id": None,
+            "owner_id": owner["id"],
             "patient_id": None,
             "sale_date": "2026-08-09",
             "items": [{
