@@ -1,20 +1,77 @@
 import uuid
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session, contains_eager, selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
+from app.models.catalog_item import CatalogItem
 from app.models.consultation import (
     Consultation,
     ConsultationMedication,
     ConsultationStudyRequest,
 )
+from app.models.inventory_item import InventoryItem
+from app.models.inventory_movement import InventoryMovement
 from app.models.owner import Owner
 from app.models.patient import Patient
+from app.models.user import User
 
 
 class ConsultationRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _patient_join(self, tenant_id: uuid.UUID) -> ColumnElement[bool]:
+        return and_(Patient.id == Consultation.patient_id, Patient.tenant_id == tenant_id)
+
+    def _owner_join(self, tenant_id: uuid.UUID) -> ColumnElement[bool]:
+        return and_(Owner.id == Patient.owner_id, Owner.tenant_id == tenant_id)
+
+    def _read_statement(self, tenant_id: uuid.UUID) -> Select[tuple[Consultation]]:
+        """Scope both the required patient chain and every loaded child in SQL.
+
+        Historical single-column FKs can link rows from different tenants.
+        Refresh already loaded relationships so the session identity map cannot
+        retain children loaded earlier through an unscoped ORM relationship.
+        """
+        return (
+            select(Consultation)
+            .join(Patient, self._patient_join(tenant_id))
+            .join(Owner, self._owner_join(tenant_id))
+            .where(Consultation.tenant_id == tenant_id)
+            .options(
+                contains_eager(Consultation.patient).contains_eager(Patient.owner),
+                selectinload(
+                    Consultation.parent_consultation.and_(Consultation.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Consultation.created_by_user.and_(User.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Consultation.attending_user.and_(User.tenant_id == tenant_id)
+                ),
+                selectinload(
+                    Consultation.medications.and_(ConsultationMedication.tenant_id == tenant_id)
+                ).options(
+                    selectinload(
+                        ConsultationMedication.inventory_item.and_(
+                            InventoryItem.tenant_id == tenant_id
+                        )
+                    ),
+                    selectinload(
+                        ConsultationMedication.inventory_movement.and_(
+                            InventoryMovement.tenant_id == tenant_id
+                        )
+                    ),
+                ),
+                selectinload(
+                    Consultation.study_requests.and_(ConsultationStudyRequest.tenant_id == tenant_id)
+                ).selectinload(
+                    ConsultationStudyRequest.exam_catalog_item.and_(CatalogItem.tenant_id == tenant_id)
+                ),
+            )
+            .execution_options(populate_existing=True)
+        )
 
     def create(self, consultation: Consultation) -> Consultation:
         self.db.add(consultation)
@@ -25,53 +82,25 @@ class ConsultationRepository:
     def get_by_id(
         self, tenant_id: uuid.UUID, consultation_id: uuid.UUID
     ) -> Consultation | None:
-        statement = select(Consultation).where(
-            Consultation.id == consultation_id,
-            Consultation.tenant_id == tenant_id,
-        ).options(
-            selectinload(Consultation.created_by_user),
-            selectinload(Consultation.attending_user),
-            selectinload(Consultation.medications).selectinload(
-                ConsultationMedication.inventory_item,
-            ),
-            selectinload(Consultation.medications).selectinload(
-                ConsultationMedication.inventory_movement,
-            ),
-            selectinload(Consultation.study_requests).selectinload(
-                ConsultationStudyRequest.exam_catalog_item,
-            ),
-        )
+        statement = self._read_statement(tenant_id).where(Consultation.id == consultation_id)
         return self.db.scalar(statement)
 
     def list_by_patient(
         self, tenant_id: uuid.UUID, patient_id: uuid.UUID
     ) -> tuple[list[Consultation], int]:
         statement = (
-            select(Consultation)
-            .where(
-                Consultation.tenant_id == tenant_id,
-                Consultation.patient_id == patient_id,
-            )
-            .options(
-                selectinload(Consultation.created_by_user),
-                selectinload(Consultation.attending_user),
-                selectinload(Consultation.medications).selectinload(
-                    ConsultationMedication.inventory_item,
-                ),
-                selectinload(Consultation.medications).selectinload(
-                    ConsultationMedication.inventory_movement,
-                ),
-                selectinload(Consultation.study_requests).selectinload(
-                ConsultationStudyRequest.exam_catalog_item,
-            ),
-            )
+            self._read_statement(tenant_id)
+            .where(Consultation.patient_id == patient_id)
             .order_by(Consultation.visit_date.desc())
         )
         consultations = list(self.db.scalars(statement).all())
 
-        count_statement = select(func.count()).select_from(Consultation).where(
-            Consultation.tenant_id == tenant_id,
-            Consultation.patient_id == patient_id,
+        count_statement = (
+            select(func.count())
+            .select_from(Consultation)
+            .join(Patient, self._patient_join(tenant_id))
+            .join(Owner, self._owner_join(tenant_id))
+            .where(Consultation.tenant_id == tenant_id, Consultation.patient_id == patient_id)
         )
         total = self.db.scalar(count_statement) or 0
         return consultations, total
@@ -98,14 +127,8 @@ class ConsultationRepository:
                 )
             )
 
-        tenant_patient_join = and_(
-            Patient.id == Consultation.patient_id,
-            Patient.tenant_id == tenant_id,
-        )
-        tenant_owner_join = and_(
-            Owner.id == Patient.owner_id,
-            Owner.tenant_id == tenant_id,
-        )
+        tenant_patient_join = self._patient_join(tenant_id)
+        tenant_owner_join = self._owner_join(tenant_id)
         statement = (
             select(Consultation)
             .join(Patient, tenant_patient_join)
@@ -163,9 +186,13 @@ class ConsultationRepository:
             ConsultationMedication.id == medication_id,
             ConsultationMedication.tenant_id == tenant_id,
         ).options(
-            selectinload(ConsultationMedication.inventory_item),
-            selectinload(ConsultationMedication.inventory_movement),
-        )
+            selectinload(ConsultationMedication.inventory_item.and_(
+                InventoryItem.tenant_id == tenant_id
+            )),
+            selectinload(ConsultationMedication.inventory_movement.and_(
+                InventoryMovement.tenant_id == tenant_id
+            )),
+        ).execution_options(populate_existing=True)
         return self.db.scalar(statement)
 
     def delete_medication(self, medication: ConsultationMedication) -> None:

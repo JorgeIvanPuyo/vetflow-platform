@@ -4,13 +4,15 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, contains_eager, selectinload
 
 from app.models.appointment import Appointment
 from app.models.consultation import Consultation
 from app.models.follow_up import FollowUp
+from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
+from app.models.user import User
 
 
 class DashboardRepository:
@@ -89,13 +91,17 @@ class DashboardRepository:
     ) -> list[Consultation]:
         statement = (
             select(Consultation)
+            .join(
+                Patient,
+                and_(Patient.id == Consultation.patient_id, Patient.tenant_id == tenant_id),
+            )
             .where(
                 Consultation.tenant_id == tenant_id,
                 Consultation.visit_date >= range_start,
                 Consultation.visit_date <= range_end,
             )
             .options(
-                selectinload(Consultation.patient),
+                contains_eager(Consultation.patient),
                 selectinload(Consultation.attending_user),
                 selectinload(Consultation.created_by_user),
             )
@@ -119,6 +125,13 @@ class DashboardRepository:
     ) -> list[PatientPreventiveCare]:
         statement = (
             select(PatientPreventiveCare)
+            .join(
+                Patient,
+                and_(
+                    Patient.id == PatientPreventiveCare.patient_id,
+                    Patient.tenant_id == tenant_id,
+                ),
+            )
             .where(
                 PatientPreventiveCare.tenant_id == tenant_id,
                 PatientPreventiveCare.next_due_at.is_not(None),
@@ -126,10 +139,13 @@ class DashboardRepository:
                 PatientPreventiveCare.next_due_at <= range_end,
             )
             .options(
-                selectinload(PatientPreventiveCare.patient),
-                selectinload(PatientPreventiveCare.created_by_user),
+                contains_eager(PatientPreventiveCare.patient),
+                selectinload(
+                    PatientPreventiveCare.created_by_user.and_(User.tenant_id == tenant_id)
+                ),
             )
             .order_by(PatientPreventiveCare.next_due_at.asc())
+            .execution_options(populate_existing=True)
         )
         return list(self.db.scalars(statement).all())
 
@@ -146,16 +162,26 @@ class DashboardRepository:
         )
         statement = (
             select(PatientFileReference)
+            .join(
+                Patient,
+                and_(
+                    Patient.id == PatientFileReference.patient_id,
+                    Patient.tenant_id == tenant_id,
+                ),
+            )
             .where(
                 PatientFileReference.tenant_id == tenant_id,
                 event_timestamp >= range_start,
                 event_timestamp <= range_end,
             )
             .options(
-                selectinload(PatientFileReference.patient),
-                selectinload(PatientFileReference.created_by_user),
+                contains_eager(PatientFileReference.patient),
+                selectinload(
+                    PatientFileReference.created_by_user.and_(User.tenant_id == tenant_id)
+                ),
             )
             .order_by(event_timestamp.desc())
+            .execution_options(populate_existing=True)
         )
         return list(self.db.scalars(statement).all())
 

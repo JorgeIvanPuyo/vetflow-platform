@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.purchase import Purchase
 from app.models.purchase_return import PurchaseReturn
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.repositories.purchase import (
     active_purchase_attachment_exists,
@@ -241,6 +242,10 @@ class PurchaseDashboardRepository:
                 func.count(Purchase.id).label("purchase_count"),
                 registered_total.label("registered_total_ars"),
                 received_total.label("received_total_ars"),
+            )
+            .join(
+                Supplier,
+                and_(Supplier.id == Purchase.supplier_id, Supplier.tenant_id == tenant_id),
             )
             .where(*filters)
             .group_by(Purchase.supplier_id, Purchase.supplier_name)
