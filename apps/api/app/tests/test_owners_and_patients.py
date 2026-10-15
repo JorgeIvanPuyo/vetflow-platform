@@ -64,6 +64,61 @@ def test_owner_sort_is_opt_in_and_rejects_unknown_fields(client, db_session, ten
     assert client.get("/api/v1/owners", headers=headers, params={"sort_by": "email"}).status_code == 422
 
 
+def test_owner_search_paginates_filtered_results_and_counts_all_matches(client, tenant, selector_owners):
+    expected = sorted(
+        [owner for owner in selector_owners if "cliente" in owner.full_name.lower()],
+        key=lambda owner: (owner.full_name.lower(), str(owner.id)),
+    )
+    headers = veterinarian_headers(tenant)
+    params = {"search": "CLIENTE", "sort_by": "full_name", "page_size": 30}
+    found = []
+    for page in range(1, 8):
+        response = client.get("/api/v1/owners", headers=headers, params={**params, "page": page})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["meta"] == {"page": page, "page_size": 30, "total": len(expected)}
+        found.extend(owner["id"] for owner in body["data"])
+    assert found == [str(owner.id) for owner in expected]
+    empty = client.get("/api/v1/owners", headers=headers, params={**params, "page": 8}).json()
+    assert empty["data"] == []
+    assert empty["meta"] == {"page": 8, "page_size": 30, "total": len(expected)}
+
+
+def test_owner_search_preserves_inactive_semantics_and_phone_filter(client, db_session, tenant, other_tenant):
+    inactive = Owner(tenant_id=tenant.id, full_name="Archived Search Owner", phone="555-123", is_active=False)
+    db_session.add_all([
+        inactive,
+        Owner(tenant_id=tenant.id, full_name="Archived Search Owner", phone="777"),
+        Owner(tenant_id=other_tenant.id, full_name="Archived Search Owner", phone="555-123", is_active=False),
+    ])
+    db_session.commit()
+    response = client.get("/api/v1/owners", headers=veterinarian_headers(tenant),
+                          params={"search": "SEARCH", "phone": "123", "page": 1, "page_size": 30, "sort_by": "full_name"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["meta"] == {"page": 1, "page_size": 30, "total": 1}
+    assert [owner["id"] for owner in body["data"]] == [str(inactive.id)]
+    assert body["data"][0]["is_active"] is False
+
+
+def test_create_patient_with_remotely_searched_owner_from_later_page(client, tenant, selector_owners):
+    headers = veterinarian_headers(tenant)
+    params = {"sort_by": "full_name", "page": 1, "page_size": 30}
+    target = str(selector_owners[-1].id)
+    first = client.get("/api/v1/owners", headers=headers, params=params).json()
+    assert target not in [owner["id"] for owner in first["data"]]
+    result = client.get("/api/v1/owners", headers=headers, params={**params, "search": "juanita"}).json()
+    selected = result["data"][0]
+    response = client.post("/api/v1/patients", headers=headers,
+                           json={"owner_id": selected["id"], "name": "Search regression patient", "species": "Canino"})
+    assert response.status_code == 201
+    patient = response.json()["data"]
+    assert patient["owner_id"] == target
+    assert patient["tenant_id"] == str(tenant.id)
+    saved = client.get(f"/api/v1/patients/{patient['id']}", headers=headers).json()["data"]
+    assert saved["owner_id"] == target
+
+
 def test_create_owner(client, tenant):
     response = client.post(
         "/api/v1/owners",
