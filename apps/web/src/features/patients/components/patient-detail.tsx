@@ -2044,7 +2044,7 @@ export function PatientDetail({ patientId }: PatientDetailProps) {
             <strong>{patientName}</strong>
             <span>
               Esta acción eliminará el paciente y toda su información clínica asociada,
-              incluyendo consultas, exámenes, vacunas/desparasitación y referencias de
+              incluyendo citas, consultas, exámenes, vacunas/desparasitación y referencias de
               archivos.
             </span>
             <span>Esta acción no se puede deshacer.</span>

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.appointment import Appointment
@@ -107,6 +107,14 @@ class AppointmentRepository:
     def delete(self, appointment: Appointment) -> None:
         self.db.delete(appointment)
         self.db.flush()
+
+    def delete_for_patient(self, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> None:
+        self.db.execute(
+            delete(Appointment).where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.patient_id == patient_id,
+            )
+        )
 
     def _apply_filters(
         self,
