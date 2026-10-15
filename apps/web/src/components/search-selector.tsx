@@ -3,8 +3,10 @@
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
+export type SelectorMessages = { loading: string; empty: string; error: string };
 
 type SearchSelectorProps<T extends { id: string }> = {
+  defaultOpen?: boolean;
   disabled?: boolean;
   selectedId: string;
   selectedLabel: string;
@@ -12,6 +14,7 @@ type SearchSelectorProps<T extends { id: string }> = {
   idPrefix: string;
   label: string;
   plural: string;
+  messages?: SelectorMessages;
   loadPage: (options: { search?: string; page: number; pageSize: number }) => Promise<{ data: T[]; meta: { total: number } }>;
   itemLabel: (item: T) => string;
   onSelect: (item: T | null) => void;
@@ -19,8 +22,8 @@ type SearchSelectorProps<T extends { id: string }> = {
 
 const PAGE_SIZE = 30;
 
-export function SearchSelector<T extends { id: string }>({ disabled = false, selectedId, selectedLabel, emptyLabel, idPrefix, label, plural, loadPage, itemLabel, onSelect }: SearchSelectorProps<T>) {
-  const [open, setOpen] = useState(false);
+export function SearchSelector<T extends { id: string }>({ defaultOpen = false, disabled = false, selectedId, selectedLabel, emptyLabel, idPrefix, label, plural, messages, loadPage, itemLabel, onSelect }: SearchSelectorProps<T>) {
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [owners, setOwners] = useState<T[]>([]);
@@ -148,12 +151,12 @@ export function SearchSelector<T extends { id: string }>({ disabled = false, sel
             onChange={(event) => { resetResults(); setQuery(event.target.value); setPage(1); }} onKeyDown={handleKeyDown} />
         </div>
         <button type="button" className="sale-product-selector__option" onClick={() => select(null)}>{emptyLabel}</button>
-        {loading ? <p className="sale-product-selector__state" role="status">Buscando {plural.toLowerCase()}...</p> : null}
+        {loading ? <p className="sale-product-selector__state" role="status">{messages?.loading ?? `Buscando ${plural.toLowerCase()}...`}</p> : null}
         {!loading && hasError ? <div className="sale-product-selector__state" role="alert">
-          <p>No pudimos cargar los {plural.toLowerCase()}. Intenta nuevamente.</p>
+          <p>{messages?.error ?? `No pudimos cargar los ${plural.toLowerCase()}. Intenta nuevamente.`}</p>
           <button type="button" className="secondary-button" onClick={() => { inputRef.current?.focus(); resetResults(); setRevision((value) => value + 1); }}>Reintentar</button>
         </div> : null}
-        {!loading && !hasError && !owners.length ? <p className="sale-product-selector__state" role="status">No encontramos {plural.toLowerCase()} con ese nombre.</p> : null}
+        {!loading && !hasError && !owners.length ? <p className="sale-product-selector__state" role="status">{messages?.empty ?? `No encontramos ${plural.toLowerCase()} con ese nombre.`}</p> : null}
         <div id={`${idPrefix}-options`} role="listbox" aria-label={plural} aria-busy={loading}>
           {!loading && !hasError ? owners.map((owner, index) => (
             <button type="button" role="option" tabIndex={-1} key={owner.id} id={`${idPrefix}-option-${owner.id}`}

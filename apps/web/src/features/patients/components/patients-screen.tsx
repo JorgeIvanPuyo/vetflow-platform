@@ -3,6 +3,7 @@
 import { canPerformClinicalActions } from "@/lib/permissions";
 
 import { useCurrentUser } from "@/features/auth/current-user-context";
+import { OwnerSelector } from "@/components/owner-selector";
 
 import {
   AlertCircle,
@@ -24,7 +25,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { ReceivableBadge } from "@/features/owners/components/receivable-badge";
 import { useRefreshOnReturn } from "@/features/owners/hooks/use-refresh-on-return";
 import { getCatalogItems } from "@/services/catalogs";
-import { createOwner, getOwners } from "@/services/owners";
+import { createOwner } from "@/services/owners";
 import { createPatient, getPatients, uploadPatientPhoto } from "@/services/patients";
 import type {
   CatalogItem,
@@ -39,7 +40,6 @@ type PatientsState = {
   isSubmitting: boolean;
   isOwnerSubmitting: boolean;
   patients: Patient[];
-  owners: Owner[];
   errorMessage: string | null;
   successMessage: string | null;
   flowMessage: string | null;
@@ -78,7 +78,6 @@ const initialPatientsState: PatientsState = {
   isSubmitting: false,
   isOwnerSubmitting: false,
   patients: [],
-  owners: [],
   errorMessage: null,
   successMessage: null,
   flowMessage: null,
@@ -117,6 +116,7 @@ export function PatientsScreen() {
   const [formState, setFormState] = useState<PatientFormState>(
     initialPatientFormState,
   );
+  const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null);
   const [ownerFormState, setOwnerFormState] = useState<OwnerFormState>(
     initialOwnerFormState,
   );
@@ -171,17 +171,13 @@ export function PatientsScreen() {
     }));
 
     try {
-      const [patientsResponse, ownersResponse] = await Promise.all([
-        getPatients({ page: requestedPage, pageSize }),
-        getOwners(),
-      ]);
+      const patientsResponse = await getPatients({ page: requestedPage, pageSize });
       if (version !== readVersion.current) return;
 
       setState((current) => ({
         ...current,
         isLoading: false,
         patients: patientsResponse.data,
-        owners: ownersResponse.data,
         meta: patientsResponse.meta,
       }));
     } catch (error) {
@@ -229,6 +225,7 @@ export function PatientsScreen() {
     setIsCreateOpen(false);
     setCreationStep("patient");
     setFormState(initialPatientFormState);
+    setSelectedOwner(null);
     setOwnerFormState(initialOwnerFormState);
     setSelectedSpeciesOption("");
     setCustomSpecies("");
@@ -328,6 +325,7 @@ export function PatientsScreen() {
       }
 
       setFormState(initialPatientFormState);
+      setSelectedOwner(null);
       setSelectedSpeciesOption("");
       setCustomSpecies("");
       setHasNoKnownAllergies(false);
@@ -381,11 +379,11 @@ export function PatientsScreen() {
       setState((current) => ({
         ...current,
         isOwnerSubmitting: false,
-        owners: [...current.owners, newOwner],
         flowMessage: "Propietario creado y seleccionado.",
         flowMessageType: "success",
       }));
       setFormState((current) => ({ ...current, owner_id: newOwner.id }));
+      setSelectedOwner(newOwner);
       setOwnerFormState(initialOwnerFormState);
       setCreationStep("patient");
     } catch (error) {
@@ -397,13 +395,6 @@ export function PatientsScreen() {
       }));
     }
   }
-
-  const getOwnerName = useCallback(
-    (ownerId: string) => {
-      return state.owners.find((owner) => owner.id === ownerId)?.full_name ?? ownerId;
-    },
-    [state.owners],
-  );
 
   return (
     <div className="page-stack patients-layout">
@@ -463,7 +454,7 @@ export function PatientsScreen() {
                   {patient.weight_kg ? ` · ${patient.weight_kg} kg` : ""}
                 </span>
                 <span className="patient-card__owner">
-                  Propietario: {getOwnerName(patient.owner_id)}
+                  Propietario: {patient.owner_name ?? patient.owner_id}
                 </span>
                 <ReceivableBadge ownerId={patient.owner_id} hasActiveReceivable={patient.owner_has_active_receivable} forPatient />
               </span>
@@ -567,35 +558,22 @@ export function PatientsScreen() {
                   onError={setPhotoErrorMessage}
                 />
 
-                <label className="field">
-                  <span>Propietario</span>
-                  <select
-                    required
-                    value={formState.owner_id}
-                    onChange={(event) =>
-                      setFormState((current) => ({
-                        ...current,
-                        owner_id: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Selecciona un propietario</option>
-                    {state.owners.map((owner) => (
-                      <option key={owner.id} value={owner.id}>
-                        {owner.full_name} · {owner.phone}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {state.isLoading ? (
-                  <p className="panel-note">Cargando propietarios...</p>
-                ) : null}
-                {!state.isLoading && state.owners.length === 0 ? (
-                  <p className="empty-state">
-                    No hay propietarios registrados. Crea uno para continuar.
-                  </p>
-                ) : null}
+                <OwnerSelector
+                  defaultOpen
+                  idPrefix="patient-owner"
+                  emptyLabel="Selecciona un propietario"
+                  messages={{
+                    loading: "Cargando propietarios…",
+                    empty: "No se encontraron propietarios",
+                    error: "Error al buscar propietarios",
+                  }}
+                  ownerId={formState.owner_id}
+                  ownerName={selectedOwner ? `${selectedOwner.full_name} · ${selectedOwner.phone}` : ""}
+                  onSelect={(owner) => {
+                    setSelectedOwner(owner);
+                    setFormState((current) => ({ ...current, owner_id: owner?.id ?? "" }));
+                  }}
+                />
 
                 {!formState.owner_id ? (
                   <button
@@ -837,7 +815,6 @@ export function PatientsScreen() {
                     className="primary-button"
                     disabled={
                       state.isSubmitting ||
-                      state.owners.length === 0 ||
                       !formState.owner_id ||
                       !formState.name.trim() ||
                       !getSelectedSpecies(selectedSpeciesOption, formState.species, customSpecies)
