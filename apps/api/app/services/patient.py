@@ -4,18 +4,24 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.catalog_item import CatalogItem
-from app.models.consultation import Consultation
+from app.models.consultation import (
+    Consultation,
+    ConsultationMedication,
+    ConsultationStudyRequest,
+)
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
+from app.models.inventory_movement import InventoryMovement
 from app.models.owner import Owner
 from app.models.patient import Patient
 from app.models.patient_file_reference import PatientFileReference
 from app.models.patient_preventive_care import PatientPreventiveCare
+from app.repositories.appointment import AppointmentRepository
 from app.repositories.owner import OwnerRepository
 from app.repositories.patient import PatientRepository
 from app.repositories.receivables import ReceivablesRepository
@@ -330,38 +336,52 @@ class PatientService:
                     "Patient photo delete failed",
                 ) from exc
 
-        self.db.execute(
-            delete(PatientFileReference).where(
-                PatientFileReference.tenant_id == tenant_id,
-                PatientFileReference.patient_id == patient_id,
+        try:
+            # Follow-ups can reference appointments, so remove them first.
+            self.db.execute(
+                delete(FollowUp).where(
+                    FollowUp.tenant_id == tenant_id,
+                    FollowUp.patient_id == patient_id,
+                )
             )
-        )
-        self.db.execute(
-            delete(FollowUp).where(
-                FollowUp.tenant_id == tenant_id,
-                FollowUp.patient_id == patient_id,
-            )
-        )
-        self.db.execute(
-            delete(PatientPreventiveCare).where(
-                PatientPreventiveCare.tenant_id == tenant_id,
-                PatientPreventiveCare.patient_id == patient_id,
-            )
-        )
-        self.db.execute(
-            delete(Exam).where(
-                Exam.tenant_id == tenant_id,
-                Exam.patient_id == patient_id,
-            )
-        )
-        self.db.execute(
-            delete(Consultation).where(
+            AppointmentRepository(self.db).delete_for_patient(tenant_id, patient_id)
+
+            consultation_ids = select(Consultation.id).where(
                 Consultation.tenant_id == tenant_id,
                 Consultation.patient_id == patient_id,
             )
-        )
-        self.patient_repository.delete(patient)
-        self.db.commit()
+            # Preserve stock history; only detach links to records being deleted.
+            self.db.execute(
+                update(InventoryMovement).where(
+                    InventoryMovement.tenant_id == tenant_id,
+                    InventoryMovement.related_patient_id == patient_id,
+                ).values(related_patient_id=None)
+            )
+            self.db.execute(
+                update(InventoryMovement).where(
+                    InventoryMovement.tenant_id == tenant_id,
+                    InventoryMovement.related_consultation_id.in_(consultation_ids),
+                ).values(related_consultation_id=None)
+            )
+            for model in (ConsultationMedication, ConsultationStudyRequest):
+                self.db.execute(
+                    delete(model).where(
+                        model.tenant_id == tenant_id,
+                        model.consultation_id.in_(consultation_ids),
+                    )
+                )
+            for model in (PatientFileReference, PatientPreventiveCare, Exam, Consultation):
+                self.db.execute(
+                    delete(model).where(
+                        model.tenant_id == tenant_id,
+                        model.patient_id == patient_id,
+                    )
+                )
+            self.patient_repository.delete(patient)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     def build_patient_response(
         self,
