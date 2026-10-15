@@ -17,7 +17,7 @@ type GetOwnersOptions = {
   sortBy?: "created_at" | "full_name";
 };
 
-export function getOwners(options: GetOwnersOptions = {}) {
+export function getOwners(options: GetOwnersOptions = {}, requestOptions: { retryTransient?: boolean } = {}) {
   const params = new URLSearchParams();
   if (options.sortBy) {
     params.set("sort_by", options.sortBy);
@@ -39,6 +39,7 @@ export function getOwners(options: GetOwnersOptions = {}) {
   const query = params.toString();
   return api.get<ApiListResponse<Owner>>(
     query ? `/api/v1/owners?${query}` : "/api/v1/owners",
+    requestOptions,
   );
 }
 
