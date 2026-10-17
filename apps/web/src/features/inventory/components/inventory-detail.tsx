@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import {
   ArrowDown,
   ArrowUp,
@@ -31,6 +33,8 @@ import {
   getInventoryMovementAmountLabel,
   getInventoryMovementDirection,
   getInventoryMovementTypeLabel,
+  getReversalStatusLabel,
+  getReversalStatusBadgeClass,
   getInventoryStatusBadges,
   getInventoryUnitLabel,
   initialInventoryEntryFormState,
@@ -734,7 +738,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
                   "Usuario de la clínica";
 
                 return (
-                  <article key={movement.id} className="inventory-movement-card">
+                  <article key={movement.id} data-record-state={getRecordRowState(movement.reversal_status)} className="inventory-movement-card">
 	                    <span
 	                      className={`inventory-movement-card__icon inventory-movement-card__icon--${iconClass}`}
 	                      aria-hidden="true"
@@ -783,7 +787,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
                           </span>
                         ) : null}
                         {movement.reversal_status !== "active" ? (
-                          <span>Estado: {movement.reversal_status}</span>
+                          <span className={getReversalStatusBadgeClass(movement.reversal_status)}>{getReversalStatusLabel(movement.reversal_status)}</span>
                         ) : null}
                         {amountLabel ? <span>Monto: {amountLabel}</span> : null}
                         <span>Registrado por: {actor}</span>

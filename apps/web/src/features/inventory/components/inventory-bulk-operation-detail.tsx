@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -173,7 +175,7 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
                 </thead>
                 <tbody>
                   {operation.items.map((row) => (
-                    <tr key={row.id} className="inventory-table__row--static">
+                    <tr key={row.id} data-record-state={getRecordRowState(row.status)} className="inventory-table__row--static">
                       <td>{row.inventory_item_name ?? row.inventory_item_id}</td>
                       <td>{row.field_name}</td>
                       <td>{formatValue(row.old_value_json)}</td>

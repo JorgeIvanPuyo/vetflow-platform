@@ -17,6 +17,7 @@ import type {
   InventoryListFilters,
   InventoryMovement,
   InventoryMovementType,
+  InventoryReversalStatus,
   InventorySortBy,
   InventorySortOrder,
   InventoryStockStatus,
@@ -962,4 +963,27 @@ export function inventoryExitFormToPayload(
   }
 
   return payload;
+}
+
+export function getReversalStatusLabel(status: InventoryReversalStatus) {
+  if (status === "reversed") {
+    return "Revertido";
+  }
+  if (status === "reversal") {
+    return "Reversa";
+  }
+  if (status === "active") {
+    return "Activo";
+  }
+  return "Todos";
+}
+
+export function getReversalStatusBadgeClass(status: InventoryReversalStatus) {
+  if (status === "reversed") {
+    return "badge badge--warning";
+  }
+  if (status === "reversal") {
+    return "badge badge--blue";
+  }
+  return "badge badge--success";
 }
