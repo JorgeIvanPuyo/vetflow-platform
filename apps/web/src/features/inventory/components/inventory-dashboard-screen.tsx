@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import {
   Activity,
   AlertTriangle,
@@ -20,6 +22,8 @@ import {
   formatInventoryDateTime,
   getInventoryCategoryLabel,
   getInventoryMovementTypeLabel,
+  getReversalStatusLabel,
+  getReversalStatusBadgeClass,
 } from "@/features/inventory/components/inventory-helpers";
 import {
   formatUserName,
@@ -371,7 +375,7 @@ export function InventoryDashboardScreen() {
             </ActivityPanel>
             <ActivityPanel title="Operaciones grupales recientes" isEmpty={data.activity.recent_bulk_operations.length === 0}>
               {data.activity.recent_bulk_operations.map((operation) => (
-                <Link key={operation.id} className="inventory-dashboard-activity-row" href={`/inventory/bulk-operations/${operation.id}`}>
+                <Link key={operation.id} data-record-state={getRecordRowState(operation.status)} className="inventory-dashboard-activity-row" href={`/inventory/bulk-operations/${operation.id}`}>
                   <span>
                     <strong>{labelBulkOperation(operation.operation_type)}</strong>
                     <small>{formatUserName(operation.created_by_user_name, operation.created_by_user_email)}</small>
@@ -429,7 +433,7 @@ function ActivityPanel({ title, children, isEmpty }: { title: string; children: 
 
 function RecentMovementRow({ movement }: { movement: InventoryMovement }) {
   return (
-    <Link className="inventory-dashboard-activity-row" href={`/inventory/movements/${movement.id}`}>
+    <Link data-record-state={getRecordRowState(movement.reversal_status)} className="inventory-dashboard-activity-row" href={`/inventory/movements/${movement.id}`}>
       <span>
         <strong>{movement.inventory_item_name ?? "Producto"}</strong>
         <small>
@@ -438,6 +442,7 @@ function RecentMovementRow({ movement }: { movement: InventoryMovement }) {
       </span>
       <span>
         {movement.quantity} · {formatUserName(movement.created_by_user_name, movement.created_by_user_email)}
+        {movement.reversal_status !== "active" ? <small><span className={getReversalStatusBadgeClass(movement.reversal_status)}>{getReversalStatusLabel(movement.reversal_status)}</span></small> : null}
       </span>
     </Link>
   );

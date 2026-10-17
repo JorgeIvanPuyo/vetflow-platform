@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import { Building2, ChevronDown, LayoutDashboard, Plus, Search, ShoppingCart, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -266,6 +268,7 @@ export function PurchasesScreen() {
                   {items.map((purchase) => (
                     <tr
                       key={purchase.id}
+                      data-record-state={getRecordRowState(purchase.status)}
                       className="inventory-table__row--clickable"
                       role="link"
                       tabIndex={0}
