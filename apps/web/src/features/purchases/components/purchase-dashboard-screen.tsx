@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import {
   AlertTriangle,
   Building2,
@@ -203,7 +205,7 @@ export function PurchaseDashboardScreen() {
             <div className="section-heading-inline"><h2>Compras recientes</h2><Link href={listHref()}>Ver listado</Link></div>
             {data.recent_purchases.length === 0 ? <p className="empty-state empty-state--compact">Sin compras en el período.</p> : <div className="purchase-dashboard-recent-list">{data.recent_purchases.map((purchase) => {
               const userLabel = formatPurchaseUser(purchase.created_by_user_name, purchase.created_by_user_email);
-              return <Link href={`/purchases/${purchase.id}`} className="purchase-dashboard-recent-row" key={purchase.id} aria-label={`Abrir compra de ${purchase.supplier_name}`}>
+              return <Link href={`/purchases/${purchase.id}`} data-record-state={getRecordRowState(purchase.status)} className="purchase-dashboard-recent-row" key={purchase.id} aria-label={`Abrir compra de ${purchase.supplier_name}`}>
                 <span className="purchase-dashboard-recent-heading">
                   <strong className="purchase-dashboard-recent-supplier" title={purchase.supplier_name}>{purchase.supplier_name}</strong>
                   <strong className="purchase-dashboard-recent-total">{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong>

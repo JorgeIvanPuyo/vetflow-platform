@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import { canPerformClinicalActions } from "@/lib/permissions";
 
 import { useCurrentUser } from "@/features/auth/current-user-context";
@@ -803,7 +805,7 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
   );
 
   return (
-    <Link className="appointment-card" href={`/agenda/${appointment.id}`}>
+    <Link data-record-state={getRecordRowState(appointment.status)} className="appointment-card" href={`/agenda/${appointment.id}`}>
       <div className="appointment-card__time">
         <Clock aria-hidden="true" size={17} />
         <strong>{formatAppointmentTimeRange(appointment)}</strong>
@@ -848,7 +850,7 @@ function FollowUpCard({
   );
 
   return (
-    <article className="appointment-card follow-up-card">
+    <article data-record-state={getRecordRowState(followUp.status)} className="appointment-card follow-up-card">
       <div className="appointment-card__time">
         <Clock aria-hidden="true" size={17} />
         <strong>{formatDateTimeCompact(followUp.due_at)}</strong>

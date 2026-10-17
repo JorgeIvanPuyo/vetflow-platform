@@ -14,6 +14,10 @@
   --color-warning-soft: #fff2d8;
   --color-danger: #d9433e;
   --color-danger-soft: #fde8e7;
+  --record-discarded-tint: color-mix(in srgb, var(--color-danger) 6%, transparent);
+  --record-discarded-interaction-tint: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  --record-discarded-text-muted: color-mix(in srgb, var(--color-text-muted) 85%, var(--color-text));
+  --record-discarded-primary-dark: color-mix(in srgb, var(--color-primary-dark) 85%, var(--color-text));
   --color-success: #4ea58d;
   --color-success-soft: #dff4ee;
   --color-border: #e4ded3;
@@ -27,6 +31,20 @@
   --header-height: 56px;
   --bottom-nav-height: 68px;
   --font-sans: "Nunito Sans", "Aptos", "Segoe UI", sans-serif;
+}
+
+/* Shared by operational table rows and responsive cards. A translucent layer
+   keeps each layout's base background, hover, zebra stripes and focus ring.
+   Selection takes priority; badges/text continue to communicate the state. */
+:root [data-record-state="discarded"]:not([aria-selected="true"]):not([data-state="selected"]):not(:has(input[type="checkbox"]:checked)) {
+  /* Compensate for the tint so secondary text and links retain contrast. */
+  --color-text-muted: var(--record-discarded-text-muted);
+  --color-primary-dark: var(--record-discarded-primary-dark);
+  background-image: linear-gradient(var(--record-discarded-tint), var(--record-discarded-tint));
+}
+
+:root [data-record-state="discarded"]:not([aria-selected="true"]):not([data-state="selected"]):not(:has(input[type="checkbox"]:checked)):is(:hover, :focus-within) {
+  background-image: linear-gradient(var(--record-discarded-interaction-tint), var(--record-discarded-interaction-tint));
 }
 
 /* Sales */

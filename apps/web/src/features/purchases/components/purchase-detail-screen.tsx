@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import { ArrowLeft, Ban, CheckCircle2, Download, ExternalLink, Eye, FileUp, PackageMinus, Pencil, RotateCcw, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -274,7 +276,7 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
           <section className="panel purchase-returns-panel">
             <div className="section-heading-inline"><div><h2>Devoluciones</h2><p>{labelReturnAggregation(purchase.return_status)}</p></div>{purchase.status === "received" && purchase.can_register_return ? <Link className="secondary-button" href={`/purchases/${purchase.id}/returns/new`}><PackageMinus size={17} /> Registrar devolución</Link> : null}</div>
             <div className="purchase-return-overview"><div><span>Total confirmado devuelto</span><strong>{formatPurchaseCurrency(purchase.returned_total_ars, moneyPreferences)}</strong></div><div><span>Devoluciones confirmadas</span><strong>{purchase.confirmed_return_count}</strong></div><div><span>Estado derivado</span><strong>{labelReturnAggregation(purchase.return_status)}</strong></div></div>
-            {purchase.returns.length === 0 ? <p>No hay devoluciones registradas para esta compra.</p> : <div className="purchase-return-list">{purchase.returns.map((item) => <Link href={`/purchase-returns/${item.id}`} key={item.id}><span><strong>{formatPurchaseDate(item.return_date)}</strong><small>{item.reason}</small></span><span><span className={`badge purchase-return-status purchase-return-status--${item.status}`}>{item.status === "draft" ? "Borrador" : item.status === "confirmed" ? "Confirmada" : "Cancelada"}</span><strong>{formatPurchaseCurrency(item.total_ars, moneyPreferences)}</strong></span></Link>)}</div>}
+            {purchase.returns.length === 0 ? <p>No hay devoluciones registradas para esta compra.</p> : <div className="purchase-return-list">{purchase.returns.map((item) => <Link data-record-state={getRecordRowState(item.status)} href={`/purchase-returns/${item.id}`} key={item.id}><span><strong>{formatPurchaseDate(item.return_date)}</strong><small>{item.reason}</small></span><span><span className={`badge purchase-return-status purchase-return-status--${item.status}`}>{item.status === "draft" ? "Borrador" : item.status === "confirmed" ? "Confirmada" : "Cancelada"}</span><strong>{formatPurchaseCurrency(item.total_ars, moneyPreferences)}</strong></span></Link>)}</div>}
           </section>
 
           <section className="panel purchase-traceability">

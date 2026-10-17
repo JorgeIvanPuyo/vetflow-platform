@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import {
   ArrowDown,
   ArrowUp,
@@ -19,6 +21,8 @@ import {
   formatInventorySignedQuantity,
   getInventoryMovementDirection,
   getInventoryMovementTypeLabel,
+  getReversalStatusLabel,
+  getReversalStatusBadgeClass,
 } from "@/features/inventory/components/inventory-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import { getInventoryMovementList } from "@/services/inventory";
@@ -521,6 +525,7 @@ function MovementRow({ movement, onOpen }: { movement: InventoryMovement; onOpen
   return (
     <tr
       aria-label={`Abrir movimiento de ${productName}`}
+      data-record-state={getRecordRowState(movement.reversal_status)}
       className="inventory-table__row--clickable"
       role="link"
       tabIndex={0}
@@ -602,27 +607,4 @@ function readIsoDate(value: string | null) {
 
 function readUuid(value: string | null) {
   return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : "";
-}
-
-function getReversalStatusLabel(status: InventoryReversalStatus) {
-  if (status === "reversed") {
-    return "Revertido";
-  }
-  if (status === "reversal") {
-    return "Reversa";
-  }
-  if (status === "active") {
-    return "Activo";
-  }
-  return "Todos";
-}
-
-function getReversalStatusBadgeClass(status: InventoryReversalStatus) {
-  if (status === "reversed") {
-    return "badge badge--warning";
-  }
-  if (status === "reversal") {
-    return "badge badge--blue";
-  }
-  return "badge badge--success";
 }

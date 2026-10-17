@@ -1,5 +1,7 @@
 "use client";
 
+import { getRecordRowState } from "@/lib/record-row-state";
+
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -68,6 +70,7 @@ export function InventoryBulkOperationsScreen() {
                 <tr
                   key={item.id}
                   aria-label={`Abrir operación grupal ${labelBulkOperation(item.operation_type)}`}
+                  data-record-state={getRecordRowState(item.status)}
                   className="inventory-table__row--clickable"
                   role="link"
                   tabIndex={0}
