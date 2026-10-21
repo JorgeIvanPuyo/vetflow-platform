@@ -14,7 +14,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_batch_migration_is_additive_single_head():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0054_receivables_foundation"]
+    assert script.get_heads() == ["0058_arca_emission"]
     assert script.get_revision("0053_sale_payment_batches").down_revision == "0052_sale_payment_idempotency"
 
 

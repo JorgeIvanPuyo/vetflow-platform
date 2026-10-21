@@ -46,6 +46,8 @@ class PaymentMethod(BaseModel):
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    operational_reference: Mapped[str | None] = mapped_column(String(255))
+    suggested_fiscal_issuer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("fiscal_issuers.id", ondelete="RESTRICT"))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -77,6 +79,7 @@ class SalePaymentBatch(BaseModel):
 class SalePayment(BaseModel):
     __tablename__ = "sale_payments"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "sale_id", "id", name="uq_sale_payments_fiscal_membership"),
         ForeignKeyConstraint(
             ["tenant_id", "sale_id", "batch_id"],
             ["sale_payment_batches.tenant_id", "sale_payment_batches.sale_id", "sale_payment_batches.id"],

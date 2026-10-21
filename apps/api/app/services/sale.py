@@ -260,6 +260,9 @@ class SaleService:
                     "Sólo se puede revertir una venta confirmada",
                 )
 
+            from app.services.fiscal_commitment import ensure_no_fiscal_reservations
+
+            ensure_no_fiscal_reservations(self.db, tenant_id, sale_id)
             product_lines = self._validated_product_lines(tenant_id, sale)
             lines_by_item_id = {
                 line.inventory_item_id: line for line in product_lines

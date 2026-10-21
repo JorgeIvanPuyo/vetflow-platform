@@ -4,10 +4,13 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.tenant import TenantContext, get_tenant_context
 from app.db.session import get_db
+from app.models.sale import Sale
 from app.repositories.sale import SaleRepository
 from app.schemas.sale import (
     SaleCancel,
@@ -28,6 +31,7 @@ from app.services.purchase_attachment import MAX_PURCHASE_ATTACHMENT_SIZE_BYTES
 from app.services.sale import SaleService
 from app.services.sale_confirmation import SaleConfirmationService
 from app.services.sale_fiscal_document import SaleFiscalDocumentService
+from app.services.fiscal_configuration import authorize_fiscal_context, authorize_fiscal_issuer_action
 from app.services.storage import (
     ObjectStorageService,
     get_purchase_attachment_storage_service,
@@ -35,6 +39,11 @@ from app.services.storage import (
 
 
 router = APIRouter(prefix="/sales", tags=["sales"])
+
+
+def _lock_fiscal_sale(db: Session, tenant_id: uuid.UUID, sale_id: uuid.UUID) -> None:
+    if db.scalar(select(Sale.id).where(Sale.tenant_id == tenant_id, Sale.id == sale_id).with_for_update()) is None:
+        raise AppError(404, "sale_not_found", "Venta no encontrada")
 
 
 def _detail_response(sale, tenant_id: uuid.UUID, db: Session) -> dict:
@@ -162,6 +171,9 @@ async def create_sale_fiscal_document(
     db: Session = Depends(get_db),
     storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
 ) -> dict:
+    authorize_fiscal_context(db, tenant)
+    _lock_fiscal_sale(db, tenant.tenant_id, sale_id)
+    authorize_fiscal_issuer_action(db, tenant, fiscal_issuer_id, for_update=True)
     content = await file.read(MAX_PURCHASE_ATTACHMENT_SIZE_BYTES + 1)
     document = SaleFiscalDocumentService(db, storage).create(
         tenant.tenant_id,
@@ -189,6 +201,7 @@ def get_sale_fiscal_document(
     db: Session = Depends(get_db),
     storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
 ) -> dict:
+    authorize_fiscal_context(db, tenant)
     document = SaleFiscalDocumentService(db, storage).get(tenant.tenant_id, sale_id)
     return {
         "data": SaleFiscalDocumentRead.model_validate(document).model_dump(mode="json"),
@@ -209,6 +222,12 @@ async def update_sale_fiscal_document(
     db: Session = Depends(get_db),
     storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
 ) -> dict:
+    authorize_fiscal_context(db, tenant)
+    _lock_fiscal_sale(db, tenant.tenant_id, sale_id)
+    current = SaleFiscalDocumentService(db, storage).get(tenant.tenant_id, sale_id)
+    # Check both identities under the sale lock; lock issuers in a stable order.
+    for issuer_id in sorted({current.fiscal_issuer_id, fiscal_issuer_id or current.fiscal_issuer_id}):
+        authorize_fiscal_issuer_action(db, tenant, issuer_id, for_update=True)
     content = (
         await file.read(MAX_PURCHASE_ATTACHMENT_SIZE_BYTES + 1)
         if file is not None
@@ -241,6 +260,7 @@ def download_sale_fiscal_document(
     db: Session = Depends(get_db),
     storage: ObjectStorageService = Depends(get_purchase_attachment_storage_service),
 ) -> Response:
+    authorize_fiscal_context(db, tenant)
     document, content = SaleFiscalDocumentService(db, storage).download(
         tenant.tenant_id, sale_id
     )

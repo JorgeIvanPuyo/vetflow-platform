@@ -11,6 +11,16 @@ from app.schemas.fiscal_issuer import FiscalDocumentType
 FiscalStatus = Literal[
     "pending", "documented", "requires_attention"
 ]
+FiscalDocumentSource = Literal["manual", "arca"]
+FiscalAuthorizationStatus = Literal["manual", "pending", "unknown", "authorized", "rejected", "caea_pending"]
+
+
+class SaleFiscalDocumentTotalRead(BaseModel):
+    environment: Literal["homologation", "production"] | None = None
+    source: FiscalDocumentSource
+    authorization_status: FiscalAuthorizationStatus
+    count: int
+    total_ars: Decimal
 
 
 class SaleFiscalDocumentFileVersionRead(BaseModel):
@@ -41,19 +51,24 @@ class SaleFiscalDocumentRead(BaseModel):
     issuer_user_id_snapshot: uuid.UUID
     issuer_name_snapshot: str
     issuer_tax_id_snapshot: str
+    source: FiscalDocumentSource
+    environment: Literal["homologation", "production"] | None = None
+    cae: str | None = None
+    cae_expiry: date | None = None
+    authorization_status: FiscalAuthorizationStatus
     document_type: FiscalDocumentType
     document_code: str
     document_number: str
     issue_date: date
     total_ars_snapshot: Decimal
-    original_filename: str
-    content_type: Literal["application/pdf", "image/jpeg", "image/png"]
-    size_bytes: int
-    sha256: str
+    original_filename: str | None = None
+    content_type: Literal["application/pdf", "image/jpeg", "image/png"] | None = None
+    size_bytes: int | None = None
+    sha256: str | None = None
     uploaded_by_user_id: uuid.UUID | None = None
     uploaded_by_user_name: str | None = None
     uploaded_by_user_email: str | None = None
-    uploaded_at: datetime
+    uploaded_at: datetime | None = None
     is_active: bool
     file_history: list[SaleFiscalDocumentFileVersionRead]
     created_at: datetime

@@ -140,14 +140,18 @@ def test_followup_administration_separate_from_clinical_completion(client, actor
 @pytest.mark.parametrize("role", ROLES)
 def test_fiscal_configuration_and_operator_are_separate(client, actors, role):
     auth = headers(actors[role])
+    configuration_auth = headers(actors["clinic_admin"])
+    if role in {"medico_veterinario", "secretaria"}:
+        assert client.post("/api/v1/fiscal-issuers", headers=auth,
+                           json=issuer_payload(actors["medico_veterinario"].id)).status_code == 403
     for invalid in NON_CLINICAL:
-        response = client.post("/api/v1/fiscal-issuers", headers=auth, json=issuer_payload(actors[invalid].id))
+        response = client.post("/api/v1/fiscal-issuers", headers=configuration_auth, json=issuer_payload(actors[invalid].id))
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "invalid_fiscal_user"
-    issuer = data(client.post("/api/v1/fiscal-issuers", headers=auth,
+    issuer = data(client.post("/api/v1/fiscal-issuers", headers=configuration_auth,
                              json=issuer_payload(actors["medico_veterinario"].id)), 201)
     for invalid in NON_CLINICAL:
-        assert client.patch(f"/api/v1/fiscal-issuers/{issuer['id']}", headers=auth,
+        assert client.patch(f"/api/v1/fiscal-issuers/{issuer['id']}", headers=configuration_auth,
                             json={"user_id": str(actors[invalid].id)}).status_code == 422
     owner = data(client.post("/api/v1/owners", headers=auth, json={"full_name": "Cliente venta", "phone": "555"}), 201)
     sale = data(client.post("/api/v1/sales", headers=auth, json={**sale_payload(), "owner_id": owner["id"]}), 201)
@@ -160,12 +164,16 @@ def test_fiscal_configuration_and_operator_are_separate(client, actors, role):
         "amount_ars": "20", "received_at": "2026-09-29T10:00:00Z"}), 201)
     assert payment["created_by_user_id"] == str(actors[role].id)
     _storage(client)
-    document = data(client.post(url + "/fiscal-document", headers=auth, data={
+    document_response = client.post(url + "/fiscal-document", headers=auth, data={
         "fiscal_issuer_id": issuer["id"], "document_type": "receipt_c", "document_code": "015",
         "document_number": "0001-123", "issue_date": "2026-09-29",
-    }, files={"file": ("receipt.pdf", PDF, "application/pdf")}), 201)
-    assert document["fiscal_issuer_id"] == issuer["id"]
-    assert document["uploaded_by_user_id"] == str(actors[role].id)
+    }, files={"file": ("receipt.pdf", PDF, "application/pdf")})
+    if role == "secretaria":
+        assert document_response.status_code == 403
+    else:
+        document = data(document_response, 201)
+        assert document["fiscal_issuer_id"] == issuer["id"]
+        assert document["uploaded_by_user_id"] == str(actors[role].id)
     assert data(client.get(f"/api/v1/fiscal-issuers/{issuer['id']}", headers=auth))["user_id"] == str(actors["medico_veterinario"].id)
 
 

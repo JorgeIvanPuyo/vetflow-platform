@@ -10940,3 +10940,22 @@ a.inventory-dashboard-kpi:focus-visible {
   .payment-methods-mobile .purchase-attachment-actions { display: flex; flex-wrap: wrap; }
   .payment-methods-page .settings-breadcrumb { flex-wrap: wrap; }
 }
+
+/* Fiscal review uses the same cards and controls at desktop and mobile widths. */
+.fiscal-workspace, .fiscal-card, .fiscal-fields, .fiscal-summary-card { min-width: 0; }
+.fiscal-card, .fiscal-fields { display: grid; gap: 1rem; }
+.fiscal-fields { border: 0; padding: 0; margin: 0; }
+.fiscal-grid, .fiscal-cards, .fiscal-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 1rem; }
+.fiscal-workspace .field, .fiscal-workspace input:not([type="checkbox"]), .fiscal-workspace select, .fiscal-workspace textarea { min-width: 0; width: 100%; }
+.fiscal-summary-card { display: grid; align-content: start; gap: 0.65rem; border: 1px solid var(--color-border); border-radius: 12px; padding: 1rem; overflow-wrap: anywhere; }
+.fiscal-summary-card p, .fiscal-blockers p { margin: 0; }
+.fiscal-totals > div { display: grid; gap: 0.4rem; }
+.fiscal-blockers { display: grid; gap: 0.75rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-soft); overflow-wrap: anywhere; }
+.fiscal-payment-list { margin: 0; padding-left: 1.25rem; }
+.fiscal-workspace .section-heading, .fiscal-workspace .purchase-attachment-actions { flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .fiscal-workspace .screen-heading, .fiscal-workspace .section-heading { align-items: stretch; }
+  .fiscal-workspace button, .fiscal-workspace a.secondary-button { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+  .fiscal-workspace .checkbox-field { align-items: flex-start; }
+  .fiscal-workspace .checkbox-field input { flex-shrink: 0; }
+}

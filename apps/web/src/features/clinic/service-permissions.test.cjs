@@ -51,7 +51,7 @@ Module._load = function (request, ...args) {
     useCallback: (callback) => callback,
     useMemo: (callback) => callback(),
   };
-  if (request === "@/features/auth/current-user-context") return { useCurrentUser: () => ({ role: harness.role }) };
+  if (request === "@/features/auth/current-user-context") return { useCurrentUser: () => ({ role: harness.role, currentUser: harness.role ? { id: `synthetic-${harness.role}`, role: harness.role, is_active: true } : null }) };
   if (request === "@/features/clinic/clinic-context") return { useClinic: () => ({ refreshProfile() {}, refreshPreferences() {} }) };
   if (request === "@/services/clinic") return {
     getClinicProfile: async () => ({ data: { display_name: "Clinic A" } }),
@@ -351,7 +351,7 @@ test("fiscal user selector requests only active veterinarians", async () => {
   setAuthTokenProvider(async () => "test-token");
   global.fetch = async () => new Response(JSON.stringify({ data: [], meta: {} }), { status: 200 });
   try {
-    const tree = await mount("secretaria", () => FiscalIssuersScreen().type());
+    const tree = await mount("clinic_admin", () => FiscalIssuersScreen().type());
     assert.equal(harness.responsibleOnly, true);
     button(tree, "Nuevo emisor").props.onClick();
     const options = nodes(render()).filter((node) => node.type === "option").map((node) => node.props.value);

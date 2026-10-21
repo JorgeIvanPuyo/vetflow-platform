@@ -11,6 +11,7 @@ from app.schemas.fiscal_issuer import (
     FiscalIssuerUpdate,
 )
 from app.services.fiscal_issuer import FiscalIssuerService
+from app.services.fiscal_configuration import authorize_fiscal_context
 
 
 router = APIRouter(prefix="/fiscal-issuers", tags=["sale-fiscal-issuers"])
@@ -22,6 +23,7 @@ def create_fiscal_issuer(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    authorize_fiscal_context(db, tenant, manage=True)
     issuer = FiscalIssuerService(db).create(tenant.tenant_id, payload)
     return {
         "data": FiscalIssuerRead.model_validate(issuer).model_dump(mode="json"),
@@ -35,6 +37,7 @@ def list_fiscal_issuers(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    authorize_fiscal_context(db, tenant)
     issuers = FiscalIssuerService(db).list(
         tenant.tenant_id, active_only=active_only
     )
@@ -53,6 +56,7 @@ def get_fiscal_issuer(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    authorize_fiscal_context(db, tenant)
     issuer = FiscalIssuerService(db).get(tenant.tenant_id, issuer_id)
     return {
         "data": FiscalIssuerRead.model_validate(issuer).model_dump(mode="json"),
@@ -67,6 +71,7 @@ def update_fiscal_issuer(
     tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict:
+    authorize_fiscal_context(db, tenant, manage=True)
     issuer = FiscalIssuerService(db).update(
         tenant.tenant_id, issuer_id, payload
     )

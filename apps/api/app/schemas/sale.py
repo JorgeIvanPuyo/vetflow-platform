@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from app.core.sale_limits import INVENTORY_MONEY_MAX, SALE_QUANTITY_MAX
-from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead
+from app.schemas.sale_fiscal import FiscalStatus, SaleFiscalDocumentRead, SaleFiscalDocumentTotalRead
 from app.schemas.payment import PaymentStatus, SaleInitialPaymentCreate, SalePaymentRead
 
 
@@ -193,6 +193,8 @@ class SaleDetailRead(BaseModel):
     status: SaleStatus
     fiscal_status: FiscalStatus | None = None
     fiscal_document: SaleFiscalDocumentRead | None = None
+    fiscal_documents: list[SaleFiscalDocumentRead] = Field(default_factory=list)
+    fiscal_document_totals: list[SaleFiscalDocumentTotalRead] = Field(default_factory=list)
     paid_total_ars: Decimal
     balance_due_ars: Decimal
     payment_status: PaymentStatus | None = None

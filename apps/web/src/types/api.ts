@@ -1938,11 +1938,13 @@ export type PaymentMethod = {
   is_active: boolean;
   sort_order: number;
   has_payments: boolean;
+  operational_reference?: string | null;
+  suggested_fiscal_issuer_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order">;
+export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order" | "operational_reference" | "suggested_fiscal_issuer_id">;
 
 export type SalePayment = {
   id: string;
@@ -1974,6 +1976,9 @@ export type FiscalIssuer = {
   user_email: string | null;
   display_name: string;
   tax_id: string;
+  cuit?: string | null;
+  legal_name?: string | null;
+  tax_condition?: string | null;
   is_active: boolean;
   can_issue_service_receipt_c: boolean;
   can_issue_product_invoice_c: boolean;
@@ -2006,6 +2011,9 @@ export type SaleFiscalDocumentFileVersion = {
 
 export type SaleFiscalDocument = {
   id: string;
+  source: "manual" | "arca";
+  environment: "homologation" | "production" | null;
+  authorization_status: "manual" | "pending" | "unknown" | "authorized" | "rejected" | "caea_pending";
   fiscal_issuer_id: string;
   issuer_user_id_snapshot: string;
   issuer_name_snapshot: string;
@@ -2015,14 +2023,14 @@ export type SaleFiscalDocument = {
   document_number: string;
   issue_date: string;
   total_ars_snapshot: string;
-  original_filename: string;
-  content_type: "application/pdf" | "image/jpeg" | "image/png";
-  size_bytes: number;
-  sha256: string;
+  original_filename: string | null;
+  content_type: "application/pdf" | "image/jpeg" | "image/png" | null;
+  size_bytes: number | null;
+  sha256: string | null;
   uploaded_by_user_id: string | null;
   uploaded_by_user_name: string | null;
   uploaded_by_user_email: string | null;
-  uploaded_at: string;
+  uploaded_at: string | null;
   is_active: boolean;
   file_history: SaleFiscalDocumentFileVersion[];
   created_at: string;
@@ -2117,6 +2125,8 @@ export type Sale = Omit<SaleSummary, "item_count"> & {
   reversal_reason: string | null;
   reversal_operation_id: string | null;
   fiscal_document: SaleFiscalDocument | null;
+  fiscal_documents: SaleFiscalDocument[];
+  fiscal_document_totals: { source: "manual" | "arca"; authorization_status: SaleFiscalDocument["authorization_status"]; environment: SaleFiscalDocument["environment"]; count: number; total_ars: string }[];
   payments: SalePayment[];
   items: SaleItem[];
 };

@@ -5,12 +5,14 @@ import logging
 import uuid
 from datetime import UTC, date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.services.fiscal_issuer import FiscalIssuerService
 from app.models.sale import Sale
+from app.models.fiscal_proposal import FiscalPaymentAllocation
 from app.models.sale_fiscal import (
     FiscalIssuer,
     SaleFiscalDocument,
@@ -60,6 +62,9 @@ class SaleFiscalDocumentService:
                 "sale_fiscal_document_status_not_allowed",
                 "Sólo una venta confirmada puede documentarse inicialmente",
             )
+        from app.services.fiscal_commitment import ensure_no_fiscal_reservations
+
+        ensure_no_fiscal_reservations(self.db, tenant_id, sale_id)
         if self.document_repository.get_active(
             tenant_id, sale_id, for_update=True
         ) is not None:
@@ -110,6 +115,8 @@ class SaleFiscalDocumentService:
                 issuer_user_id_snapshot=issuer.user_id,
                 issuer_name_snapshot=issuer.display_name,
                 issuer_tax_id_snapshot=issuer.tax_id,
+                source="manual",
+                authorization_status="manual",
                 document_type=normalized_type,
                 document_code=normalized_code,
                 document_number=normalized_number,
@@ -169,6 +176,10 @@ class SaleFiscalDocumentService:
             )
         return document
 
+    def list(self, tenant_id: uuid.UUID, sale_id: uuid.UUID) -> list[SaleFiscalDocument]:
+        self._require_sale(tenant_id, sale_id)
+        return self.document_repository.list_for_sale(tenant_id, sale_id)
+
     def update(
         self,
         tenant_id: uuid.UUID,
@@ -194,6 +205,16 @@ class SaleFiscalDocumentService:
                 404,
                 "sale_fiscal_document_not_found",
                 "La venta no tiene un comprobante fiscal",
+            )
+        if self.db.scalar(select(FiscalPaymentAllocation.id).where(
+            FiscalPaymentAllocation.tenant_id == tenant_id,
+            FiscalPaymentAllocation.sale_id == sale_id,
+            FiscalPaymentAllocation.fiscal_document_id == document.id,
+            FiscalPaymentAllocation.is_active.is_(True),
+        ).limit(1)) is not None:
+            raise AppError(
+                409, "fiscal_document_allocated",
+                "El comprobante está regularizado con imputaciones activas. Conserva su identidad y archivo; requiere revisión contable para corregirlo",
             )
         if sale.status not in {"confirmed", "reversed"}:
             raise AppError(

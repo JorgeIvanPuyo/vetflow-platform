@@ -17,6 +17,7 @@ from app.models.sale import Sale, calculate_balance_due, calculate_payment_statu
 from app.repositories.payment import PaymentMethodRepository, SalePaymentRepository
 from app.repositories.sale import SaleRepository
 from app.repositories.user import UserRepository
+from app.repositories.fiscal_issuer import FiscalIssuerRepository
 from app.schemas.payment import IdempotencyKey, PaymentMethodCreate, PaymentMethodUpdate, SalePaymentCreate
 
 
@@ -52,6 +53,8 @@ class PaymentMethodService:
 
     def create(self, tenant_id: uuid.UUID, payload: PaymentMethodCreate, *, user_id: uuid.UUID | None) -> PaymentMethod:
         self._validate_user(tenant_id, user_id)
+        self._validate_mapping_actor(tenant_id, user_id, payload.model_fields_set)
+        self._validate_fiscal_issuer(tenant_id, payload.suggested_fiscal_issuer_id)
         normalized = normalized_label(payload.label)
         if payload.is_active and self.repository.find_active_label(tenant_id, normalized):
             raise AppError(409, "payment_method_label_duplicate", "Ya existe una forma de pago activa con ese nombre")
@@ -81,13 +84,16 @@ class PaymentMethodService:
 
     def update(self, tenant_id: uuid.UUID, method_id: uuid.UUID, payload: PaymentMethodUpdate, *, user_id: uuid.UUID | None) -> PaymentMethod:
         self._validate_user(tenant_id, user_id)
+        self._validate_mapping_actor(tenant_id, user_id, payload.model_fields_set)
         try:
             method = self.repository.get_by_id(tenant_id, method_id, for_update=True)
             if method is None:
                 raise AppError(404, "payment_method_not_found", "Forma de pago no encontrada")
             changes = payload.model_dump(exclude_unset=True)
-            if any(value is None for value in changes.values()):
+            if any(value is None for field, value in changes.items() if field not in {"operational_reference", "suggested_fiscal_issuer_id"}):
                 raise AppError(422, "validation_error", "Los campos enviados no pueden ser null")
+            if "suggested_fiscal_issuer_id" in changes:
+                self._validate_fiscal_issuer(tenant_id, changes["suggested_fiscal_issuer_id"])
             if "type" in changes and changes["type"] != method.type and self.repository.has_payments(tenant_id, method.id):
                 raise AppError(409, "payment_method_type_locked", "El tipo no puede cambiar porque la forma de pago ya tiene cobros históricos")
             candidate_label = changes.get("label", method.label)
@@ -113,6 +119,17 @@ class PaymentMethodService:
     def _validate_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> None:
         if user_id is not None and self.user_repository.get_by_id(tenant_id, user_id) is None:
             raise AppError(404, "user_not_found", "Usuario no encontrado")
+
+    def _validate_fiscal_issuer(self, tenant_id: uuid.UUID, issuer_id: uuid.UUID | None) -> None:
+        if issuer_id is not None and FiscalIssuerRepository(self.db).get_by_id(tenant_id, issuer_id) is None:
+            raise AppError(404, "fiscal_issuer_not_found", "Emisor fiscal no encontrado")
+
+    def _validate_mapping_actor(self, tenant_id: uuid.UUID, user_id: uuid.UUID | None, fields: set[str]) -> None:
+        if not fields & {"operational_reference", "suggested_fiscal_issuer_id"}:
+            return
+        actor = self.user_repository.get_by_id(tenant_id, user_id) if user_id else None
+        if actor is None or not actor.is_active or actor.role not in {"clinic_admin", "contador"}:
+            raise AppError(403, "fiscal_forbidden", "Sólo administración o contabilidad pueden configurar la atribución fiscal")
 
 
 class SalePaymentService:
@@ -302,6 +319,9 @@ class SalePaymentService:
                 raise AppError(404, "sale_payment_not_found", "Cobro no encontrado")
             if not payment.is_active:
                 raise AppError(409, "sale_payment_already_voided", "El cobro ya está anulado")
+            from app.services.fiscal_commitment import ensure_no_fiscal_reservations
+
+            ensure_no_fiscal_reservations(self.db, tenant_id, sale.id, payment_id=payment.id)
             now = datetime.now(UTC)
             payment.is_active = False
             payment.voided_at = now

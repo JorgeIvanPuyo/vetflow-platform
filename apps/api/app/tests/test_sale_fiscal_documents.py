@@ -1,9 +1,12 @@
 import uuid
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
 
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.models.catalog_item import CatalogItem
 from app.models.inventory_item import InventoryItem
 from app.models.sale import SaleItem
@@ -15,6 +18,7 @@ from app.models.user import User
 from app.repositories.sale_fiscal_document import SaleFiscalDocumentRepository
 from app.services.storage import get_purchase_attachment_storage_service
 from app.tests.test_sales import _owner
+from app.tests.fiscal_test_support import fiscal_admin_headers
 
 
 PDF = b"%PDF-1.7\nsale receipt"
@@ -49,7 +53,7 @@ class FakeStorage:
 
 
 def _headers(tenant):
-    return {"X-Tenant-Id": str(tenant.id)}
+    return fiscal_admin_headers(tenant)
 
 
 def _auth_headers(email):
@@ -699,6 +703,8 @@ def test_operational_actor_is_distinct_from_issuer_and_snapshots_survive_changes
     _storage(client)
     issuer_user = _user(db_session, tenant, email="issuer-user@example.com", name="Emisora")
     actor = _user(db_session, tenant, email="actor@example.com", name="Operador")
+    actor.role = "contador"
+    db_session.commit()
     issuer = _issuer(client, tenant, issuer_user)
     owner = _owner(client, tenant)
     monkeypatch.setenv("APP_ENV", "production")
@@ -783,3 +789,145 @@ def test_document_endpoints_require_authentication(
     path = f"/api/v1/sales/{uuid.uuid4()}/fiscal-document{suffix}"
     response = getattr(client, method)(path)
     assert response.status_code == 401
+
+
+def _synthetic_remote_document(tenant, sale, issuer, *, status="pending", number="future-remote-1"):
+    # Domain fixtures only: no external call, CAE, or claimed authorization is created by ARCA.1.
+    return SaleFiscalDocument(
+        tenant_id=tenant.id, sale_id=uuid.UUID(sale["id"]), fiscal_issuer_id=uuid.UUID(issuer["id"]),
+        issuer_user_id_snapshot=uuid.UUID(issuer["user_id"]), issuer_name_snapshot=issuer["display_name"],
+        issuer_tax_id_snapshot=issuer["tax_id"], source="arca", authorization_status=status,
+        document_type="receipt_c", document_code="015", document_number=number,
+        issue_date=date(2026, 10, 20), total_ars_snapshot=Decimal("20.00"), is_active=True,
+    )
+
+
+def test_plural_documents_preserve_manual_singular_and_explicit_totals(client, db_session, tenant):
+    _storage(client)
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    sale = _sale(client, tenant)
+    manual = _issue(client, tenant, sale["id"], issuer).json()["data"]
+    remote = _synthetic_remote_document(tenant, sale, issuer)
+    other_remote = _synthetic_remote_document(tenant, sale, issuer, number="future-remote-2")
+    db_session.add_all([remote, other_remote])
+    db_session.commit()
+    db_session.expire_all()
+    detail = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)).json()["data"]
+    assert detail["fiscal_document"]["id"] == manual["id"]
+    assert len(detail["fiscal_documents"]) == 3
+    assert detail["fiscal_document_totals"] == [
+        {"source": "arca", "authorization_status": "pending", "environment": None, "count": 2, "total_ars": "40.00"},
+        {"source": "manual", "authorization_status": "manual", "environment": None, "count": 1, "total_ars": "50.00"},
+    ]
+    assert client.get(f"/api/v1/sales/{sale['id']}/fiscal-document", headers=_headers(tenant)).json()["data"]["id"] == manual["id"]
+
+
+def test_pending_remote_document_does_not_mark_sale_documented(client, db_session, tenant):
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    sale = _sale(client, tenant)
+    db_session.add(_synthetic_remote_document(tenant, sale, issuer))
+    db_session.commit()
+    db_session.expire_all()
+    detail = client.get(f"/api/v1/sales/{sale['id']}", headers=_headers(tenant)).json()["data"]
+    assert detail["fiscal_document"] is None
+    assert detail["fiscal_status"] == "pending"
+    pending = client.get("/api/v1/sales?fiscal_status=pending", headers=_headers(tenant)).json()["data"]
+    assert [row["id"] for row in pending] == [sale["id"]]
+    assert client.get(f"/api/v1/sales/{sale['id']}/fiscal-document", headers=_headers(tenant)).status_code == 404
+
+
+@pytest.mark.parametrize("field,value,code", [
+    ("document_number", "changed", "fiscal_document_identity_immutable"),
+    ("issuer_name_snapshot", "changed", "fiscal_document_identity_immutable"),
+    ("total_ars_snapshot", Decimal("1.00"), "fiscal_document_identity_immutable"),
+    ("is_active", False, "fiscal_document_authorized_cannot_deactivate"),
+    ("authorization_status", "pending", "fiscal_document_authorization_immutable"),
+])
+def test_authorized_document_domain_preserves_identity(client, db_session, tenant, field, value, code):
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    sale = _sale(client, tenant)
+    document = _synthetic_remote_document(tenant, sale, issuer, status="authorized")
+    db_session.add(document)
+    db_session.commit()
+    document_id = document.id
+    setattr(document, field, value)
+    with pytest.raises(AppError) as error:
+        db_session.commit()
+    assert error.value.code == code
+    db_session.rollback()
+    db_session.expire_all()
+    preserved = db_session.scalar(select(SaleFiscalDocument).where(
+        SaleFiscalDocument.tenant_id == tenant.id, SaleFiscalDocument.id == document_id,
+    ))
+    assert preserved.document_number == "future-remote-1"
+    assert preserved.is_active and preserved.authorization_status == "authorized"
+
+
+def test_authorized_document_cannot_be_deleted(client, db_session, tenant):
+    issuer = _issuer(client, tenant, _user(db_session, tenant))
+    sale = _sale(client, tenant)
+    document = _synthetic_remote_document(tenant, sale, issuer, status="authorized")
+    db_session.add(document)
+    db_session.commit()
+    db_session.delete(document)
+    with pytest.raises(AppError) as error:
+        db_session.commit()
+    assert error.value.code == "fiscal_document_authorized_cannot_delete"
+    db_session.rollback()
+
+
+def test_manual_upload_cannot_bypass_existing_fiscal_reservation(client, db_session):
+    from app.schemas.fiscal_proposal import FiscalProposalApprove, FiscalProposalGenerate
+    from app.services.fiscal_proposal import FiscalProposalService
+    from app.tests.fiscal_test_support import seed_fiscal_case
+
+    case = seed_fiscal_case(db_session)
+    storage = _storage(client)
+    proposals = FiscalProposalService(db_session).generate(case.context, case.sale_id,
+        FiscalProposalGenerate(payment_ids=[case.payment_id], fiscal_series_id=case.series_id,
+                               fiscal_description="Synthetic service"))
+    proposal = proposals[0]
+    FiscalProposalService(db_session).approve(case.context, case.sale_id, proposal.id,
+        FiscalProposalApprove(content_hash=proposal.content_hash, confirm_fiscal_identity=True),
+        idempotency_key="manual-upload-reservation")
+    auth = {"X-User-Email": case.context.user_email}
+    response = client.post(f"/api/v1/sales/{case.sale_id}/fiscal-document", headers=auth, data={
+        "fiscal_issuer_id": str(case.issuer_id), "document_type": "receipt_c", "document_code": "015",
+        "document_number": "synthetic-manual", "issue_date": "2026-10-20",
+    }, files={"file": ("receipt.pdf", PDF, "application/pdf")})
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "fiscal_sale_reserved"
+    assert storage.uploads == []
+    assert db_session.scalar(select(func.count()).select_from(SaleFiscalDocument)) == 0
+
+
+@pytest.mark.parametrize("change", ["identity", "file"])
+def test_regularized_manual_document_preserves_identity_and_file(client, db_session, change):
+    from app.models.fiscal_proposal import FiscalPaymentAllocation
+    from app.tests.fiscal_test_support import seed_fiscal_case
+
+    case = seed_fiscal_case(db_session)
+    storage = _storage(client)
+    auth = {"X-User-Email": case.context.user_email}
+    base = f"/api/v1/sales/{case.sale_id}/fiscal-document"
+    created = client.post(base, headers=auth, data={
+        "fiscal_issuer_id": str(case.issuer_id), "document_type": "receipt_c", "document_code": "015",
+        "document_number": "synthetic-regularized", "issue_date": "2026-10-20",
+    }, files={"file": ("receipt.pdf", PDF, "application/pdf")})
+    assert created.status_code == 201, created.text
+    document = created.json()["data"]
+    db_session.add(FiscalPaymentAllocation(
+        tenant_id=case.tenant_id, sale_id=case.sale_id, fiscal_document_id=uuid.UUID(document["id"]),
+        payment_id=case.payment_id, amount_ars=Decimal("100.00"), is_active=True,
+        reserved_by_user_id=case.context.user_id, reserved_at=datetime.now(UTC),
+    ))
+    db_session.commit()
+    changes = {"data": {"document_number": "changed"}} if change == "identity" else {
+        "files": {"file": ("replacement.png", PNG, "image/png")},
+    }
+    response = client.patch(base, headers=auth, **changes)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "fiscal_document_allocated"
+    assert len(storage.uploads) == 1
+    assert client.get(base, headers=auth).json()["data"]["document_number"] == "synthetic-regularized"
+    assert client.get(base + "/file", headers=auth).content == PDF
