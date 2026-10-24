@@ -34,6 +34,7 @@ MAX_BULK_PRODUCTS = 2_000
 PREVIEW_TTL_HOURS = 24
 PRICE_PERCENTAGE_LIMIT = Decimal("1000")
 CHANGE_STATUSES = {"pending", "changed"}
+SALE_PRICE_FIELDS = {"sale_price_ars", "profit_margin_percentage"}
 
 
 class InventoryBulkOperationService:
@@ -334,11 +335,15 @@ class InventoryBulkOperationService:
             rounding_increment=rounding_increment,
         )
         status = "invalid" if error else "unchanged" if self._values_equal(old_value, new_value) else "pending"
+        old_value_json = self._json_box(old_value)
+        if field_name in SALE_PRICE_FIELDS:
+            # Kept beside the boxed value so reversals restore the pricing mode.
+            old_value_json["sale_price_is_manual"] = item.sale_price_is_manual
         return {
             "tenant_id": tenant_id,
             "inventory_item_id": item.id,
             "field_name": field_name,
-            "old_value_json": self._json_box(old_value),
+            "old_value_json": old_value_json,
             "new_value_json": self._json_box(new_value),
             "product_updated_at_snapshot": item.updated_at,
             "status": status,
@@ -410,13 +415,22 @@ class InventoryBulkOperationService:
         raise AppError(422, "invalid_bulk_operation", "Invalid bulk operation")
 
     def _updates_from_row(self, row: InventoryBulkOperationItem, *, use_old: bool) -> dict[str, Any]:
-        value = self._value_from_json(row.old_value_json if use_old else row.new_value_json)
+        value_json = row.old_value_json if use_old else row.new_value_json
+        value = self._value_from_json(value_json)
         if row.field_name == "profit_margin_percentage" and isinstance(value, dict):
-            return {
+            updates = {
                 "profit_margin_percentage": self._json_inner_decimal(value.get("profit_margin_percentage")),
                 "sale_price_ars": self._json_inner_decimal(value.get("sale_price_ars")),
             }
-        return {row.field_name: value}
+        else:
+            updates = {row.field_name: value}
+        if row.field_name in SALE_PRICE_FIELDS:
+            if not use_old:
+                # A margin operation recalculates the price; price operations set it by hand.
+                updates["sale_price_is_manual"] = row.field_name == "sale_price_ars"
+            elif value_json and "sale_price_is_manual" in value_json:
+                updates["sale_price_is_manual"] = bool(value_json["sale_price_is_manual"])
+        return updates
 
     def _current_value_for_row(self, item: InventoryItem, row: InventoryBulkOperationItem) -> Any:
         if row.field_name == "profit_margin_percentage":
@@ -459,7 +473,14 @@ class InventoryBulkOperationService:
 
     def _values_equal(self, left: Any, right: Any) -> bool:
         if isinstance(left, dict) and isinstance(right, dict):
-            return self._json_ready(left) == self._json_ready(right)
+            # Compare numerically so "50" from a request matches a stored 50.00.
+            return left.keys() == right.keys() and all(
+                self._values_equal(
+                    self._json_inner_decimal(left[key]),
+                    self._json_inner_decimal(right[key]),
+                )
+                for key in left
+            )
         if isinstance(left, Decimal) or isinstance(right, Decimal):
             if left is None or right is None:
                 return left is right

@@ -287,6 +287,9 @@ class PurchaseService:
             if len(locked_items) != len(item_ids):
                 raise AppError(404, "inventory_item_not_found", "Producto no encontrado")
 
+            rounding_increment = self.inventory_service._resolve_pricing_defaults(
+                tenant_id
+            )["rounding_increment"]
             operation_id = uuid.uuid4()
             for item in locked_items:
                 line = lines_by_item_id[item.id]
@@ -305,13 +308,16 @@ class PurchaseService:
                     supplier=purchase.supplier_name,
                     created_by_user_id=received_by_user_id,
                 )
-                self.inventory_repository.update_item(
+                cost_updates = {
+                    "purchase_price_ars": line.unit_price_without_tax_ars,
+                    "purchase_tax_rate_percentage": line.tax_rate_percentage,
+                }
+                self.inventory_service.apply_sale_price_updates(
                     item,
-                    {
-                        "purchase_price_ars": line.unit_price_without_tax_ars,
-                        "purchase_tax_rate_percentage": line.tax_rate_percentage,
-                    },
+                    cost_updates,
+                    rounding_increment=rounding_increment,
                 )
+                self.inventory_repository.update_item(item, cost_updates)
 
             now = datetime.now(UTC)
             purchase.status = "received"
@@ -403,6 +409,9 @@ class PurchaseService:
                         "El stock actual no permite revertir la recepción completa",
                     )
 
+            rounding_increment = self.inventory_service._resolve_pricing_defaults(
+                tenant_id
+            )["rounding_increment"]
             reversal_operation_id = uuid.uuid4()
             cost_warning = False
             for item in locked_items:
@@ -421,15 +430,18 @@ class PurchaseService:
                     item.purchase_price_ars == line.unit_price_without_tax_ars
                     and item.purchase_tax_rate_percentage == line.tax_rate_percentage
                 ):
-                    self.inventory_repository.update_item(
+                    cost_updates = {
+                        "purchase_price_ars": line.previous_purchase_price_ars,
+                        "purchase_tax_rate_percentage": (
+                            line.previous_purchase_tax_rate_percentage
+                        ),
+                    }
+                    self.inventory_service.apply_sale_price_updates(
                         item,
-                        {
-                            "purchase_price_ars": line.previous_purchase_price_ars,
-                            "purchase_tax_rate_percentage": (
-                                line.previous_purchase_tax_rate_percentage
-                            ),
-                        },
+                        cost_updates,
+                        rounding_increment=rounding_increment,
                     )
+                    self.inventory_repository.update_item(item, cost_updates)
                 else:
                     cost_warning = True
 

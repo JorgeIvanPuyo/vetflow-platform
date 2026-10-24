@@ -44,7 +44,6 @@ import {
   inventoryItemToFormState,
   inventoryMovementFilterOptions,
   inventoryExitReasonOptions,
-  isInventorySalePriceManual,
   validateInventoryEntryForm,
   validateInventoryExitForm,
   validateInventoryForm,
@@ -126,7 +125,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
     currencyCode: preferences?.currency_code ?? "ARS",
     locale: preferences?.locale ?? "es-AR",
   };
-  const roundingIncrement = Number(preferences?.money_rounding_increment ?? 10);
   const [state, setState] = useState<InventoryDetailState>(initialState);
   const [movementState, setMovementState] = useState<MovementState>(initialMovementState);
   const [movementFilter, setMovementFilter] = useState<InventoryMovementFilter>("all");
@@ -245,9 +243,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
     }
 
     setFormState(inventoryItemToFormState(state.item));
-    setManualSalePriceOverride(
-      isInventorySalePriceManual(state.item, roundingIncrement),
-    );
+    setManualSalePriceOverride(state.item.sale_price_is_manual);
     setIsEditOpen(true);
     setState((current) => ({
       ...current,
@@ -324,7 +320,10 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const validationMessage = validateInventoryForm(formState, { isEdit: true });
+    const validationMessage = validateInventoryForm(formState, {
+      isEdit: true,
+      manualSalePrice: manualSalePriceOverride,
+    });
     if (validationMessage) {
       setState((current) => ({ ...current, flowMessage: validationMessage }));
       return;
@@ -596,8 +595,28 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
               <dd>{formatInventoryCurrency(purchasePriceWithTax, moneyPreferences)}</dd>
             </div>
             <div>
+              <dt>Tipo de precio</dt>
+              <dd>
+                {item.sale_price_is_manual ? (
+                  <span className="badge badge--warning">Manual</span>
+                ) : (
+                  <span className="badge badge--success">Calculado por margen</span>
+                )}
+                <small className="inventory-price-mode-hint">
+                  {item.sale_price_is_manual
+                    ? "No cambia con el margen ni al recibir compras. Edita el producto para pasarlo a calculado."
+                    : "Se actualiza al cambiar el costo, el IVA o el margen, y al recibir compras."}
+                </small>
+              </dd>
+            </div>
+            <div>
               <dt>Margen de ganancia</dt>
-              <dd>{item.profit_margin_percentage}%</dd>
+              <dd>
+                {item.profit_margin_percentage}%
+                {item.sale_price_is_manual ? (
+                  <small className="inventory-price-mode-hint">No se aplica al precio manual.</small>
+                ) : null}
+              </dd>
             </div>
             <div>
               <dt>Precio de venta sin impuesto</dt>
@@ -619,7 +638,12 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
             </div>
             <div>
               <dt>Redondear precio</dt>
-              <dd>{item.round_sale_price ? "Sí" : "No"}</dd>
+              <dd>
+                {item.round_sale_price ? "Sí" : "No"}
+                {item.sale_price_is_manual && item.round_sale_price ? (
+                  <small className="inventory-price-mode-hint">Sólo aplica al precio calculado.</small>
+                ) : null}
+              </dd>
             </div>
           </dl>
         </article>
