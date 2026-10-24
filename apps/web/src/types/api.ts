@@ -744,6 +744,7 @@ export type InventoryItem = {
   sale_tax_amount_ars?: string | number | null;
   sale_price_with_tax_ars?: string | number | null;
   round_sale_price: boolean;
+  sale_price_is_manual: boolean;
   notes: string | null;
   is_active: boolean;
   is_low_stock: boolean;
@@ -863,6 +864,7 @@ export type CreateInventoryItemPayload = {
   sale_price_ars?: number | null;
   sale_tax_rate_percentage?: number;
   round_sale_price?: boolean;
+  sale_price_is_manual?: boolean;
   notes?: string | null;
   is_active?: boolean;
 };

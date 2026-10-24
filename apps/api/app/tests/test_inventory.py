@@ -1623,3 +1623,114 @@ def test_response_includes_created_by_display_fields_when_available(
     assert item["created_by_user_id"] == str(user.id)
     assert item["created_by_user_name"] == "Inventory Vet"
     assert item["created_by_user_email"] == "inventory@example.com"
+
+
+def test_sale_price_mode_is_inferred_on_create(client, tenant):
+    calculated = _create_item(client, tenant)
+    manual = _create_item(client, tenant, name="Manual", sale_price_ars="5000")
+
+    assert calculated["sale_price_is_manual"] is False
+    assert calculated["sale_price_ars"] == "1350.00"
+    assert manual["sale_price_is_manual"] is True
+    assert manual["sale_price_ars"] == "5000.00"
+
+
+def test_create_calculated_mode_ignores_sent_sale_price(client, tenant):
+    item = _create_item(
+        client,
+        tenant,
+        sale_price_ars="5000",
+        sale_price_is_manual=False,
+    )
+
+    assert item["sale_price_is_manual"] is False
+    assert item["sale_price_ars"] == "1350.00"
+
+
+def test_manual_mode_requires_a_sale_price(client, tenant):
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json=_item_payload(sale_price_is_manual=True),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "manual_sale_price_required"
+
+
+def test_manual_sale_price_is_kept_when_margin_changes(client, tenant):
+    item = _create_item(client, tenant, sale_price_ars="5000")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"profit_margin_percentage": "80", "sale_price_is_manual": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["profit_margin_percentage"] == "80.00"
+    assert data["sale_price_ars"] == "5000.00"
+    assert data["sale_price_is_manual"] is True
+
+
+def test_switching_manual_price_to_calculated_applies_margin(client, tenant):
+    item = _create_item(client, tenant, sale_price_ars="5000")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"profit_margin_percentage": "80", "sale_price_is_manual": False},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sale_price_ars"] == "1800.00"
+    assert data["sale_price_is_manual"] is False
+
+
+def test_calculated_price_follows_margin_even_if_stale_price_is_sent(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={
+            "profit_margin_percentage": "80",
+            "sale_price_ars": item["sale_price_ars"],
+            "sale_price_is_manual": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["sale_price_ars"] == "1800.00"
+
+
+def test_legacy_update_with_sale_price_marks_item_manual(client, tenant):
+    item = _create_item(client, tenant)
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"sale_price_ars": "4321"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sale_price_ars"] == "4321.00"
+    assert data["sale_price_is_manual"] is True
+
+
+def test_non_pricing_update_keeps_sale_price_mode(client, tenant):
+    item = _create_item(client, tenant, sale_price_ars="5000")
+
+    response = client.patch(
+        f"/api/v1/inventory/items/{item['id']}",
+        headers=_headers(tenant),
+        json={"name": "Nombre nuevo"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["sale_price_ars"] == "5000.00"
+    assert data["sale_price_is_manual"] is True

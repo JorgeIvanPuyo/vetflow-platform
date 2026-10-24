@@ -206,6 +206,7 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
         </div> : null}
       </section>
 
+      {purchase?.status === "draft" ? <p className="purchase-reversal-warning" role="status">Esta compra está en borrador: todavía no suma stock ni actualiza costos o precios. Usa «Recibir compra» cuando ingrese la mercadería.</p> : null}
       {errorMessage ? <section className="error-state" role="alert">{errorMessage}</section> : null}
       {searchParams.get("attachment_upload") === "failed" ? (
         <section className="error-state" role="alert">
@@ -337,7 +338,7 @@ export function PurchaseDetailScreen({ purchaseId }: Props) {
           <section ref={dialogRef} tabIndex={-1} className="panel purchase-modal" role="dialog" aria-modal="true" aria-labelledby="receive-title" aria-describedby="receive-description">
             <button className="icon-button purchase-modal__close" type="button" aria-label="Cerrar confirmación" disabled={isReceiving} onClick={() => { setShowReceiveConfirmation(false); setReceiveErrorMessage(null); }}><X size={18} /></button>
             <div className="section-heading"><h2 id="receive-title">Confirmar recepción</h2><p id="receive-description">Se aplicarán exactamente las líneas guardadas en esta compra.</p></div>
-            <ul className="purchase-receive-effects"><li>Aumentará el stock de cada producto.</li><li>Actualizará el último costo de compra y su IVA.</li><li>No cambiará el precio de venta ni el margen.</li><li>La compra quedará inmutable después de recibirla.</li></ul>
+            <ul className="purchase-receive-effects"><li>Aumentará el stock de cada producto.</li><li>Actualizará el último costo de compra y su IVA.</li><li>Los productos con precio calculado por margen actualizarán su precio de venta con el nuevo costo; los de precio manual lo mantienen.</li><li>La compra quedará inmutable después de recibirla.</li></ul>
             <div className="purchase-receive-summary"><div><span>Proveedor</span><strong>{purchase.supplier_name}</strong></div><div><span>Líneas</span><strong>{purchase.items.length}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong></div></div>
             <div className="purchase-modal-lines">{purchase.items.map((line) => <div key={line.id}><span><strong>{line.description_snapshot}</strong><small>{line.quantity} {line.unit}</small></span><strong>{formatPurchaseCurrency(line.line_total_ars, moneyPreferences)}</strong></div>)}</div>
             {receiveErrorMessage ? <div className="error-state" role="alert">{receiveErrorMessage}</div> : null}

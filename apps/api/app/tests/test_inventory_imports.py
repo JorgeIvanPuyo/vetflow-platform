@@ -419,3 +419,44 @@ def test_import_detail_confirm_and_history_are_tenant_scoped(client, tenant, oth
     assert confirm_response.status_code == 404
     assert history_response.status_code == 200
     assert history_response.json()["data"] == []
+
+
+def test_reimport_with_unchanged_sale_price_keeps_calculated_mode(client, tenant, db_session):
+    item = _create_item(db_session, tenant)
+    response = _upload(
+        client,
+        tenant,
+        _xlsx([
+            _row(
+                internal_code=item.internal_code,
+                stock="",
+                purchase_price_ars="2000",
+                sale_price_ars="1633.50",
+            )
+        ]),
+    )
+    assert response.status_code == 201
+
+    confirm_response = _confirm(client, tenant, response.json()["data"])
+
+    assert confirm_response.status_code == 200
+    db_session.refresh(item)
+    assert item.sale_price_is_manual is False
+    assert item.sale_price_ars == Decimal("3267.00")
+
+
+def test_import_with_new_sale_price_switches_to_manual_mode(client, tenant, db_session):
+    item = _create_item(db_session, tenant)
+    response = _upload(
+        client,
+        tenant,
+        _xlsx([_row(internal_code=item.internal_code, stock="", sale_price_ars="2500")]),
+    )
+    assert response.status_code == 201
+
+    confirm_response = _confirm(client, tenant, response.json()["data"])
+
+    assert confirm_response.status_code == 200
+    db_session.refresh(item)
+    assert item.sale_price_is_manual is True
+    assert item.sale_price_ars == Decimal("2500.00")

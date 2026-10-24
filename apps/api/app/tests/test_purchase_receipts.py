@@ -525,3 +525,59 @@ def test_purchase_list_filters_received_and_reversed(client, tenant):
 
     assert [row["id"] for row in received_rows] == [received["id"]]
     assert [row["id"] for row in reversed_rows] == [reversed_purchase["id"]]
+
+
+def _create_calculated_price_item(client, tenant):
+    response = client.post(
+        "/api/v1/inventory/items",
+        headers=_headers(tenant),
+        json={
+            "name": "Producto precio calculado",
+            "category": "supply",
+            "unit": "box",
+            "purchase_price_ars": "25.00",
+            "purchase_tax_rate_percentage": "10.00",
+            "profit_margin_percentage": "40.00",
+        },
+    )
+    assert response.status_code == 201, response.text
+    item = response.json()["data"]
+    assert item["sale_price_is_manual"] is False
+    assert item["sale_price_ars"] == "38.50"
+    return item
+
+
+def test_receive_recalculates_calculated_sale_price_and_reversal_restores_it(
+    client, db_session, tenant
+):
+    item = _create_calculated_price_item(client, tenant)
+    manual_item = _create_item(client, tenant, name="Producto precio manual")
+    purchase = _create_purchase(
+        client,
+        tenant,
+        [(item, "2", "50", "21"), (manual_item, "2", "50", "21")],
+    )
+
+    response = _receive(client, tenant, purchase["id"])
+
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    item_model = db_session.get(InventoryItem, uuid.UUID(item["id"]))
+    manual_model = db_session.get(InventoryItem, uuid.UUID(manual_item["id"]))
+    assert item_model.purchase_price_ars == Decimal("50.00")
+    assert item_model.sale_price_ars == Decimal("84.70")
+    assert item_model.sale_price_is_manual is False
+    assert manual_model.sale_price_ars == Decimal("100.00")
+    assert manual_model.sale_price_is_manual is True
+
+    response = client.post(
+        f"/api/v1/purchases/{purchase['id']}/reverse-receipt",
+        headers=_headers(tenant),
+        json={"reason": "Factura cargada dos veces"},
+    )
+
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    item_model = db_session.get(InventoryItem, uuid.UUID(item["id"]))
+    assert item_model.purchase_price_ars == Decimal("25.00")
+    assert item_model.sale_price_ars == Decimal("38.50")
