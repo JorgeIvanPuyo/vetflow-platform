@@ -535,3 +535,33 @@ def test_filtered_selection_reuses_category_supplier_stock_and_active(client, te
 
     assert response.status_code == 201
     assert response.json()["data"]["items"][0]["inventory_item_id"] == str(matching.id)
+
+
+@pytest.mark.parametrize(
+    ("operation", "initial_manual", "expected_manual"),
+    [
+        ({"operation_type": "set_sale_price", "sale_price_ars": "321"}, False, True),
+        ({"operation_type": "increase_sale_price_percentage", "percentage": "10"}, False, True),
+        (
+            {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "50"},
+            True,
+            False,
+        ),
+    ],
+)
+def test_bulk_price_operations_set_and_reverse_sale_price_mode(
+    client, tenant, db_session, operation, initial_manual, expected_manual
+):
+    item = _create_item(db_session, tenant, sale_price_is_manual=initial_manual)
+    preview = _preview(client, tenant, _payload([item.id], operation=operation)).json()["data"]
+
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert item.sale_price_is_manual is expected_manual
+
+    reversed_response = _reverse(client, tenant, preview["id"])
+    assert reversed_response.status_code == 200
+    assert reversed_response.json()["data"]["status"] == "reversed"
+    db_session.refresh(item)
+    assert item.sale_price_is_manual is initial_manual
+    assert item.sale_price_ars == Decimal("163.35")

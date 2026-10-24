@@ -1696,6 +1696,14 @@ code {
   color: var(--color-text-soft);
 }
 
+.inventory-price-mode-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-soft);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
 .inventory-form-actions {
   padding-bottom: 8px;
 }

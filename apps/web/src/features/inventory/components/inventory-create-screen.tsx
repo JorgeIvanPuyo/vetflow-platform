@@ -55,7 +55,9 @@ export function InventoryCreateScreen() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const validationMessage = validateInventoryForm(formState);
+    const validationMessage = validateInventoryForm(formState, {
+      manualSalePrice: manualSalePriceOverride,
+    });
     if (validationMessage) {
       setFlowMessage(validationMessage);
       return;
