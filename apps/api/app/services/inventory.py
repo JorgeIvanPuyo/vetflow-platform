@@ -135,12 +135,20 @@ class InventoryService:
         item_data["purchase_tax_rate_percentage"] = purchase_tax_rate
         item_data["profit_margin_percentage"] = profit_margin
         item_data["sale_tax_rate_percentage"] = sale_tax_rate
+        sale_price_is_manual = self._resolve_sale_price_is_manual(
+            payload.sale_price_is_manual,
+            payload.sale_price_ars,
+            "sale_price_ars" in payload.model_fields_set,
+            current=False,
+        )
+        self._validate_manual_sale_price(sale_price_is_manual, payload.sale_price_ars)
+        item_data["sale_price_is_manual"] = sale_price_is_manual
         item_data["sale_price_ars"] = self._resolve_sale_price(
             purchase_price_ars=payload.purchase_price_ars,
             purchase_tax_rate_percentage=purchase_tax_rate,
             profit_margin_percentage=profit_margin,
             round_sale_price=payload.round_sale_price,
-            manual_sale_price_ars=payload.sale_price_ars,
+            manual_sale_price_ars=payload.sale_price_ars if sale_price_is_manual else None,
             rounding_increment=defaults["rounding_increment"],
         )
         item_data["current_stock"] = ZERO
@@ -246,21 +254,11 @@ class InventoryService:
                 updates["category_catalog_item_id"],
             )
 
-        if self._should_recalculate_sale_price(updates):
-            updates["sale_price_ars"] = self._resolve_sale_price(
-                purchase_price_ars=updates.get("purchase_price_ars", item.purchase_price_ars),
-                purchase_tax_rate_percentage=updates.get(
-                    "purchase_tax_rate_percentage",
-                    item.purchase_tax_rate_percentage,
-                ),
-                profit_margin_percentage=updates.get(
-                    "profit_margin_percentage",
-                    item.profit_margin_percentage,
-                ),
-                round_sale_price=updates.get("round_sale_price", item.round_sale_price),
-                manual_sale_price_ars=updates.get("sale_price_ars"),
-                rounding_increment=defaults["rounding_increment"],
-            )
+        self.apply_sale_price_updates(
+            item,
+            updates,
+            rounding_increment=defaults["rounding_increment"],
+        )
 
         self.inventory_repository.update_item(item, updates)
         self.db.commit()
@@ -861,8 +859,81 @@ class InventoryService:
             sale_price = self._round_to_increment(sale_price, rounding_increment)
         return sale_price
 
+    def apply_sale_price_updates(
+        self,
+        item: InventoryItem,
+        updates: dict,
+        *,
+        rounding_increment: Decimal,
+    ) -> None:
+        """Resolve the sale price mode and value for a partial item update.
+
+        Calculated prices follow purchase cost, IVA and margin changes; manual
+        prices are kept until the user switches the item back to calculated.
+        """
+        if not self._should_recalculate_sale_price(updates):
+            updates.pop("sale_price_is_manual", None)
+            return
+        sale_price_is_manual = self._resolve_sale_price_is_manual(
+            updates.get("sale_price_is_manual"),
+            updates.get("sale_price_ars"),
+            "sale_price_ars" in updates,
+            current=item.sale_price_is_manual,
+        )
+        manual_sale_price = (
+            updates.get("sale_price_ars", item.sale_price_ars)
+            if sale_price_is_manual
+            else None
+        )
+        self._validate_manual_sale_price(sale_price_is_manual, manual_sale_price)
+        updates["sale_price_is_manual"] = sale_price_is_manual
+        updates["sale_price_ars"] = self._resolve_sale_price(
+            purchase_price_ars=updates.get("purchase_price_ars", item.purchase_price_ars),
+            purchase_tax_rate_percentage=updates.get(
+                "purchase_tax_rate_percentage",
+                item.purchase_tax_rate_percentage,
+            ),
+            profit_margin_percentage=updates.get(
+                "profit_margin_percentage",
+                item.profit_margin_percentage,
+            ),
+            round_sale_price=updates.get("round_sale_price", item.round_sale_price),
+            manual_sale_price_ars=manual_sale_price,
+            rounding_increment=rounding_increment,
+        )
+
+    def _resolve_sale_price_is_manual(
+        self,
+        requested: bool | None,
+        sale_price_ars: Decimal | None,
+        sale_price_provided: bool,
+        *,
+        current: bool,
+    ) -> bool:
+        if requested is not None:
+            return requested
+        # Clients that do not send the mode keep the historical contract:
+        # a sale price means manual and an explicit null means calculated.
+        if sale_price_provided:
+            return sale_price_ars is not None
+        return current
+
+    def _validate_manual_sale_price(
+        self,
+        sale_price_is_manual: bool,
+        sale_price_ars: Decimal | None,
+    ) -> None:
+        if sale_price_is_manual and sale_price_ars is None:
+            raise AppError(
+                422,
+                "manual_sale_price_required",
+                "A manual sale price requires a sale price value",
+            )
+
     def _should_recalculate_sale_price(self, updates: dict) -> bool:
         if "sale_price_ars" in updates:
+            return True
+        if updates.get("sale_price_is_manual") is not None:
             return True
         return bool(
             {

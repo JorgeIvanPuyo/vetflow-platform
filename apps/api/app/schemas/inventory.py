@@ -141,6 +141,7 @@ class InventoryItemWriteBase(BaseModel):
     sale_price_ars: Decimal | None = Field(default=None, ge=0)
     sale_tax_rate_percentage: Decimal = Field(ge=0, le=100)
     round_sale_price: bool = False
+    sale_price_is_manual: bool | None = None
     notes: str | None = None
     is_active: bool = True
 
@@ -191,6 +192,7 @@ class InventoryItemUpdate(BaseModel):
     sale_price_ars: Decimal | None = Field(default=None, ge=0)
     sale_tax_rate_percentage: Decimal | None = Field(default=None, ge=0, le=100)
     round_sale_price: bool | None = None
+    sale_price_is_manual: bool | None = None
     notes: str | None = None
     is_active: bool | None = None
 
@@ -222,6 +224,7 @@ class InventoryItemRead(InventoryItemWriteBase):
     tenant_id: uuid.UUID
     internal_code: str
     current_stock: Decimal
+    sale_price_is_manual: bool = False
     created_by_user_id: uuid.UUID | None = None
     supplier_name: str | None = None
     category_catalog_item_name: str | None = None

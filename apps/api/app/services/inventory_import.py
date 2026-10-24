@@ -643,6 +643,7 @@ class InventoryImportService:
             "sale_price_ars": data.get("sale_price_ars"),
             "sale_tax_rate_percentage": defaults["sale_tax_rate"],
             "round_sale_price": False,
+            "sale_price_is_manual": data.get("sale_price_ars") is not None,
             "notes": data.get("notes"),
             "is_active": True if data.get("is_active") is None else data["is_active"],
             "current_stock": ZERO,
@@ -675,23 +676,21 @@ class InventoryImportService:
         ):
             if data.get(field) is not None:
                 updates[field] = data[field]
-        if self.inventory_service._should_recalculate_sale_price(updates):
-            updates["sale_price_ars"] = self.inventory_service._resolve_sale_price(
-                purchase_price_ars=updates.get("purchase_price_ars", item.purchase_price_ars),
-                purchase_tax_rate_percentage=updates.get(
-                    "purchase_tax_rate_percentage",
-                    item.purchase_tax_rate_percentage,
-                ),
-                profit_margin_percentage=updates.get(
-                    "profit_margin_percentage",
-                    item.profit_margin_percentage,
-                ),
-                round_sale_price=item.round_sale_price,
-                manual_sale_price_ars=updates.get("sale_price_ars"),
-                rounding_increment=self.inventory_service._resolve_pricing_defaults(
-                    item.tenant_id
-                )["rounding_increment"],
-            )
+        if (
+            updates.get("sale_price_ars") is not None
+            and item.sale_price_ars is not None
+            and Decimal(str(updates["sale_price_ars"])) == item.sale_price_ars
+        ):
+            # Re-imported exports repeat the current price; only a new price
+            # should switch a calculated item to a manual price.
+            updates.pop("sale_price_ars")
+        self.inventory_service.apply_sale_price_updates(
+            item,
+            updates,
+            rounding_increment=self.inventory_service._resolve_pricing_defaults(
+                item.tenant_id
+            )["rounding_increment"],
+        )
         return updates
 
     def _row_data_with_decimals(self, row: InventoryImportRow) -> dict[str, Any]:

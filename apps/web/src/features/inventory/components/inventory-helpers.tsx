@@ -548,7 +548,7 @@ export function isPositiveInteger(value: string) {
 
 export function validateInventoryForm(
   formState: InventoryFormState,
-  _options: { isEdit?: boolean } = {},
+  options: { isEdit?: boolean; manualSalePrice?: boolean } = {},
 ) {
   if (!formState.name.trim()) {
     return "Escribe un nombre para el item.";
@@ -589,6 +589,9 @@ export function validateInventoryForm(
   const salePriceValue = formState.sale_price_ars ? Number(formState.sale_price_ars) : null;
   if (salePriceValue !== null && (Number.isNaN(salePriceValue) || salePriceValue < 0)) {
     return "El precio de venta no puede ser negativo.";
+  }
+  if (options.manualSalePrice && salePriceValue === null) {
+    return "Ingresa el precio de venta manual o cambia a precio calculado por margen.";
   }
 
   const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
@@ -721,6 +724,7 @@ export function inventoryFormToCreatePayload(
   if (formState.notes.trim()) {
     payload.notes = formState.notes.trim();
   }
+  payload.sale_price_is_manual = manualSalePriceOverride;
   if (manualSalePriceOverride && formState.sale_price_ars.trim()) {
     payload.sale_price_ars = Number(formState.sale_price_ars);
   }
@@ -756,6 +760,7 @@ export function inventoryFormToUpdatePayload(
     ? Number(formState.purchase_price_ars)
     : null;
   payload.notes = formState.notes.trim() || null;
+  payload.sale_price_is_manual = manualSalePriceOverride;
   payload.sale_price_ars =
     manualSalePriceOverride && formState.sale_price_ars.trim()
       ? Number(formState.sale_price_ars)
@@ -807,23 +812,6 @@ function getPurchaseTaxMode(
     return "standard";
   }
   return "custom";
-}
-
-export function isInventorySalePriceManual(
-  item: InventoryItem,
-  roundingIncrement = 10,
-) {
-  if (!item.sale_price_ars) {
-    return false;
-  }
-
-  const comparableFormState = inventoryItemToFormState(item);
-  const calculatedValue = calculateSalePricePreview(comparableFormState, roundingIncrement);
-  if (calculatedValue === null) {
-    return true;
-  }
-
-  return Math.abs(Number(item.sale_price_ars) - calculatedValue) > 0.01;
 }
 
 export function buildInventoryListFilters(
