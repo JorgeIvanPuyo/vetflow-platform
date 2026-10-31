@@ -240,7 +240,7 @@ test("bulk operations: highlight fully reversed operation and reverted items onl
   for (const status of ["confirmed", "partially_reversed", "reversed"]) assertState(row(all, `operation-${status}`), status === "reversed", status);
   const detail = await mount("bulk-detail", InventoryBulkOperationDetail, { operationId: operation.id });
   for (const status of ["changed", "reverted", "conflict"]) {
-    const node = row(detail, status); assertState(node, status === "reverted", status); assert.match(text(node), new RegExp(status));
+    const node = row(detail, status); assertState(node, status === "reverted", status); assert.match(text(node), new RegExp(({ changed: "Aplicada", reverted: "Revertida", conflict: "Conflicto" })[status]));
   }
 });
 

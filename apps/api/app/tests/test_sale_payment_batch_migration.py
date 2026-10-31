@@ -14,7 +14,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_batch_migration_is_additive_single_head():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0059_merge_arca_inventory"]
+    assert script.get_heads() == ["0062_purchase_return_agreed"]
     assert script.get_revision("0053_sale_payment_batches").down_revision == "0052_sale_payment_idempotency"
 
 
@@ -55,7 +55,7 @@ def test_postgresql_batch_upgrade_constraints_history_and_downgrade(monkeypatch)
                     'Historic REF', 'Historic notes', 'individual-key', :hash)
             """), {"id": history_id, "tenant": tenants[0], "sale": sales[0], "method": methods[0], "hash": "a" * 64})
             history = dict(connection.execute(sa.text("SELECT * FROM sale_payments WHERE id=:id"), {"id": history_id}).mappings().one())
-        command.upgrade(config, "head")
+        command.upgrade(config, "0053_sale_payment_batches")
         inspector = sa.inspect(engine)
         batch_columns = {c["name"]: c for c in inspector.get_columns("sale_payment_batches")}
         assert set(batch_columns) == {"id", "tenant_id", "sale_id", "idempotency_key", "request_hash", "created_at", "updated_at"}
@@ -129,7 +129,7 @@ def test_postgresql_batch_upgrade_constraints_history_and_downgrade(monkeypatch)
             after_down = [dict(r) for r in connection.execute(sa.text("SELECT * FROM sale_payments ORDER BY id")).mappings()]
         assert after_down == [{k: v for k, v in r.items() if k != "batch_id"} for r in before_down]
         assert len(after_down) == 3
-        command.upgrade(config, "head")
+        command.upgrade(config, "0053_sale_payment_batches")
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT count(*) FROM sale_payment_batches")) == 0
             assert connection.scalar(sa.text("SELECT count(*) FROM sale_payments WHERE batch_id IS NULL")) == 3

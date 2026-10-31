@@ -85,6 +85,12 @@ Module._load = function (name, ...args) {
   };
   if (name === '@/features/clinic/clinic-context') return { useClinic: () => ({ preferences: null }) };
   if (name === '@/services/inventory') return api;
+  if (name === '@/services/suppliers') return { getSuppliers: async (filters) => {
+    assert.equal(filters.include_inactive, false);
+    return { data: filters.page === 1
+      ? [{ id: '00000000-0000-0000-0000-000000000001', name: 'Proveedor existente', is_active: true }]
+      : [{ id: '00000000-0000-0000-0000-000000000002', name: 'Proveedor página 2', is_active: true }, { id: '00000000-0000-0000-0000-000000000003', name: 'Inactivo', is_active: false }], meta: { total_pages: 2 } };
+  } };
   return load.call(this, name, ...args);
 };
 const { InventoryScreen } = require('./components/inventory-screen.tsx');
@@ -379,7 +385,13 @@ async function bulkForm(operation, value, { filtered = false, href = context } =
   const operationSelect = find(h, n => n.type === 'select' && nodes(n.props.children).some(c => c.props?.value === 'set_sale_price'));
   assert.ok(operationSelect);
   assert.equal(nodes(operationSelect.props.children).filter(c => c.type === 'option').length, 9);
-  operationSelect.props.onChange({ target: { value: operation } }); h.render();
+  operationSelect.props.onChange({ target: { value: operation } }); h.render(); await settle(h);
+  if (operation === 'set_supplier') {
+    const select = find(h, n => n.props?.['aria-label'] === 'Proveedor para edición grupal');
+    assert.ok(select);
+    assert.equal(nodes(select.props.children).filter(n => n.type === 'option' && n.props.value).length, 2);
+    select.props.onChange({ target: { value } }); h.render();
+  }
   const input = find(h, n => n.type === 'input' && n.props.placeholder && ['Porcentaje', 'Precio final', 'Stock mínimo', 'Marca', 'Proveedor'].includes(n.props.placeholder));
   if (input) { input.props.onChange({ target: { value } }); h.render(); }
   return h;
@@ -389,7 +401,7 @@ for (const [operation, raw, field, value] of [
   ['decrease_sale_price_percentage', '10', 'percentage', 10],
   ['set_profit_margin_percentage', '0', 'profit_margin_percentage', 0],
   ['set_sale_price', '1500', 'sale_price_ars', 1500],
-  ['set_brand', 'Nueva', 'brand', 'Nueva'], ['set_supplier', 'Nuevo', 'supplier', 'Nuevo'],
+  ['set_brand', 'Nueva', 'brand', 'Nueva'], ['set_supplier', '00000000-0000-0000-0000-000000000001', 'supplier_id', '00000000-0000-0000-0000-000000000001'],
   ['set_minimum_stock', '0', 'minimum_stock', 0], ['activate', '', null, null], ['deactivate', '', null, null],
 ]) test(`bulk component sends only the intended fields: ${operation}`, async () => {
   const h = await bulkForm(operation, raw);
@@ -444,7 +456,7 @@ for (const [operation, value] of [
       checkbox.props.onChange({ target: { checked: true } }); h.render();
       click(h, 'Simular'); await settle(h);
       assert.equal(bulkRequests[0].operation.confirm_clear, true);
-      assert.equal(bulkRequests[0].operation[operation === 'set_brand' ? 'brand' : 'supplier'], '');
+      assert.equal(bulkRequests[0].operation[operation === 'set_brand' ? 'brand' : 'supplier_id'], operation === 'set_brand' ? '' : null);
     }
   } finally { h.dispose(); }
 });
@@ -467,4 +479,18 @@ test('bulk confirmation disables duplicate sends and reports a read failure sepa
     assert.doesNotMatch(text(h.tree), /No pudimos leer/);
     assert.equal(bulkConfirmCalls, 1);
   } finally { api.getInventoryItems = original; h.dispose(); }
+});
+
+
+test('rounded relative preview exposes requested price, difference and unchanged sale', () => {
+  const { formatBulkValue } = require('./components/inventory-bulk-values.ts');
+  const value = formatBulkValue({
+    value: { profit_margin_percentage: '31.30', sale_price_ars: '1300.00' },
+    pricing_context: { purchase_price_ars: '1000', round_sale_price: true },
+    requested_sale_price_ars: '1313.00', price_difference_ars: '-13.00', sale_price_unchanged: true,
+  });
+  assert.match(value, /31.30%/);
+  assert.match(value, /Objetivo/); assert.match(value, /Diferencia/);
+  assert.match(value, /Venta sin cambios por redondeo/);
+  assert.match(formatBulkValue({ value: { supplier_id: 'existing', supplier: 'Proveedor registrado' } }), /Proveedor registrado/);
 });

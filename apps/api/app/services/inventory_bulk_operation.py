@@ -20,6 +20,7 @@ from app.models.inventory_bulk_operation import (
 )
 from app.models.inventory_item import InventoryItem
 from app.repositories.inventory import InventoryRepository
+from app.repositories.supplier import SupplierRepository
 from app.schemas.inventory import (
     InventoryBulkOperationConfirmCreate,
     InventoryBulkOperationPreviewCreate,
@@ -44,12 +45,16 @@ class InventoryBulkOperationService:
         self.db = db
         self.inventory_repository = InventoryRepository(db)
         self.inventory_service = InventoryService(db)
+        self.supplier_repository = SupplierRepository(db)
 
     def preview_operation(
         self,
         tenant: TenantContext,
         payload: InventoryBulkOperationPreviewCreate,
     ) -> InventoryBulkOperation:
+        supplier_value = None
+        if payload.operation.operation_type == "set_supplier":
+            supplier_value = self._supplier_value(tenant.tenant_id, payload.operation.supplier_id)
         items, excluded_count, filters_json = self._resolve_selection(
             tenant.tenant_id,
             payload.selection,
@@ -63,6 +68,7 @@ class InventoryBulkOperationService:
                 item,
                 payload,
                 rounding_increment=rounding_increment,
+                supplier_value=supplier_value,
             )
             for item in items
         ]
@@ -130,6 +136,7 @@ class InventoryBulkOperationService:
         item_by_id = {item.id: item for item in items}
 
         try:
+            supplier_values_checked = set()
             for row in rows:
                 item = item_by_id.get(row.inventory_item_id)
                 if item is None:
@@ -141,6 +148,15 @@ class InventoryBulkOperationService:
                         "Un producto cambió después de simular. Genera una nueva previsualización.",
                     )
                 updates = self._updates_from_row(row, use_old=False)
+                if row.field_name == "supplier" and not isinstance((row.new_value_json or {}).get("value"), dict):
+                    raise AppError(409, "inventory_bulk_operation_conflict", "Simula de nuevo seleccionando un proveedor existente.")
+                if row.field_name == "supplier" and isinstance((row.new_value_json or {}).get("value"), dict):
+                    supplier_id = updates.get("supplier_id")
+                    if supplier_id not in supplier_values_checked:
+                        current = self._supplier_value(tenant.tenant_id, supplier_id, for_update=True)
+                        if current["supplier"] != updates["supplier"]:
+                            raise AppError(409, "inventory_bulk_operation_conflict", "Cambió el proveedor después de simular. Genera una nueva previsualización.")
+                        supplier_values_checked.add(supplier_id)
                 if row.field_name in SALE_PRICE_FIELDS:
                     increment = self.inventory_service._resolve_pricing_defaults(tenant.tenant_id)["rounding_increment"]
                     context = (row.new_value_json or {}).get("pricing_context")
@@ -222,6 +238,17 @@ class InventoryBulkOperationService:
                 self.db.add(row)
                 continue
             updates = self._updates_from_row(row, use_old=True)
+            if row.field_name == "supplier" and updates.get("supplier_id") is not None:
+                try:
+                    supplier = self._supplier_value(tenant.tenant_id, updates["supplier_id"], for_update=True)
+                    if supplier["supplier"] != updates["supplier"]:
+                        raise AppError(409, "supplier_changed", "Cambió el proveedor original")
+                except AppError:
+                    row.status = "conflict"
+                    row.error_message = "supplier_unavailable_after_bulk_operation"
+                    conflict_count += 1
+                    self.db.add(row)
+                    continue
             if row.field_name in SALE_PRICE_FIELDS:
                 increment = self.inventory_service._resolve_pricing_defaults(tenant.tenant_id)["rounding_increment"]
                 context = (row.new_value_json or {}).get("pricing_context")
@@ -372,15 +399,24 @@ class InventoryBulkOperationService:
         payload: InventoryBulkOperationPreviewCreate,
         *,
         rounding_increment: Decimal,
+        supplier_value: dict | None = None,
     ) -> dict:
         field_name, old_value, new_value, error = self._calculate_change(
             item,
             payload,
             rounding_increment=rounding_increment,
+            supplier_value=supplier_value,
         )
         status = "invalid" if error else "unchanged" if self._values_equal(old_value, new_value) else "pending"
         old_value_json = self._json_box(old_value)
         new_value_json = self._json_box(new_value)
+        if not error and payload.operation.operation_type in {"increase_sale_price_percentage", "decrease_sale_price_percentage"}:
+            target = self._relative_target(item, payload.operation)
+            new_value_json.update(
+                requested_sale_price_ars=str(target),
+                price_difference_ars=str(new_value["sale_price_ars"] - target),
+                sale_price_unchanged=new_value["sale_price_ars"] == item.sale_price_ars,
+            )
         if field_name in SALE_PRICE_FIELDS:
             old_value_json["sale_price_is_manual"] = item.sale_price_is_manual
             context = self._pricing_context(item, rounding_increment)
@@ -407,6 +443,7 @@ class InventoryBulkOperationService:
         payload: InventoryBulkOperationPreviewCreate,
         *,
         rounding_increment: Decimal,
+        supplier_value: dict | None = None,
     ) -> tuple[str, Any, Any, str | None]:
         operation = payload.operation
         operation_type = operation.operation_type
@@ -430,13 +467,12 @@ class InventoryBulkOperationService:
                 else:
                     if item.sale_price_ars is None:
                         return "sale_price_ars", old, None, "sale_price_missing"
-                    factor = 1 + operation.percentage / 100
-                    if operation_type == "decrease_sale_price_percentage":
-                        factor = 1 - operation.percentage / 100
-                    target = (item.sale_price_ars * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    target = self._relative_target(item, operation)
                 try:
                     margin, price = resolve_catalog_price_target(
                         **kwargs, profit_margin_percentage=item.profit_margin_percentage, target=target,
+                        adjustment=("increase" if operation_type == "increase_sale_price_percentage" else "decrease") if operation_type != "set_sale_price" else None,
+                        current_price=item.sale_price_ars,
                     )
                 except CatalogPriceTargetError as exc:
                     return "sale_price_ars", old, None, exc.code
@@ -445,8 +481,8 @@ class InventoryBulkOperationService:
             new_value = operation.brand or None
             return "brand", item.brand, new_value, None
         if operation_type == "set_supplier":
-            new_value = operation.supplier or None
-            return "supplier", item.supplier, new_value, None
+            old = {"supplier": item.supplier, "supplier_id": str(item.supplier_id) if item.supplier_id else None}
+            return "supplier", old, supplier_value, None
         if operation_type == "set_minimum_stock":
             return "minimum_stock", item.minimum_stock, operation.minimum_stock, None
         if operation_type == "activate":
@@ -457,6 +493,21 @@ class InventoryBulkOperationService:
 
     def _price_field(self, operation_type: str) -> str:
         return "profit_margin_percentage" if operation_type == "set_profit_margin_percentage" else "sale_price_ars"
+
+    @staticmethod
+    def _relative_target(item: InventoryItem, operation) -> Decimal:
+        sign = -1 if operation.operation_type == "decrease_sale_price_percentage" else 1
+        return (item.sale_price_ars * (1 + sign * operation.percentage / 100)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    def _supplier_value(self, tenant_id, supplier_id, *, for_update=False) -> dict:
+        if supplier_id is None:
+            return {"supplier": None, "supplier_id": None}
+        supplier = self.supplier_repository.get_by_id(tenant_id, supplier_id, for_update=for_update)
+        if supplier is None:
+            raise AppError(404, "supplier_not_found", "Proveedor no encontrado")
+        if not supplier.is_active:
+            raise AppError(409, "inactive_supplier", "El proveedor está inactivo")
+        return {"supplier": supplier.name, "supplier_id": str(supplier.id)}
 
     def _pricing_context(self, item: InventoryItem, increment: Decimal) -> dict:
         return {
@@ -470,11 +521,15 @@ class InventoryBulkOperationService:
     def _updates_from_row(self, row: InventoryBulkOperationItem, *, use_old: bool) -> dict[str, Any]:
         value_json = row.old_value_json if use_old else row.new_value_json
         value = self._value_from_json(value_json)
+        if row.field_name == "supplier" and isinstance(value, dict):
+            return {"supplier": value["supplier"], "supplier_id": uuid.UUID(value["supplier_id"]) if value.get("supplier_id") else None}
         if row.field_name in SALE_PRICE_FIELDS and isinstance(value, dict):
             return {key: self._json_inner_decimal(value[key]) for key in ("profit_margin_percentage", "sale_price_ars") if key in value}
         return {row.field_name: value}
 
     def _current_value_for_row(self, item: InventoryItem, row: InventoryBulkOperationItem) -> Any:
+        if row.field_name == "supplier" and isinstance(self._value_from_json(row.new_value_json), dict):
+            return {"supplier": item.supplier, "supplier_id": str(item.supplier_id) if item.supplier_id else None}
         if row.field_name in SALE_PRICE_FIELDS and isinstance(self._value_from_json(row.new_value_json), dict):
             return {"profit_margin_percentage": item.profit_margin_percentage, "sale_price_ars": item.sale_price_ars}
         return getattr(item, row.field_name)
@@ -515,8 +570,8 @@ class InventoryBulkOperationService:
             # Compare numerically so "50" from a request matches a stored 50.00.
             return left.keys() == right.keys() and all(
                 self._values_equal(
-                    self._json_inner_decimal(left[key]),
-                    self._json_inner_decimal(right[key]),
+                    self._json_inner_decimal(left[key]) if key in {"profit_margin_percentage", "sale_price_ars"} else left[key],
+                    self._json_inner_decimal(right[key]) if key in {"profit_margin_percentage", "sale_price_ars"} else right[key],
                 )
                 for key in left
             )

@@ -41,6 +41,7 @@ def _inventory(db, tenant, *, price=Decimal("1.00"), stock=Decimal("2")):
     item = InventoryItem(
         tenant_id=tenant.id, internal_code=f"P2-{uuid.uuid4().hex[:10]}", name="Producto P.2",
         category="supply", unit="unit", current_stock=stock, minimum_stock=Decimal("0"),
+        purchase_price_ars=min(price, INVENTORY_MONEY_MAX),
         purchase_tax_rate_percentage=Decimal("0"), profit_margin_percentage=Decimal("0"),
         sale_tax_rate_percentage=Decimal("0"), sale_price_ars=price, is_active=True,
     )

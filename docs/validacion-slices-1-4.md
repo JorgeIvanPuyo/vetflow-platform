@@ -1,5 +1,161 @@
 # Cierre de inventario y compras — slices 1–4
 
+## Validación posterior a 0062 — 2026-10-31
+
+Rama `fix/tests-post-0062`. Esta sección sustituye las conclusiones y comandos históricos de publicación siguientes. Iván informó que aplicó las migraciones en producción; **no se consultó producción ni se ejecutó ninguna operación allí**. No se modificaron 0060/0061/0062 ni `docker-compose.yml` (su cambio local previo permanece fuera de este trabajo).
+
+Causas comprobadas: se reprodujeron los 37 fallos backend informados. Los helpers de preferencias/consultas/documentos creaban precios fijos incompatibles; ahora comparten entradas calculables mediante `app/tests/catalog_pricing.py`. Las fixtures de límites conservan los máximos originales y la simulación deliberada de historia inválida. Tres aserciones confundían head actual con revisión histórica; head es 0062, mientras cada prueba de transformación/downgrade apunta a su revisión específica (0050–0055), sin atravesar el downgrade irreversible de 0060. En frontend, `changed` es estado interno: se conservan atributos/resaltado y se comprueban las etiquetas humanas Aplicada/Revertida/Conflicto.
+
+Correcciones grupales: aumentar/disminuir aplican el ajuste a la venta vigente y eligen el resultado calculado más cercano con porcentaje de dos decimales, rango 0–1000 y redondeo vigente, evaluando como máximo seis candidatos. Se comparó el resolver de HEAD con el corregido en Docker sin base/red: costo 1000, IVA 21%, porcentaje 30%, redondeo 50 y venta 1550; los objetivos ±10% (1705/1395) antes fallaban por exactitud y ahora producen 1700/40,91% y 1400/15,29%. No producen una venta contraria a la dirección pedida. La simulación muestra objetivo, diferencia, porcentaje/venta resultantes y venta sin cambios; un cambio sólo de porcentaje sigue siendo aplicable. Establecer precio final mantiene exactitud. Datos incompletos, base cero incompatible, margen negativo/fuera de rango e importes imposibles mantienen motivos específicos; no se cambian costo/IVA ni se escribe modo fijo.
+
+Proveedor grupal: selector paginado de registros activos del tenant, con UUID y nombre guardados juntos. Backend verifica existencia/tenant/actividad y revalida al confirmar; no acepta texto arbitrario. Quitar proveedor requiere confirmación explícita y limpia ambas referencias; reversión conserva snapshots y detecta conflictos. Operaciones antiguas pendientes con proveedor textual requieren una nueva simulación con el selector. Las restantes acciones y los controles de selección, páginas, exclusiones, conflictos y reversión conservan su cobertura.
+
+| Validación final | Resultado | Alcance y omisiones |
+| --- | --- | --- |
+| Backend ordinario completo | 1826 PASS / 0 FAIL / 148 SKIP | SQLite aislado; los 148 skips requieren opt-ins PostgreSQL y se cubren por separado abajo; incluye regresiones de compras/descuento/devolución acordada, cero e idempotencia |
+| Archivos con opt-ins PostgreSQL | 288 PASS / 0 FAIL / 0 SKIP | Instancia PostgreSQL 17 desechable: una base de integridad migrada a 0062 y seis bases vacías independientes para migraciones históricas; incluye también casos SQLite de esos archivos |
+| PostgreSQL con fixtures heredadas | 267 PASS / 0 FAIL / 0 SKIP | Seis archivos adicionales detectados al contrastar los skips ordinarios con la selección por variables; instancia nueva desechable, sin datos de negocio |
+| Frontend completo | 461 PASS / 0 FAIL / 0 SKIP, 31 archivos | Descubrimiento con `rg`, incluye pruebas no seguidas; runner Node por archivo, sin llamadas reales |
+| TypeScript / lint / build | PASS / PASS / PASS | `tsc --noEmit`, `next lint` sin avisos, `next build` con 80 páginas generadas |
+| Diff y preservación | PASS | SHA-256 de Compose y 0060/0061/0062 conservados |
+
+No sumar los conteos backend como casos únicos: los archivos opt-in repiten parte de la cobertura ordinaria. Aviso backend existente: Starlette recomienda `python_multipart`. Los resultados completos están en `/tmp/vetflow-post0062-{backend-full,postgresql,postgresql-inherited,frontend-full,types,lint,build}.log`.
+
+Comandos reproducibles desde Bash; imagen local instalada `api-api:latest`, fuentes y Alembic del checkout montados en sólo lectura. No instalar dependencias. Suite ordinaria (ningún opt-in hereda un destino externo):
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/api
+set -o pipefail
+docker run --rm --pull never --network none \
+  -v "$PWD/app:/app/app:ro" -v "$PWD/alembic:/app/alembic:ro" \
+  api-api:latest env DATABASE_URL=sqlite:// TEST_DATABASE_URL= \
+  SERVICE_PRICING_MIGRATION_DATABASE_URL= SECRETARY_MIGRATION_DATABASE_URL= \
+  PAYMENT_IDEMPOTENCY_MIGRATION_DATABASE_URL= PAYMENT_BATCH_MIGRATION_DATABASE_URL= \
+  RECEIVABLES_MIGRATION_DATABASE_URL= SALE_PRICE_MODE_MIGRATION_DATABASE_URL= \
+  ARCA_HOMOLOGATION_ENABLED=false ARCA_LOCAL_CREDENTIALS_ENABLED=false \
+  sh -c 'uv run --frozen --no-sync python -c "import os; from app.core.config import get_settings; from sqlalchemy.engine import make_url; assert make_url(get_settings().database_url).drivername == \"sqlite\"; assert all(not v for k, v in os.environ.items() if k == \"TEST_DATABASE_URL\" or k.endswith(\"_MIGRATION_DATABASE_URL\"))" && uv run --frozen --no-sync pytest app/tests -q -ra --tb=short' \
+  2>&1 | tee /tmp/vetflow-post0062-backend-full.log
+```
+
+PostgreSQL: estos comandos se limitan al contenedor **nuevo y desechable** indicado, sin puertos publicados ni volúmenes de negocio. No apuntar estas variables a ninguna otra base. Crear recursos con nombres libres; si ya existen, detenerse y comprobar su origen.
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/api
+(
+set -e
+docker network create --internal --label vetflow.task=post0062-tests vetflow-post0062-tests &&
+docker run -d --rm --pull never --name vetflow-post0062-postgres \
+  --label vetflow.task=post0062-tests --network vetflow-post0062-tests \
+  --tmpfs /var/lib/postgresql/data:rw \
+  -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=vetflow_tests postgres:17
+# Esperar disponibilidad antes de crear bases; pg_isready sólo consulta este contenedor.
+for vetflow_attempt in {1..30}; do
+  docker exec vetflow-post0062-postgres pg_isready -U postgres -d vetflow_tests && break
+  sleep 1
+done
+docker exec vetflow-post0062-postgres pg_isready -U postgres -d vetflow_tests
+for vetflow_db in migration_service migration_secretary migration_idempotency migration_batch migration_receivables migration_price_mode; do
+  docker exec vetflow-post0062-postgres createdb -U postgres "$vetflow_db"
+done
+docker run --rm --pull never --network vetflow-post0062-tests \
+  -v "$PWD/app:/app/app:ro" -v "$PWD/alembic:/app/alembic:ro" \
+  api-api:latest env DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/vetflow_tests \
+  ARCA_HOMOLOGATION_ENABLED=false ARCA_LOCAL_CREDENTIALS_ENABLED=false \
+  uv run --frozen --no-sync alembic upgrade 0062_purchase_return_agreed
+)
+```
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/api
+mapfile -t vetflow_pg_files < <(rg -l 'postgres_test_session_factory|TEST_DATABASE_URL|MIGRATION_DATABASE_URL' app/tests -g 'test_*.py' | sort)
+set -o pipefail
+docker run --rm --pull never --network vetflow-post0062-tests \
+  -v "$PWD/app:/app/app:ro" -v "$PWD/alembic:/app/alembic:ro" \
+  api-api:latest env DATABASE_URL=sqlite:// \
+  TEST_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/vetflow_tests \
+  SERVICE_PRICING_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_service \
+  SECRETARY_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_secretary \
+  PAYMENT_IDEMPOTENCY_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_idempotency \
+  PAYMENT_BATCH_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_batch \
+  RECEIVABLES_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_receivables \
+  SALE_PRICE_MODE_MIGRATION_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/migration_price_mode \
+  ARCA_HOMOLOGATION_ENABLED=false ARCA_LOCAL_CREDENTIALS_ENABLED=false \
+  uv run --frozen --no-sync pytest "${vetflow_pg_files[@]}" -q -ra --tb=short \
+  2>&1 | tee /tmp/vetflow-post0062-postgresql.log
+```
+
+Los siguientes seis archivos heredan fixtures PostgreSQL y no contienen directamente el nombre de las variables. También se ejecutaron, en una segunda instancia efímera nueva preparada como arriba (basta la base `vetflow_tests` migrada a 0062), sin repetir los archivos aprobados:
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/api
+set -o pipefail
+docker run --rm --pull never --network vetflow-post0062-tests \
+  -v "$PWD/app:/app/app:ro" -v "$PWD/alembic:/app/alembic:ro" \
+  api-api:latest env DATABASE_URL=sqlite:// \
+  TEST_DATABASE_URL=postgresql://postgres@vetflow-post0062-postgres/vetflow_tests \
+  SERVICE_PRICING_MIGRATION_DATABASE_URL= SECRETARY_MIGRATION_DATABASE_URL= \
+  PAYMENT_IDEMPOTENCY_MIGRATION_DATABASE_URL= PAYMENT_BATCH_MIGRATION_DATABASE_URL= \
+  RECEIVABLES_MIGRATION_DATABASE_URL= SALE_PRICE_MODE_MIGRATION_DATABASE_URL= \
+  ARCA_HOMOLOGATION_ENABLED=false ARCA_LOCAL_CREDENTIALS_ENABLED=false \
+  uv run --frozen --no-sync pytest \
+  app/tests/test_owner_account.py app/tests/test_owner_receivables.py \
+  app/tests/test_receivable_signals.py app/tests/test_receivables_foundation.py \
+  app/tests/test_sale_confirmation_batch.py app/tests/test_sale_confirmation_payment.py \
+  -q -ra --tb=short 2>&1 | tee /tmp/vetflow-post0062-postgresql-inherited.log
+```
+
+Cerrar sólo los recursos propios anteriores al terminar, también si hubo fallos; conservar antes el código de salida del runner. No borrar volúmenes:
+
+```bash
+docker stop vetflow-post0062-postgres
+docker network rm vetflow-post0062-tests
+```
+
+Frontend y comprobaciones (ejecutar cada bloque y revisar su código de salida):
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/web
+vetflow_result=0
+vetflow_count=0
+while IFS= read -r -d '' vetflow_test; do
+  vetflow_count=$((vetflow_count + 1))
+  pnpm exec node "$vetflow_test" || vetflow_result=1
+done < <(rg --files -0 -g '*.test.cjs' src) > /tmp/vetflow-post0062-frontend-full.log 2>&1
+if [ "$vetflow_count" -eq 0 ]; then vetflow_result=1; fi
+printf 'Files: %s; exit: %s\n' "$vetflow_count" "$vetflow_result"
+(exit "$vetflow_result")
+```
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform/apps/web
+set -o pipefail
+pnpm exec tsc --noEmit 2>&1 | tee /tmp/vetflow-post0062-types.log &&
+pnpm run lint 2>&1 | tee /tmp/vetflow-post0062-lint.log &&
+NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 \
+NEXT_PUBLIC_AI_FEATURES_ENABLED=false pnpm run build 2>&1 | tee /tmp/vetflow-post0062-build.log
+```
+
+El build usa la configuración pública de desarrollo existente en `.env.local`, sin imprimir valores ni inventar credenciales. No ejecuta flujos Firebase/ARCA/buckets ni necesita autenticación externa. No se cambiaron dependencias/lockfiles. Diff:
+
+```bash
+cd /home/ivanpuyo/Quark/projects/vetflow-platform
+git diff --check
+```
+
+Checklist manual pendiente de Iván, sólo con productos propios locales:
+
+| Acción | Comprobar |
+| --- | --- |
+| Aumentar y disminuir % con IVA, margen no cero y redondeo | Simulación muestra objetivo/diferencia; confirmar y reabrir conserva exactamente el precio y porcentaje mostrados. Sin IVA: 1000/1300 ±10% → 1430/43% o 1170/17%. Con IVA 21%, margen 30 y redondeo 50: venta 1550, +10% objetivo 1705 → 1700; −10% objetivo 1395 → 1400. No modificar preferencias de negocio para ajustar ejemplos. |
+| Establecer margen y precio final | 40% → 1400 y precio 1500 → 50% en la base anterior sin IVA/redondeo. Un precio que requiera margen negativo o no sea representable explica el rechazo por fila. |
+| Establecer proveedor | Elegir activo existente (también de otra página del selector), confirmar y reabrir; nombre/relación coinciden. Quitar sólo con confirmación explícita; coste, impuestos y stock intactos. |
+| Marca, stock mínimo, activar e inactivar | Cambia sólo el campo solicitado, incluso en productos pendientes. Simulación/guardado/lectura coinciden. |
+| Selección y recuperación | Seleccionar entre páginas, filtrar marca/categoría y excluir una fila; comprobar conjunto y contadores. Probar conflicto tras simular, doble confirmación, reversión y guardar/cerrar modal sin repetir PATCH. |
+
+Listo para revisión previa al despliegue, sin bloqueos automatizados pendientes. Los 148 casos saltados en SQLite se cubrieron habilitando PostgreSQL en los archivos correspondientes (288 y 267 PASS, con casos SQLite repetidos entre fases). Pendiente la aceptación manual grupal de Iván; no se declara realizada. Las dos instancias efímeras y sus redes fueron cerradas; no quedan contenedores/procesos propios y se preservó el entorno preexistente. No se hicieron commit/push/merge/PR ni despliegues. Las secciones siguientes son registro histórico y no autorizan reaplicar migraciones de negocio.
+
+---
+
 Fecha: 2026-10-30. Rama: `feature/arca1-fiscal-proposals`.
 
 > Actualización posterior: se aprobó sustituir el bloqueo de devoluciones descontadas por un importe acordado con el proveedor, requerido al confirmar (cero válido). El head de código ahora es `0062_purchase_return_agreed`, **pendiente de aplicar**. Las referencias a head 0061, restricción pendiente y lista de publicación siguientes corresponden al cierre anterior y requieren actualizarse antes de publicar; no son instrucciones vigentes de publicación.
