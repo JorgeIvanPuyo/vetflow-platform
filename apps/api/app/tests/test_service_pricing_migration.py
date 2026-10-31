@@ -44,7 +44,7 @@ def test_service_pricing_upgrade_preserves_legacy_rows_and_downgrade(monkeypatch
                 INSERT INTO services (id, tenant_id, code, name, normalized_name, kind, default_duration_minutes)
                 VALUES (:id, :tenant_id, 'LEGACY', 'Legacy service', 'legacy service', 'consultation', 30)
             """), {"id": service_id, "tenant_id": tenant_id})
-        command.upgrade(config, "head")
+        command.upgrade(config, "0050_service_pricing")
         price_column = next(column for column in sa.inspect(engine).get_columns("services") if column["name"] == "price")
         assert price_column["nullable"] is True
         assert price_column["default"] is None
@@ -62,7 +62,7 @@ def test_service_pricing_upgrade_preserves_legacy_rows_and_downgrade(monkeypatch
         assert "price" not in {column["name"] for column in sa.inspect(engine).get_columns("services")}
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT name FROM services WHERE id = :id"), {"id": service_id}) == "Legacy service"
-        command.upgrade(config, "head")
+        command.upgrade(config, "0050_service_pricing")
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT price FROM services WHERE id = :id"), {"id": service_id}) is None
     finally:

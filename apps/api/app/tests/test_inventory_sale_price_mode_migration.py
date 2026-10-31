@@ -75,7 +75,7 @@ def test_postgresql_backfill_marks_only_divergent_prices_manual(monkeypatch):
                     },
                 )
 
-        command.upgrade(config, "head")
+        command.upgrade(config, "0055_inventory_sale_price_mode")
         with engine.connect() as connection:
             rows = dict(
                 connection.execute(

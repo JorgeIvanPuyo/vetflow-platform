@@ -1063,6 +1063,7 @@ export type InventoryBulkOperationValuePayload = {
   profit_margin_percentage?: number | null;
   brand?: string | null;
   supplier?: string | null;
+  supplier_id?: string | null;
   minimum_stock?: number | null;
   confirm_clear?: boolean;
 };

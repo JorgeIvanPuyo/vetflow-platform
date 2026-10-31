@@ -608,6 +608,7 @@ class InventoryBulkOperationValueCreate(BaseModel):
     profit_margin_percentage: Decimal | None = Field(default=None, ge=0, le=1000, decimal_places=2)
     brand: str | None = Field(default=None, max_length=150)
     supplier: str | None = Field(default=None, max_length=255)
+    supplier_id: uuid.UUID | None = None
     minimum_stock: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"), decimal_places=2)
     confirm_clear: bool = False
 
@@ -640,10 +641,11 @@ class InventoryBulkOperationValueCreate(BaseModel):
             if self.brand == "" and not self.confirm_clear:
                 raise ValueError("confirm_clear is required to clear brand")
         elif self.operation_type == "set_supplier":
-            if self.supplier is None:
-                raise ValueError("supplier is required")
-            if self.supplier == "" and not self.confirm_clear:
-                raise ValueError("confirm_clear is required to clear supplier")
+            if self.supplier_id is not None:
+                if self.supplier is not None:
+                    raise ValueError("Use supplier_id without supplier text")
+            elif self.supplier not in (None, "") or not self.confirm_clear:
+                raise ValueError("Select supplier_id or explicitly confirm clearing supplier")
         elif self.operation_type == "set_minimum_stock":
             if self.minimum_stock is None:
                 raise ValueError("minimum_stock is required")

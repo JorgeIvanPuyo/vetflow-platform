@@ -13,7 +13,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_payment_idempotency_is_single_head_after_secretary():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0059_merge_arca_inventory"]
+    assert script.get_heads() == ["0062_purchase_return_agreed"]
     assert script.get_revision("0052_sale_payment_idempotency").down_revision == "0051_secretary_role"
     assert script.get_revision("0053_sale_payment_batches").down_revision == "0052_sale_payment_idempotency"
 
@@ -98,7 +98,7 @@ def test_payment_idempotency_upgrade_preserves_history_unique_scope_and_downgrad
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT amount_ars FROM sale_payments WHERE id=:id"), {"id": historical_id}) == Decimal("20.00")
             assert connection.scalar(sa.text("SELECT count(*) FROM sale_payments")) == 5
-        command.upgrade(config, "head")
+        command.upgrade(config, "0052_sale_payment_idempotency")
         with engine.connect() as connection:
             assert connection.scalar(sa.text("SELECT count(*) FROM sale_payments WHERE idempotency_key IS NOT NULL")) == 0
     finally:

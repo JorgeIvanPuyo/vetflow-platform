@@ -1,3 +1,4 @@
+from app.tests.catalog_pricing import calculated_product_fields
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -117,7 +118,7 @@ def _product(client, tenant, *, category="vaccine"):
             "category": category,
             "unit": "unit",
             "minimum_stock": "0",
-            "sale_price_ars": "100",
+            **calculated_product_fields("100"),
         },
     )
     assert response.status_code == 201, response.text

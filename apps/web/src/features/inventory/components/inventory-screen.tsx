@@ -44,6 +44,7 @@ import {
 } from "@/features/inventory/components/inventory-helpers";
 import { formatUserName } from "@/features/inventory/components/inventory-bulk-operations-screen";
 import { ApiClientError, getApiErrorMessage } from "@/lib/api";
+import { getSuppliers } from "@/services/suppliers";
 import {
   exportInventory,
   confirmInventoryBulkOperation,
@@ -66,6 +67,7 @@ import type {
   InventoryStatusFilter,
   InventoryStockStatus,
   InventorySummary,
+  SupplierSummary,
 } from "@/types/api";
 
 type InventoryScreenState = {
@@ -207,6 +209,9 @@ export function InventoryScreen() {
   const [bulkOperationType, setBulkOperationType] =
     useState<InventoryBulkOperationType>("increase_sale_price_percentage");
   const [bulkValue, setBulkValue] = useState("");
+  const [bulkSuppliers, setBulkSuppliers] = useState<SupplierSummary[]>([]);
+  const [bulkSuppliersLoading, setBulkSuppliersLoading] = useState(false);
+  const [bulkSuppliersError, setBulkSuppliersError] = useState<string | null>(null);
   const [bulkConfirmClear, setBulkConfirmClear] = useState(false);
   const [bulkPreview, setBulkPreview] = useState<InventoryBulkOperation | null>(null);
   const [bulkPreviewPage, setBulkPreviewPage] = useState(1);
@@ -218,6 +223,34 @@ export function InventoryScreen() {
 
   const { filterState, legacyStatus, page, pageSize } = queryState;
   const filterOptions = filterOptionsState.data;
+
+  useEffect(() => {
+    if (!isBulkOpen || bulkOperationType !== "set_supplier") return;
+    let active = true;
+    setBulkSuppliersLoading(true);
+    setBulkSuppliersError(null);
+    async function load() {
+      try {
+        const suppliers: SupplierSummary[] = [];
+        let page = 1;
+        let pages = 1;
+        do {
+          const response = await getSuppliers({ include_inactive: false, page, page_size: 100, sort_by: "name", sort_direction: "asc" });
+          if (!active) return;
+          suppliers.push(...response.data.filter((supplier) => supplier.is_active));
+          pages = response.meta.total_pages;
+          page += 1;
+        } while (page <= pages);
+        setBulkSuppliers(suppliers);
+      } catch (error) {
+        if (active) { setBulkSuppliers([]); setBulkSuppliersError(getApiErrorMessage(error)); }
+      } finally {
+        if (active) setBulkSuppliersLoading(false);
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, [isBulkOpen, bulkOperationType]);
 
   const activeFilters = useMemo(() => {
     const filters = buildInventoryListFilters(
@@ -1411,6 +1444,8 @@ export function InventoryScreen() {
                   value={bulkOperationType}
                   onChange={(event) => {
                     setBulkOperationType(event.target.value as InventoryBulkOperationType);
+                    setBulkValue("");
+                    setBulkConfirmClear(false);
                     setBulkPreview(null);
                   }}
                 >
@@ -1419,7 +1454,16 @@ export function InventoryScreen() {
                   ))}
                 </select>
               </label>
-              {requiresBulkValue(bulkOperationType) ? (
+              {bulkOperationType === "set_supplier" ? (
+                <label className="field">
+                  <span>Proveedor existente</span>
+                  <select aria-label="Proveedor para edición grupal" value={bulkValue} disabled={bulkSuppliersLoading} onChange={(event) => { setBulkValue(event.target.value); setBulkPreview(null); }}>
+                    <option value="">{bulkSuppliersLoading ? "Cargando proveedores..." : "Seleccionar proveedor o quitar con confirmación"}</option>
+                    {bulkSuppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                  </select>
+                  {bulkSuppliersError ? <small role="alert">{bulkSuppliersError}</small> : null}
+                </label>
+              ) : requiresBulkValue(bulkOperationType) ? (
                 <label className="field">
                   <span>Valor</span>
                   <input
@@ -1690,12 +1734,20 @@ function buildBulkOperationPayload(
       return "Ingresa un stock mínimo de 0 a 9999999999.99, con hasta dos decimales.";
     }
     operation.minimum_stock = value;
-  } else if (operationType === "set_brand" || operationType === "set_supplier") {
+  } else if (operationType === "set_supplier") {
+    const value = rawValue.trim();
+    if (value) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) return "Selecciona un proveedor existente.";
+      operation.supplier_id = value;
+    } else {
+      if (!confirmClear) return "Confirma la limpieza del proveedor vacío.";
+      operation.supplier_id = null;
+    }
+  } else if (operationType === "set_brand") {
     const value = rawValue.trim();
     if (!value && !confirmClear) return "Confirma la limpieza del campo vacío.";
-    if (value.length > (operationType === "set_brand" ? 150 : 255)) return "El texto supera la longitud permitida.";
-    if (operationType === "set_brand") operation.brand = value;
-    else operation.supplier = value;
+    if (value.length > 150) return "El texto supera la longitud permitida.";
+    operation.brand = value;
   }
 
   if (selectionMode === "selected") {
