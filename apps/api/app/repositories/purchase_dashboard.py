@@ -54,6 +54,9 @@ class PurchaseDashboardRepository:
                 func.sum(Purchase.total_ars).filter(Purchase.status == "received"),
                 0,
             ).label("received_total_ars"),
+            func.coalesce(func.sum(Purchase.discount_amount_ars).filter(Purchase.status.in_(REGISTERED_STATUSES)), 0).label("registered_discount_amount_ars"),
+            func.coalesce(func.sum(Purchase.amount_payable_ars).filter(Purchase.status.in_(REGISTERED_STATUSES)), 0).label("registered_amount_payable_ars"),
+            func.coalesce(func.sum(Purchase.amount_payable_ars).filter(Purchase.status == "received"), 0).label("received_amount_payable_ars"),
             func.coalesce(
                 func.sum(Purchase.tax_total_ars).filter(
                     Purchase.status.in_(REGISTERED_STATUSES)
@@ -118,6 +121,9 @@ class PurchaseDashboardRepository:
                 func.coalesce(func.sum(PurchaseReturn.total_ars), 0).label(
                     "returned_total_ars"
                 ),
+                func.coalesce(func.sum(func.coalesce(
+                    PurchaseReturn.agreed_amount_ars, PurchaseReturn.total_ars
+                )), 0).label("returned_amount_ars"),
                 func.count(PurchaseReturn.id).label("confirmed_return_count"),
             )
             .join(
@@ -179,6 +185,8 @@ class PurchaseDashboardRepository:
                 Purchase.supplier_name,
                 Purchase.document_number,
                 Purchase.total_ars,
+                Purchase.discount_amount_ars,
+                Purchase.amount_payable_ars.label("amount_payable_ars"),
                 Purchase.status,
                 has_attachment.label("has_attachment"),
                 old_draft.label("old_draft"),
@@ -235,6 +243,8 @@ class PurchaseDashboardRepository:
             func.sum(Purchase.total_ars).filter(Purchase.status == "received"),
             0,
         )
+        registered_payable = func.coalesce(func.sum(Purchase.amount_payable_ars).filter(Purchase.status.in_(REGISTERED_STATUSES)), 0)
+        received_payable = func.coalesce(func.sum(Purchase.amount_payable_ars).filter(Purchase.status == "received"), 0)
         statement = (
             select(
                 Purchase.supplier_id,
@@ -242,6 +252,8 @@ class PurchaseDashboardRepository:
                 func.count(Purchase.id).label("purchase_count"),
                 registered_total.label("registered_total_ars"),
                 received_total.label("received_total_ars"),
+                registered_payable.label("registered_amount_payable_ars"),
+                received_payable.label("received_amount_payable_ars"),
             )
             .join(
                 Supplier,
@@ -250,8 +262,8 @@ class PurchaseDashboardRepository:
             .where(*filters)
             .group_by(Purchase.supplier_id, Purchase.supplier_name)
             .order_by(
-                desc(received_total),
-                desc(registered_total),
+                desc(received_payable),
+                desc(registered_payable),
                 func.count(Purchase.id).desc(),
                 func.lower(Purchase.supplier_name).asc(),
                 Purchase.supplier_id.asc(),
@@ -288,6 +300,8 @@ class PurchaseDashboardRepository:
                 Purchase.document_type,
                 Purchase.document_number,
                 Purchase.total_ars,
+                Purchase.discount_amount_ars,
+                Purchase.amount_payable_ars.label("amount_payable_ars"),
                 Purchase.status,
                 has_attachment.label("has_attachment"),
                 Purchase.created_by_user_id,

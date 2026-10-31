@@ -149,7 +149,7 @@ def test_secretary_cannot_be_assigned_clinical_or_fiscal_responsibility(client, 
     data(client.get(f"/api/v1/consultations/{consultation['id']}", headers=headers(actors["secretaria"])))
     assert client.delete(f"/api/v1/owners/{owner['id']}", headers=headers(actors["secretaria"])).status_code == 403
     data(client.get(f"/api/v1/consultations/{consultation['id']}", headers=auth))
-    response = client.post("/api/v1/fiscal-issuers", headers=auth, json={
+    response = client.post("/api/v1/fiscal-issuers", headers=headers(actors["clinic_admin"]), json={
         "user_id": str(actors["secretaria"].id), "display_name": "No permitido", "tax_id": "123",
         "can_issue_service_receipt_c": True, "service_document_type": "receipt_c", "service_document_code": "015",
     })

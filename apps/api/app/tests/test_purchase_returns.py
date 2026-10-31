@@ -70,7 +70,6 @@ def _create_item(
     *,
     name="Producto retornable",
     purchase_price="25.00",
-    sale_price="100.00",
 ) -> dict:
     response = client.post(
         "/api/v1/inventory/items",
@@ -82,7 +81,6 @@ def _create_item(
             "purchase_price_ars": purchase_price,
             "purchase_tax_rate_percentage": "10.00",
             "profit_margin_percentage": "40.00",
-            "sale_price_ars": sale_price,
         },
     )
     assert response.status_code == 201, response.text
@@ -311,7 +309,6 @@ def test_confirm_partial_return_creates_traceable_movements_and_preserves_prices
         client,
         tenant,
         purchase_price="25.00",
-        sale_price="100.00",
     )
     purchase = _create_purchase(
         client,
@@ -342,7 +339,7 @@ def test_confirm_partial_return_creates_traceable_movements_and_preserves_prices
     assert inventory_item.current_stock == Decimal("7.00")
     assert inventory_item.purchase_price_ars == Decimal("50.00")
     assert inventory_item.purchase_tax_rate_percentage == Decimal("21.00")
-    assert inventory_item.sale_price_ars == Decimal("100.00")
+    assert inventory_item.sale_price_ars == Decimal("84.70")
     assert inventory_item.profit_margin_percentage == Decimal("40.00")
     movement = db_session.scalar(
         select(InventoryMovement).where(

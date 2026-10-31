@@ -8,7 +8,7 @@ import styles from "./inventory-detail.module.css";
 export function InventoryDetailModal({ itemId, onClose, onChanged }: {
   itemId: string;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: (closing?: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {

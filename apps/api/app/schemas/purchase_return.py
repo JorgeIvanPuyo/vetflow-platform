@@ -37,6 +37,9 @@ class PurchaseReturnCreate(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
     document_type: PurchaseReturnDocumentType | None = None
     document_number: str | None = Field(default=None, max_length=120)
+    agreed_amount_ars: Decimal | None = Field(
+        default=None, ge=0, max_digits=16, decimal_places=2, allow_inf_nan=False
+    )
     items: list[PurchaseReturnItemInput] = Field(min_length=1, max_length=200)
 
     @field_validator("reason")
@@ -62,6 +65,9 @@ class PurchaseReturnUpdate(BaseModel):
     reason: str | None = Field(default=None, min_length=1, max_length=2000)
     document_type: PurchaseReturnDocumentType | None = None
     document_number: str | None = Field(default=None, max_length=120)
+    agreed_amount_ars: Decimal | None = Field(
+        default=None, ge=0, max_digits=16, decimal_places=2, allow_inf_nan=False
+    )
     items: list[PurchaseReturnItemInput] | None = Field(
         default=None, min_length=1, max_length=200
     )
@@ -174,6 +180,7 @@ class PurchaseReturnSummaryRead(BaseModel):
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
+    agreed_amount_ars: Decimal | None = None
     item_count: int
     attachment_status: PurchaseReturnAttachmentStatus
     created_by_user_id: uuid.UUID | None = None
@@ -199,6 +206,7 @@ class PurchaseReturnPurchaseRead(BaseModel):
     document_type: str
     document_number: str | None = None
     total_ars: Decimal
+    discount_amount_ars: Decimal
     status: str
 
 
@@ -220,6 +228,7 @@ class PurchaseReturnDetailRead(BaseModel):
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
+    agreed_amount_ars: Decimal | None = None
     inventory_operation_id: uuid.UUID | None = None
     created_by_user_id: uuid.UUID | None = None
     created_by_user_name: str | None = None

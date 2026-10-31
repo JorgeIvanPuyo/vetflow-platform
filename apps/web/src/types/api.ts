@@ -695,6 +695,7 @@ export type InventoryUnit =
   | "other";
 
 export type InventoryStatusFilter =
+  | "pricing_pending"
   | "low_stock"
   | "expiring_soon"
   | "expired"
@@ -745,6 +746,7 @@ export type InventoryItem = {
   sale_price_with_tax_ars?: string | number | null;
   round_sale_price: boolean;
   sale_price_is_manual: boolean;
+  pricing_pending: boolean;
   notes: string | null;
   is_active: boolean;
   is_low_stock: boolean;
@@ -1043,6 +1045,7 @@ export type InventoryBulkOperationFilters = {
   brand?: string | null;
   supplier?: string | null;
   stock_status?: InventoryStockStatus | null;
+  status?: InventoryStatusFilter | null;
   is_active?: boolean | null;
 };
 
@@ -1692,6 +1695,8 @@ export type SupplierListFilters = {
   sort_direction?: "asc" | "desc";
 };
 
+export type PurchaseDiscountType = "none" | "percentage" | "amount";
+
 export type PurchaseSummary = {
   id: string;
   supplier_id: string;
@@ -1704,6 +1709,10 @@ export type PurchaseSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
+  discount_type: PurchaseDiscountType;
+  discount_value: string;
   status: PurchaseStatus;
   item_count: number;
   attachment_status: PurchaseAttachmentStatus;
@@ -1776,6 +1785,7 @@ export type PurchaseReturnSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  agreed_amount_ars: string | null;
   item_count: number;
   attachment_status: PurchaseAttachmentStatus;
   created_by_user_id: string | null;
@@ -1809,6 +1819,7 @@ export type PurchaseReturn = Omit<PurchaseReturnSummary, "item_count"> & {
     document_type: PurchaseDocumentType;
     document_number: string | null;
     total_ars: string;
+    discount_amount_ars: string;
     status: PurchaseStatus;
   };
   items: PurchaseReturnItem[];
@@ -1819,6 +1830,7 @@ export type PurchaseReturnWritePayload = {
   reason: string;
   document_type?: PurchaseReturnDocumentType | null;
   document_number?: string | null;
+  agreed_amount_ars?: string | null;
   items: PurchaseReturnItemInput[];
 };
 
@@ -1828,6 +1840,8 @@ export type PurchaseWritePayload = {
   document_type: PurchaseDocumentType;
   document_number?: string | null;
   notes?: string | null;
+  discount_type?: PurchaseDiscountType;
+  discount_value?: string;
   items: PurchaseItemInput[];
 };
 
@@ -1852,6 +1866,8 @@ export type PurchaseListSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
 };
 
 export type PurchaseDashboardFilters = {
@@ -1868,6 +1884,8 @@ export type PurchaseDashboardAttention = {
   supplier_name: string;
   document_number: string | null;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
   status: PurchaseStatus;
   attachment_status: PurchaseAttachmentStatus;
   alerts: Array<"old_draft" | "attachment_pending" | "reversed_receipt" | "document_number_missing">;
@@ -1880,6 +1898,8 @@ export type PurchaseDashboardTopSupplier = {
   purchase_count: number;
   registered_total_ars: string;
   received_total_ars: string;
+  registered_amount_payable_ars: string;
+  received_amount_payable_ars: string;
 };
 
 export type PurchaseDashboardRecentPurchase = {
@@ -1889,6 +1909,8 @@ export type PurchaseDashboardRecentPurchase = {
   document_type: PurchaseDocumentType;
   document_number: string | null;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
   status: PurchaseStatus;
   attachment_status: PurchaseAttachmentStatus;
   created_by_user_id: string | null;
@@ -1906,6 +1928,10 @@ export type PurchaseDashboard = {
     document_type: PurchaseDocumentType | null;
   };
   summary: {
+    registered_discount_amount_ars: string;
+    registered_amount_payable_ars: string;
+    received_amount_payable_ars: string;
+    net_received_amount_payable_ars: string;
     registered_total_ars: string;
     received_total_ars: string;
     returned_total_ars: string;
@@ -1940,11 +1966,13 @@ export type PaymentMethod = {
   is_active: boolean;
   sort_order: number;
   has_payments: boolean;
+  operational_reference?: string | null;
+  suggested_fiscal_issuer_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order">;
+export type PaymentMethodWritePayload = Pick<PaymentMethod, "label" | "type" | "is_active" | "sort_order" | "operational_reference" | "suggested_fiscal_issuer_id">;
 
 export type SalePayment = {
   id: string;
@@ -1976,6 +2004,9 @@ export type FiscalIssuer = {
   user_email: string | null;
   display_name: string;
   tax_id: string;
+  cuit?: string | null;
+  legal_name?: string | null;
+  tax_condition?: string | null;
   is_active: boolean;
   can_issue_service_receipt_c: boolean;
   can_issue_product_invoice_c: boolean;
@@ -2008,6 +2039,9 @@ export type SaleFiscalDocumentFileVersion = {
 
 export type SaleFiscalDocument = {
   id: string;
+  source: "manual" | "arca";
+  environment: "homologation" | "production" | null;
+  authorization_status: "manual" | "pending" | "unknown" | "authorized" | "rejected" | "caea_pending";
   fiscal_issuer_id: string;
   issuer_user_id_snapshot: string;
   issuer_name_snapshot: string;
@@ -2017,14 +2051,14 @@ export type SaleFiscalDocument = {
   document_number: string;
   issue_date: string;
   total_ars_snapshot: string;
-  original_filename: string;
-  content_type: "application/pdf" | "image/jpeg" | "image/png";
-  size_bytes: number;
-  sha256: string;
+  original_filename: string | null;
+  content_type: "application/pdf" | "image/jpeg" | "image/png" | null;
+  size_bytes: number | null;
+  sha256: string | null;
   uploaded_by_user_id: string | null;
   uploaded_by_user_name: string | null;
   uploaded_by_user_email: string | null;
-  uploaded_at: string;
+  uploaded_at: string | null;
   is_active: boolean;
   file_history: SaleFiscalDocumentFileVersion[];
   created_at: string;
@@ -2119,6 +2153,8 @@ export type Sale = Omit<SaleSummary, "item_count"> & {
   reversal_reason: string | null;
   reversal_operation_id: string | null;
   fiscal_document: SaleFiscalDocument | null;
+  fiscal_documents: SaleFiscalDocument[];
+  fiscal_document_totals: { source: "manual" | "arca"; authorization_status: SaleFiscalDocument["authorization_status"]; environment: SaleFiscalDocument["environment"]; count: number; total_ars: string }[];
   payments: SalePayment[];
   items: SaleItem[];
 };

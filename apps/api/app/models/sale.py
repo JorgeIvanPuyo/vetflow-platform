@@ -92,11 +92,37 @@ class Sale(BaseModel):
 
     @property
     def fiscal_document(self) -> SaleFiscalDocument | None:
-        return next((document for document in self.fiscal_documents if document.is_active), None)
+        # Preserve the legacy contract: it refers only to the active manual file.
+        manual = [document for document in self.fiscal_documents
+                  if document.tenant_id == self.tenant_id and document.is_active and document.source == "manual"]
+        if len(manual) > 1:
+            raise ValueError("More than one active manual fiscal document for a sale")
+        return manual[0] if manual else None
+
+    @property
+    def fiscal_document_totals(self) -> list[dict]:
+        totals: dict[tuple[str, str, str], dict] = {}
+        for document in self.fiscal_documents:
+            if document.tenant_id != self.tenant_id or not document.is_active:
+                continue
+            key = (document.source, document.authorization_status, document.environment or "")
+            total = totals.setdefault(key, {
+                "source": key[0], "authorization_status": key[1],
+                "environment": key[2] or None,
+                "count": 0, "total_ars": Decimal("0.00"),
+            })
+            total["count"] += 1
+            total["total_ars"] += document.total_ars_snapshot
+        return [totals[key] for key in sorted(totals)]
 
     @property
     def fiscal_status(self) -> str | None:
-        if self.fiscal_document is not None:
+        has_document = self.fiscal_document is not None or any(
+            document.tenant_id == self.tenant_id and document.is_active
+            and document.source == "arca" and document.authorization_status == "authorized" and document.environment == "production"
+            for document in self.fiscal_documents
+        )
+        if has_document:
             return "requires_attention" if self.status == "reversed" else "documented"
         return "pending" if self.status == "confirmed" else None
 

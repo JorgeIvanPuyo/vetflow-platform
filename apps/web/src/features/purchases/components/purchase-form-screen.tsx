@@ -7,13 +7,14 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 import { createPortal } from "react-dom";
 
 import { useClinic } from "@/features/clinic/clinic-context";
+import { purchaseDiscountPreview } from "./purchase-discount";
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
 import { getInventoryItems } from "@/services/inventory";
 import { createPurchase, getPurchase, updatePurchase, uploadPurchaseAttachment } from "@/services/purchases";
 import { createSupplier, getSuppliers } from "@/services/suppliers";
-import type { InventoryItem, PurchaseDocumentType, PurchaseItem, PurchaseWritePayload, SupplierSummary } from "@/types/api";
+import type { InventoryItem, PurchaseDiscountType, PurchaseDocumentType, PurchaseItem, PurchaseWritePayload, SupplierSummary } from "@/types/api";
 
 
 type EditableLine = {
@@ -48,6 +49,10 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
   const [documentType, setDocumentType] = useState<PurchaseDocumentType>("invoice");
   const [documentNumber, setDocumentNumber] = useState("");
   const [notes, setNotes] = useState("");
+  const [discountType, setDiscountType] = useState<PurchaseDiscountType>("none");
+  const [discountValue, setDiscountValue] = useState("0");
+  const [savedAmounts, setSavedAmounts] = useState<{ total_ars: string; discount_amount_ars: string; amount_payable_ars: string } | null>(null);
+  const savingRef = useRef(false);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [existingAttachmentName, setExistingAttachmentName] = useState<string | null>(null);
   const [attachmentErrorMessage, setAttachmentErrorMessage] = useState<string | null>(null);
@@ -75,6 +80,8 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         setDocumentType(data.document_type);
         setDocumentNumber(data.document_number ?? "");
         setNotes(data.notes ?? "");
+        setDiscountType(data.discount_type ?? "none");
+        setDiscountValue(data.discount_value ?? "0");
         setExistingAttachmentName(data.attachment?.original_filename ?? null);
         setLines(data.items.map(lineFromPurchaseItem));
         setIsCancelled(data.status !== "draft");
@@ -133,17 +140,8 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, [isSupplierOpen]);
 
-  const estimate = useMemo(() => lines.reduce(
-    (totals, line) => {
-      const quantity = positiveNumber(line.quantity);
-      const price = nonNegativeNumber(line.unitPrice);
-      const rate = nonNegativeNumber(line.taxRate);
-      const subtotal = quantity * price;
-      const tax = subtotal * rate / 100;
-      return { subtotal: totals.subtotal + subtotal, tax: totals.tax + tax, total: totals.total + subtotal + tax };
-    },
-    { subtotal: 0, tax: 0, total: 0 },
-  ), [lines]);
+  const estimate = useMemo(() => purchaseDiscountPreview(lines, discountType, discountValue), [lines, discountType, discountValue]);
+  useEffect(() => { setSavedAmounts(null); }, [lines, discountType, discountValue]);
 
   async function handleQuickSupplier() {
     if (!quickSupplier.name.trim()) {
@@ -232,15 +230,22 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (savingRef.current) return;
     const validationMessage = validateForm({ supplierId: selectedSupplier?.id, purchaseDate, lines });
     if (validationMessage) {
       setErrorMessage(validationMessage);
       return;
     }
+    if (estimate.error) {
+      setErrorMessage(estimate.error);
+      return;
+    }
+    savingRef.current = true;
     if (attachmentFile) {
       const attachmentValidationMessage = await validateAttachmentFile(attachmentFile);
       if (attachmentValidationMessage) {
         setAttachmentErrorMessage(attachmentValidationMessage);
+        savingRef.current = false;
         return;
       }
     }
@@ -250,6 +255,8 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       document_type: documentType,
       document_number: documentNumber.trim() || null,
       notes: notes.trim() || null,
+      discount_type: discountType,
+      discount_value: discountType === "none" ? "0" : discountValue.trim().replace(",", "."),
       items: lines.map((line) => ({
         inventory_item_id: line.inventoryItemId,
         quantity: line.quantity,
@@ -263,6 +270,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       const response = purchaseId
         ? await updatePurchase(purchaseId, payload)
         : await createPurchase(payload);
+      setSavedAmounts(response.data);
       if (attachmentFile) {
         try {
           await uploadPurchaseAttachment(response.data.id, attachmentFile);
@@ -275,6 +283,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error));
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   }
@@ -389,9 +398,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         {lines.length === 0 ? <p className="empty-state empty-state--compact">Agrega al menos un producto.</p> : (
           <div className="purchase-lines">
             {lines.map((line, index) => {
-              const subtotal = positiveNumber(line.quantity) * nonNegativeNumber(line.unitPrice);
-              const tax = subtotal * nonNegativeNumber(line.taxRate) / 100;
-              const total = subtotal + tax;
+              const { subtotal, tax, total } = purchaseDiscountPreview([line], "none", "0");
               return (
                 <article className="purchase-line" key={line.inventoryItemId}>
                   <div className="purchase-line__product"><strong>{line.name}</strong><small>{line.internalCode} · {line.unit}</small><small>Referencia: {formatPurchaseCurrency(line.referenceCost, moneyPreferences)}</small></div>
@@ -410,11 +417,24 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
         )}
       </section>
 
-      <section className="panel purchase-summary" aria-label="Resumen estimativo">
+      <section className="panel purchase-form-section">
+        <div className="section-heading"><h2>Descuento</h2><p>Se aplica únicamente a esta compra; conserva los costos unitarios y el IVA de las líneas.</p></div>
+        <div className="purchase-header-grid">
+          <label className="field"><span>Descuento</span><select aria-label="Modalidad de descuento" value={discountType} disabled={isSaving} onChange={(event) => { setDiscountType(event.target.value as PurchaseDiscountType); setDiscountValue("0"); }}>
+            <option value="none">Sin descuento</option><option value="percentage">Porcentaje (%)</option><option value="amount">Importe ({moneyPreferences.currencyCode})</option>
+          </select></label>
+          {discountType !== "none" ? <label className="field"><span>{discountType === "percentage" ? "Descuento (%)" : `Descuento (${moneyPreferences.currencyCode})`}</span><input aria-label="Valor del descuento" type="number" inputMode="decimal" min="0" max={discountType === "percentage" ? "100" : estimate.total} step="0.01" value={discountValue} disabled={isSaving} onChange={(event) => setDiscountValue(event.target.value)} /></label> : null}
+        </div>
+        {estimate.error ? <p role="alert" className="error-state">{estimate.error}</p> : null}
+      </section>
+
+      <section className="panel purchase-summary" aria-label={savedAmounts ? "Importes guardados" : "Resumen estimativo"}>
         <div><span>Subtotal</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div>
         <div><span>IVA</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div>
-        <div><span>Total</span><strong>{formatPurchaseCurrency(estimate.total, moneyPreferences)}</strong></div>
-        <p>Estimación visual. El backend recalcula y persiste los importes definitivos.</p>
+        <div><span>Total original</span><strong>{formatPurchaseCurrency(savedAmounts?.total_ars ?? estimate.total, moneyPreferences)}</strong></div>
+        <div><span>Descuento</span><strong>{estimate.discount_amount_ars === null ? "—" : formatPurchaseCurrency(savedAmounts?.discount_amount_ars ?? estimate.discount_amount_ars, moneyPreferences)}</strong></div>
+        <div><span>Total a pagar</span><strong>{estimate.amount_payable_ars === null ? "—" : formatPurchaseCurrency(savedAmounts?.amount_payable_ars ?? estimate.amount_payable_ars, moneyPreferences)}</strong></div>
+        <p>{savedAmounts ? "Importes definitivos guardados." : "Estimación visual. El backend recalcula y persiste los importes definitivos."}</p>
       </section>
 
       <section className="panel purchase-form-section purchase-attachment-form">
@@ -505,16 +525,6 @@ function validateForm({ supplierId, purchaseDate, lines }: { supplierId?: string
 
 function preventFractionalQuantityInput(event: KeyboardEvent<HTMLInputElement>) {
   if ([".", ",", "e", "E", "+", "-"].includes(event.key)) event.preventDefault();
-}
-
-function positiveNumber(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function nonNegativeNumber(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function todayIso() {

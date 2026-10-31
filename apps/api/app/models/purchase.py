@@ -19,6 +19,9 @@ from sqlalchemy import (
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+
+from app.core.purchase_discount import purchase_amount_payable
 
 from app.models.base import BaseModel
 
@@ -45,6 +48,9 @@ class Purchase(BaseModel):
         CheckConstraint("subtotal_ars >= 0", name="ck_purchases_subtotal_non_negative"),
         CheckConstraint("tax_total_ars >= 0", name="ck_purchases_tax_total_non_negative"),
         CheckConstraint("total_ars >= 0", name="ck_purchases_total_non_negative"),
+        CheckConstraint("discount_type IN ('none', 'percentage', 'amount')", name="ck_purchases_discount_type"),
+        CheckConstraint("discount_value >= 0 AND discount_amount_ars >= 0 AND discount_amount_ars <= total_ars", name="ck_purchases_discount_amounts"),
+        CheckConstraint("(discount_type = 'none' AND discount_value = 0 AND discount_amount_ars = 0) OR (discount_type = 'percentage' AND discount_value <= 100) OR (discount_type = 'amount' AND discount_value = discount_amount_ars)", name="ck_purchases_discount_mode_value"),
         Index("ix_purchases_tenant_purchase_date", "tenant_id", "purchase_date"),
         Index(
             "ix_purchases_tenant_status_purchase_date",
@@ -84,6 +90,19 @@ class Purchase(BaseModel):
     total_ars: Mapped[Decimal] = mapped_column(
         Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0"
     )
+    discount_type: Mapped[str] = mapped_column(String(20), nullable=False, default="none", server_default="none")
+    discount_value: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0")
+    discount_amount_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0")
+
+    @hybrid_property
+    def amount_payable_ars(self) -> Decimal:
+        return purchase_amount_payable(self.total_ars, self.discount_amount_ars)
+
+    @amount_payable_ars.inplace.expression
+    @classmethod
+    def _amount_payable_expression(cls):
+        return cls.total_ars - cls.discount_amount_ars
+
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="draft", server_default="draft", index=True
@@ -308,6 +327,8 @@ class PurchaseItem(BaseModel):
     line_subtotal_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     line_tax_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     line_total_ars: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    # Null identifies receipts predating the current-cost rule.
+    catalog_cost_updated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     previous_purchase_price_ars: Mapped[Decimal | None] = mapped_column(
         Numeric(14, 2), nullable=True
     )

@@ -29,6 +29,7 @@ InventoryUnit = Literal[
     "other",
 ]
 InventoryStatusFilter = Literal[
+    "pricing_pending",
     "low_stock",
     "expiring_soon",
     "expired",
@@ -225,6 +226,7 @@ class InventoryItemRead(InventoryItemWriteBase):
     internal_code: str
     current_stock: Decimal
     sale_price_is_manual: bool = False
+    pricing_pending: bool = False
     created_by_user_id: uuid.UUID | None = None
     supplier_name: str | None = None
     category_catalog_item_name: str | None = None
@@ -559,6 +561,7 @@ class InventoryBulkOperationFilters(BaseModel):
     brand: str | None = Field(default=None, max_length=150)
     supplier: str | None = Field(default=None, max_length=255)
     stock_status: InventoryStockStatus | None = None
+    status: InventoryStatusFilter | None = None
     is_active: bool | None = None
 
     @field_validator("search", "brand", "supplier", mode="before")
@@ -600,12 +603,12 @@ class InventoryBulkOperationValueCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     operation_type: InventoryBulkOperationType
-    percentage: Decimal | None = Field(default=None, gt=0, le=1000)
-    sale_price_ars: Decimal | None = Field(default=None, ge=0)
-    profit_margin_percentage: Decimal | None = Field(default=None, ge=0, le=1000)
+    percentage: Decimal | None = Field(default=None, gt=0, le=1000, decimal_places=2)
+    sale_price_ars: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"), decimal_places=2)
+    profit_margin_percentage: Decimal | None = Field(default=None, ge=0, le=1000, decimal_places=2)
     brand: str | None = Field(default=None, max_length=150)
     supplier: str | None = Field(default=None, max_length=255)
-    minimum_stock: Decimal | None = Field(default=None, ge=0)
+    minimum_stock: Decimal | None = Field(default=None, ge=0, le=Decimal("9999999999.99"), decimal_places=2)
     confirm_clear: bool = False
 
     @field_validator("brand", "supplier", mode="before")

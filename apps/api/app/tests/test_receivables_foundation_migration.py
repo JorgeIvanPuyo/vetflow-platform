@@ -22,7 +22,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_receivables_migration_follows_batches_as_single_head():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0055_inventory_sale_price_mode"]
+    assert script.get_heads() == ["0059_merge_arca_inventory"]
     assert script.get_revision("0054_receivables_foundation").down_revision == "0053_sale_payment_batches"
 
 

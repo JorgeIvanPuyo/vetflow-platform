@@ -21,10 +21,17 @@ class PaymentMethodCreate(BaseModel):
     type: PaymentMethodType
     is_active: bool = True
     sort_order: int = Field(default=0, ge=0, le=999999)
+    operational_reference: str | None = Field(default=None, max_length=255)
+    suggested_fiscal_issuer_id: uuid.UUID | None = None
 
     @field_validator("label", mode="before")
     @classmethod
     def normalize_label(cls, value):
+        return _trim(value)
+
+    @field_validator("operational_reference", mode="before")
+    @classmethod
+    def normalize_reference(cls, value):
         return _trim(value)
 
 
@@ -34,10 +41,17 @@ class PaymentMethodUpdate(BaseModel):
     type: PaymentMethodType | None = None
     is_active: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=999999)
+    operational_reference: str | None = Field(default=None, max_length=255)
+    suggested_fiscal_issuer_id: uuid.UUID | None = None
 
     @field_validator("label", mode="before")
     @classmethod
     def normalize_label(cls, value):
+        return _trim(value)
+
+    @field_validator("operational_reference", mode="before")
+    @classmethod
+    def normalize_reference(cls, value):
         return _trim(value)
 
 
@@ -48,6 +62,8 @@ class PaymentMethodRead(BaseModel):
     type: PaymentMethodType
     is_active: bool
     sort_order: int
+    operational_reference: str | None = None
+    suggested_fiscal_issuer_id: uuid.UUID | None = None
     has_payments: bool = False
     created_at: datetime
     updated_at: datetime

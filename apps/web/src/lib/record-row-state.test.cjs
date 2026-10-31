@@ -68,7 +68,7 @@ const services = {
 const load = Module._load;
 Module._load = function (name, ...args) {
   if (name === "react") return hooks;
-  if (name === "next/link") return ({ children, ...props }) => React.createElement("a", props, children);
+  if (name === "next/link") return function TestNextLink({ children, ...props }) { return React.createElement("a", props, children); };
   if (name === "next/navigation") return { useRouter: () => router, usePathname: () => current.pathname, useSearchParams: () => new URLSearchParams() };
   if (name === "@/features/clinic/clinic-context") return { useClinic: () => ({ preferences: null }) };
   if (name === "@/features/auth/auth-context") return { useAuth: () => ({ user: null }) };

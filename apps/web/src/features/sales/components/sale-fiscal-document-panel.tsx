@@ -5,6 +5,7 @@ import { AlertTriangle, Download, Eye, FileCheck2, FileUp, Settings2, X } from "
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { useCurrentUser } from "@/features/auth/current-user-context";
 import { useClinic } from "@/features/clinic/clinic-context";
 import { formatPurchaseCurrency, formatPurchaseDate, formatPurchaseDateTime, formatPurchaseUser } from "@/features/purchases/components/purchase-helpers";
 import { getClinicTeam } from "@/services/clinic";
@@ -15,6 +16,7 @@ import type { FiscalDocumentType, FiscalIssuer, Sale } from "@/types/api";
 import { getIssuerDocumentPair } from "./sale-fiscal-helpers";
 
 export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpdated: () => Promise<void> }) {
+  const { currentUser, role } = useCurrentUser();
   const { preferences } = useClinic();
   const moneyPreferences = resolveMoneyPreferences(preferences);
   const document = sale.fiscal_document;
@@ -26,6 +28,10 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
   const [file, setFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasActor = Boolean(currentUser?.id && currentUser.is_active);
+  const isManager = hasActor && (role === "clinic_admin" || role === "contador");
+  const isVeterinarian = hasActor && role === "medico_veterinario";
+  const canWriteDocument = isManager || (isVeterinarian && (!document || issuers.some((issuer) => issuer.id === document.fiscal_issuer_id && issuer.user_id === currentUser?.id)));
 
   useEffect(() => {
     Promise.all([getFiscalIssuers(), getClinicTeam(true)])
@@ -37,10 +43,11 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
   }, []);
 
   const eligible = useMemo(() => issuers.filter((issuer) => {
+    if (!isManager && (!isVeterinarian || issuer.user_id !== currentUser?.id)) return false;
     if (issuer.id === document?.fiscal_issuer_id) return true;
     if (!issuer.is_active) return false;
     return Boolean(getIssuerDocumentPair(sale, issuer));
-  }), [document?.fiscal_issuer_id, issuers, sale]);
+  }), [currentUser?.id, document?.fiscal_issuer_id, isManager, isVeterinarian, issuers, sale]);
   const selectedIssuer = eligible.find((issuer) => issuer.id === issuerId) ?? null;
   const hasActiveIssuers = issuers.some((issuer) => issuer.is_active);
   const selectedPair = document && selectedIssuer?.id === document.fiscal_issuer_id
@@ -48,6 +55,7 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
     : selectedIssuer ? getIssuerDocumentPair(sale, selectedIssuer) : null;
 
   function openForm() {
+    if (!canWriteDocument) return;
     const defaultIssuer = document
       ? eligible.find((item) => item.id === document.fiscal_issuer_id)
       : eligible[0];
@@ -61,6 +69,7 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!canWriteDocument || isSaving) return;
     if (!selectedIssuer || !selectedPair) { setError("Selecciona un emisor habilitado para esta venta."); return; }
     if (!number.trim() || !issueDate) { setError("Completa el número y la fecha del comprobante."); return; }
     if (!document && !file) { setError("Selecciona el archivo del comprobante."); return; }
@@ -112,11 +121,11 @@ export function SaleFiscalDocumentPanel({ sale, onUpdated }: { sale: Sale; onUpd
         <div><span>Archivo</span><strong>{document.original_filename}</strong><small>{formatFileSize(document.size_bytes)} · {labelFileType(document.content_type)}</small></div>
         <div><span>Cargado por</span><strong>{formatPurchaseUser(document.uploaded_by_user_name, document.uploaded_by_user_email)}</strong><small>{formatPurchaseDateTime(document.uploaded_at)}</small></div>
       </div>
-      <div className="purchase-attachment-actions"><button className="secondary-button" type="button" onClick={() => void openFile(false)}><Eye size={17} /> Ver</button><button className="secondary-button" type="button" onClick={() => void openFile(true)}><Download size={17} /> Descargar</button><button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Corregir o reemplazar</button></div>
+      <div className="purchase-attachment-actions"><button className="secondary-button" type="button" onClick={() => void openFile(false)}><Eye size={17} /> Ver</button><button className="secondary-button" type="button" onClick={() => void openFile(true)}><Download size={17} /> Descargar</button>{canWriteDocument ? <button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Corregir o reemplazar</button> : null}</div>
       {document.file_history.length ? <details className="purchase-attachment-history"><summary>Historial de archivos ({document.file_history.length})</summary>{document.file_history.map((item) => <div key={item.id}><strong>{item.original_filename}</strong><small>{formatPurchaseDateTime(item.uploaded_at)} · reemplazado {formatPurchaseDateTime(item.replaced_at)} por {formatPurchaseUser(item.replaced_by_user_name, item.replaced_by_user_email)}</small></div>)}</details> : null}
-    </> : sale.status === "confirmed" ? <div className="purchase-empty-state"><FileCheck2 size={28} /><h3>Comprobante pendiente</h3><p>Registra el comprobante emitido manualmente fuera de Vetflow.</p>{eligible.length ? <button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Registrar comprobante</button> : <><small>{hasActiveIssuers ? "No hay un emisor activo compatible con la composición de esta venta." : "No hay emisores fiscales activos configurados."}</small>{<Link className="secondary-button" href="/settings/sales/fiscal-issuers"><Settings2 size={17} /> Ir a Ajustes</Link>}</>}</div> : <p>El comprobante podrá registrarse cuando la venta esté confirmada.</p>}
+    </> : sale.status === "confirmed" ? <div className="purchase-empty-state"><FileCheck2 size={28} /><h3>Comprobante pendiente</h3><p>Registra el comprobante emitido manualmente fuera de Vetflow.</p>{canWriteDocument && eligible.length ? <button className="primary-button" type="button" onClick={openForm}><FileUp size={17} /> Registrar comprobante</button> : canWriteDocument ? <><small>{hasActiveIssuers ? "No hay un emisor activo compatible con la composición de esta venta." : "No hay emisores fiscales activos configurados."}</small>{isManager ? <Link className="secondary-button" href="/settings/sales/fiscal-issuers"><Settings2 size={17} /> Ir a Ajustes</Link> : null}</> : <small>Consulta fiscal. Sólo un administrador, contador o veterinario del emisor puede registrar o corregir el comprobante.</small>}</div> : <p>El comprobante podrá registrarse cuando la venta esté confirmada.</p>}
     {error && !showForm ? <div className="error-state" role="alert">{error}</div> : null}
-    {showForm ? <form className="sale-fiscal-form" onSubmit={submit}><fieldset>
+    {showForm && canWriteDocument ? <form className="sale-fiscal-form" onSubmit={submit}><fieldset>
       <div className="section-heading"><div><h3>{document ? "Corregir comprobante" : "Registrar comprobante"}</h3><p>El total se toma de la venta y no puede editarse.</p></div><button className="icon-button" type="button" aria-label="Cerrar formulario fiscal" onClick={() => setShowForm(false)}><X size={17} /></button></div>
       <div className="fiscal-document-form-grid"><label className="field"><span>Emisor *</span><select required value={issuerId} onChange={(event) => setIssuerId(event.target.value)}><option value="">Seleccionar</option>{eligible.map((issuer) => <option key={issuer.id} value={issuer.id}>{issuer.display_name} · {issuer.tax_id}{issuer.is_active ? "" : " (inactivo, documento actual)"}</option>)}</select></label><label className="field"><span>Tipo permitido</span><input readOnly value={selectedPair ? `${labelDocumentType(selectedPair[0])} · ${selectedPair[1]}` : "Sin tipo compatible"} /></label><label className="field"><span>Número *</span><input required maxLength={120} value={number} onChange={(event) => setNumber(event.target.value)} /></label><label className="field"><span>Fecha de emisión *</span><input required type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} /></label><label className="field"><span>Total</span><input readOnly value={formatPurchaseCurrency(sale.total_ars, moneyPreferences)} /></label></div>
       <label className="purchase-attachment-picker"><FileUp size={20} /><span>{file?.name ?? (document ? "Conservar archivo actual o seleccionar reemplazo" : "Seleccionar PDF, JPEG o PNG *")}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
@@ -133,8 +142,8 @@ function labelFiscalStatus(status: Sale["fiscal_status"]) {
   return "Sin estado fiscal hasta confirmar";
 }
 function labelDocumentType(type: FiscalDocumentType) { return type === "receipt_c" ? "Recibo C" : "Factura C"; }
-function labelFileType(type: string) { return type === "application/pdf" ? "PDF" : type === "image/jpeg" ? "JPEG" : "PNG"; }
-function formatFileSize(size: number) { return size >= 1024 * 1024 ? `${(size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`; }
+function labelFileType(type: string | null) { return type === "application/pdf" ? "PDF" : type === "image/jpeg" ? "JPEG" : type === "image/png" ? "PNG" : "Sin archivo"; }
+function formatFileSize(size: number | null) { return size === null ? "Sin archivo" : size >= 1024 * 1024 ? `${(size / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`; }
 function localDate() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;

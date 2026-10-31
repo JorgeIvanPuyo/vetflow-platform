@@ -1,10 +1,11 @@
 "use client";
 
+import { bulkFieldLabel, bulkRowReason, bulkRowStatus, formatBulkValue } from "./inventory-bulk-values";
 import { getRecordRowState } from "@/lib/record-row-state";
 
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   formatInventoryDateTime,
@@ -30,6 +31,7 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [isReversing, setIsReversing] = useState(false);
+  const reversingRef = useRef(false);
 
   const load = useCallback(async () => {
     setErrorMessage(null);
@@ -46,10 +48,12 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
   }, [load]);
 
   async function handleReverse() {
+    if (reversingRef.current) return;
     if (!reason.trim()) {
       setErrorMessage("Ingresa un motivo para revertir.");
       return;
     }
+    reversingRef.current = true;
     setIsReversing(true);
     setErrorMessage(null);
     try {
@@ -59,6 +63,7 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
     } catch (error) {
       setErrorMessage(getApiErrorMessage(error));
     } finally {
+      reversingRef.current = false;
       setIsReversing(false);
     }
   }
@@ -177,10 +182,10 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
                   {operation.items.map((row) => (
                     <tr key={row.id} data-record-state={getRecordRowState(row.status)} className="inventory-table__row--static">
                       <td>{row.inventory_item_name ?? row.inventory_item_id}</td>
-                      <td>{row.field_name}</td>
-                      <td>{formatValue(row.old_value_json)}</td>
-                      <td>{formatValue(row.new_value_json)}</td>
-                      <td>{row.status}</td>
+                      <td>{bulkFieldLabel(row.field_name)}</td>
+                      <td>{formatBulkValue(row.old_value_json)}</td>
+                      <td>{formatBulkValue(row.new_value_json)}</td>
+                      <td>{bulkRowStatus(row.status)}{row.error_message ? <small>{bulkRowReason(row.error_message)}</small> : null}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -191,17 +196,4 @@ export function InventoryBulkOperationDetail({ operationId }: Props) {
       ) : null}
     </div>
   );
-}
-
-function formatValue(value: Record<string, unknown> | null) {
-  if (!value) {
-    return "";
-  }
-  const innerValue = value.value;
-  if (innerValue && typeof innerValue === "object") {
-    return Object.entries(innerValue as Record<string, unknown>)
-      .map(([key, item]) => `${key}: ${String(item ?? "")}`)
-      .join(", ");
-  }
-  return String(innerValue ?? "");
 }

@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -116,6 +117,22 @@ class ClinicService:
             preferences,
             updates,
         )
+        if "money_rounding_increment" in updates:
+            from app.models.inventory_item import InventoryItem
+            from app.services.inventory import InventoryService
+
+            pricing = InventoryService(self.db)
+            items = self.db.scalars(select(InventoryItem).where(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.round_sale_price.is_(True),
+            ).order_by(InventoryItem.id).with_for_update()).all()
+            for item in items:
+                price_updates = {}
+                pricing.apply_sale_price_updates(
+                    item, price_updates, rounding_increment=updated_preferences.money_rounding_increment,
+                )
+                if any(getattr(item, key) != value for key, value in price_updates.items()):
+                    pricing.inventory_repository.update_item(item, price_updates)
         self.db.commit()
         return updated_preferences
 

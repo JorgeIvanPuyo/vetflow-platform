@@ -17,6 +17,7 @@ from app.schemas.payment import (
     SalePaymentVoid,
 )
 from app.services.payment import PaymentMethodService, SalePaymentService
+from app.services.fiscal_configuration import authorize_fiscal_context
 
 
 router = APIRouter(tags=["sale-payments"])
@@ -24,6 +25,8 @@ router = APIRouter(tags=["sale-payments"])
 
 @router.post("/payment-methods", status_code=status.HTTP_201_CREATED)
 def create_payment_method(payload: PaymentMethodCreate, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
+    if payload.model_fields_set & {"operational_reference", "suggested_fiscal_issuer_id"}:
+        authorize_fiscal_context(db, tenant, manage=True)
     method = PaymentMethodService(db).create(tenant.tenant_id, payload, user_id=tenant.user_id)
     return {"data": PaymentMethodRead.model_validate(method).model_dump(mode="json"), "meta": {}}
 
@@ -50,6 +53,8 @@ def get_payment_method(method_id: uuid.UUID, tenant: TenantContext = Depends(get
 
 @router.patch("/payment-methods/{method_id}")
 def update_payment_method(method_id: uuid.UUID, payload: PaymentMethodUpdate, tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db)) -> dict:
+    if payload.model_fields_set & {"operational_reference", "suggested_fiscal_issuer_id"}:
+        authorize_fiscal_context(db, tenant, manage=True)
     method = PaymentMethodService(db).update(tenant.tenant_id, method_id, payload, user_id=tenant.user_id)
     return {"data": PaymentMethodRead.model_validate(method).model_dump(mode="json"), "meta": {}}
 

@@ -67,7 +67,7 @@ import type { InventoryItem } from "@/types/api";
 type InventoryDetailProps = {
   itemId: string;
   onClose?: () => void;
-  onChanged?: () => void;
+  onChanged?: (closing?: boolean) => void;
 };
 
 type InventoryDetailState = {
@@ -135,7 +135,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   const [formState, setFormState] = useState<InventoryFormState>(
     getInitialInventoryFormState(preferences),
   );
-  const [manualSalePriceOverride, setManualSalePriceOverride] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [entryFormState, setEntryFormState] = useState<InventoryEntryFormState>(
     initialInventoryEntryFormState,
@@ -144,6 +143,8 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
     initialInventoryExitFormState,
   );
 
+  const savingRef = useRef(false);
+  const detailLoadRef = useRef(0);
   const content = useRef<HTMLDivElement>(null);
   const flowOpen = isEditOpen || isDeleteOpen || isEntryOpen || isExitOpen;
   useEffect(() => {
@@ -159,8 +160,10 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   }
 
   const loadItem = useCallback(async () => {
+    const version = ++detailLoadRef.current;
     try {
       const response = await getInventoryItem(itemId);
+      if (version !== detailLoadRef.current) return response.data;
       setState((current) => ({
         ...current,
         item: response.data,
@@ -168,10 +171,9 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
       }));
       return response.data;
     } catch (error) {
-      setState((current) => ({
-        ...current,
-        errorMessage: getApiErrorMessage(error),
-      }));
+      if (version === detailLoadRef.current && !(error instanceof ApiClientError && error.code === "read_cancelled")) {
+        setState((current) => ({ ...current, errorMessage: getApiErrorMessage(error) }));
+      }
       throw error;
     }
   }, [itemId]);
@@ -235,6 +237,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
 
   useEffect(() => {
     void refreshDetail(1, "all");
+    return () => { detailLoadRef.current += 1; };
   }, [refreshDetail]);
 
   function openEdit() {
@@ -243,7 +246,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
     }
 
     setFormState(inventoryItemToFormState(state.item));
-    setManualSalePriceOverride(state.item.sale_price_is_manual);
     setIsEditOpen(true);
     setState((current) => ({
       ...current,
@@ -255,7 +257,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   function closeEdit() {
     setIsEditOpen(false);
     setFormState(getInitialInventoryFormState(preferences));
-    setManualSalePriceOverride(false);
     setState((current) => ({
       ...current,
       flowMessage: null,
@@ -320,15 +321,16 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (savingRef.current) return;
     const validationMessage = validateInventoryForm(formState, {
       isEdit: true,
-      manualSalePrice: manualSalePriceOverride,
     });
     if (validationMessage) {
       setState((current) => ({ ...current, flowMessage: validationMessage }));
       return;
     }
 
+    savingRef.current = true;
     setState((current) => ({
       ...current,
       isSaving: true,
@@ -339,8 +341,9 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
     try {
       const response = await updateInventoryItem(
         itemId,
-        inventoryFormToUpdatePayload(formState, manualSalePriceOverride),
+        inventoryFormToUpdatePayload(formState),
       );
+      detailLoadRef.current += 1;
       setState((current) => ({
         ...current,
         isSaving: false,
@@ -348,7 +351,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
         successMessage: "Item actualizado correctamente.",
       }));
       setIsEditOpen(false);
-      onChanged?.();
+      onChanged?.(true);
       returnToInventory();
     } catch (error) {
       setState((current) => ({
@@ -356,6 +359,8 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
         isSaving: false,
         flowMessage: getApiErrorMessage(error),
       }));
+    } finally {
+      savingRef.current = false;
     }
   }
 
@@ -452,7 +457,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
 
     try {
       await deleteInventoryItem(itemId);
-      onChanged?.();
+      onChanged?.(true);
       returnToInventory();
     } catch (error) {
       setState((current) => ({
@@ -484,7 +489,7 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
   const badges = getInventoryStatusBadges(item);
   const purchasePriceWithTax =
     item.purchase_price_with_tax_ars ?? item.purchase_price_ars;
-  const salePriceWithTax = item.sale_price_with_tax_ars ?? item.sale_price_ars;
+  const salePriceWithTax = item.pricing_pending ? null : (item.sale_price_with_tax_ars ?? item.sale_price_ars);
 
   return (
     <div ref={content} className={`page-stack inventory-detail-page ${styles.detail} ${onClose ? styles.embedded : ""}`}
@@ -597,14 +602,12 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
             <div>
               <dt>Tipo de precio</dt>
               <dd>
-                {item.sale_price_is_manual ? (
-                  <span className="badge badge--warning">Manual</span>
-                ) : (
-                  <span className="badge badge--success">Calculado por margen</span>
-                )}
+                <span className={`badge ${item.pricing_pending ? "badge--warning" : "badge--success"}`}>
+                  {item.pricing_pending ? "Completar costo/porcentaje" : "Calculado por margen"}
+                </span>
                 <small className="inventory-price-mode-hint">
-                  {item.sale_price_is_manual
-                    ? "No cambia con el margen ni al recibir compras. Edita el producto para pasarlo a calculado."
+                  {item.pricing_pending
+                    ? "Completa los datos para calcular la venta. El importe legado es sólo una referencia."
                     : "Se actualiza al cambiar el costo, el IVA o el margen, y al recibir compras."}
                 </small>
               </dd>
@@ -613,13 +616,10 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
               <dt>Margen de ganancia</dt>
               <dd>
                 {item.profit_margin_percentage}%
-                {item.sale_price_is_manual ? (
-                  <small className="inventory-price-mode-hint">No se aplica al precio manual.</small>
-                ) : null}
               </dd>
             </div>
             <div>
-              <dt>Precio de venta sin impuesto</dt>
+              <dt>{item.pricing_pending ? "Importe legado (referencia)" : "Precio de venta sin impuesto"}</dt>
               <dd>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</dd>
             </div>
             <div>
@@ -640,9 +640,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
               <dt>Redondear precio</dt>
               <dd>
                 {item.round_sale_price ? "Sí" : "No"}
-                {item.sale_price_is_manual && item.round_sale_price ? (
-                  <small className="inventory-price-mode-hint">Sólo aplica al precio calculado.</small>
-                ) : null}
               </dd>
             </div>
           </dl>
@@ -884,8 +881,6 @@ export function InventoryDetail({ itemId, onClose, onChanged }: InventoryDetailP
               isSubmitting={state.isSaving}
               submitLabel="Guardar cambios"
               flowMessage={state.flowMessage}
-              manualSalePriceOverride={manualSalePriceOverride}
-              onManualSalePriceOverrideChange={setManualSalePriceOverride}
               isEdit
             />
           </section>

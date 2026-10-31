@@ -1,4 +1,4 @@
-import { formatCurrency, type MoneyPreferences } from "@/lib/money";
+import { formatCurrency, formatExactCurrency, type MoneyPreferences } from "@/lib/money";
 import type { PurchaseDocumentType, PurchaseStatus } from "@/types/api";
 
 
@@ -11,7 +11,8 @@ export function formatPurchaseCurrency(
   value: string | number | null | undefined,
   preferences: MoneyPreferences = LEGACY_MONEY_PREFERENCES,
 ) {
-  return formatCurrency(value ?? 0, preferences);
+  return typeof value === "string" && /^-?\d+(?:[.,]\d{1,2})?$/.test(value)
+    ? formatExactCurrency(value, preferences) : formatCurrency(value ?? 0, preferences);
 }
 
 export function formatPurchaseDate(value: string) {

@@ -13,7 +13,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_payment_idempotency_is_single_head_after_secretary():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0055_inventory_sale_price_mode"]
+    assert script.get_heads() == ["0059_merge_arca_inventory"]
     assert script.get_revision("0052_sale_payment_idempotency").down_revision == "0051_secretary_role"
     assert script.get_revision("0053_sale_payment_batches").down_revision == "0052_sale_payment_idempotency"
 

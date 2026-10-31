@@ -150,6 +150,10 @@ def test_summary_uses_documented_status_and_attachment_semantics(
     summary = response.json()["data"]["summary"]
     assert summary == {
         "registered_total_ars": "363.00",
+        "registered_discount_amount_ars": "0.00",
+        "registered_amount_payable_ars": "363.00",
+        "received_amount_payable_ars": "242.00",
+        "net_received_amount_payable_ars": "242.00",
         "received_total_ars": "242.00",
         "registered_tax_total_ars": "63.00",
         "received_tax_total_ars": "42.00",
@@ -426,12 +430,16 @@ def test_advanced_list_summary_covers_all_filtered_rows_not_only_page(
         "subtotal_ars": "600.00",
         "tax_total_ars": "126.00",
         "total_ars": "726.00",
+        "discount_amount_ars": "0.00",
+        "amount_payable_ars": "726.00",
     }
     assert empty_response.json()["meta"]["summary"] == {
         "purchase_count": 0,
         "subtotal_ars": "0.00",
         "tax_total_ars": "0.00",
         "total_ars": "0.00",
+        "discount_amount_ars": "0.00",
+        "amount_payable_ars": "0.00",
     }
 
 

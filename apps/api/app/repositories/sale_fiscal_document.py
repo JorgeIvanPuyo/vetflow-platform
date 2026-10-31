@@ -45,6 +45,7 @@ class SaleFiscalDocumentRepository:
             .where(
                 SaleFiscalDocument.tenant_id == tenant_id,
                 SaleFiscalDocument.sale_id == sale_id,
+                SaleFiscalDocument.source == "manual",
                 SaleFiscalDocument.is_active.is_(True),
             )
             .options(
@@ -66,7 +67,26 @@ class SaleFiscalDocumentRepository:
         )
         if for_update:
             statement = statement.with_for_update()
-        return self.db.scalar(statement)
+        statement = statement.execution_options(populate_existing=True)
+        # The singular contract is reserved for the one manual attachment.
+        return self.db.scalars(statement).one_or_none()
+
+    def list_for_sale(
+        self, tenant_id: uuid.UUID, sale_id: uuid.UUID
+    ) -> list[SaleFiscalDocument]:
+        """Explicit plural access for the new fiscal domain, including its history."""
+        return list(self.db.scalars(
+            select(SaleFiscalDocument).where(
+                SaleFiscalDocument.tenant_id == tenant_id,
+                SaleFiscalDocument.sale_id == sale_id,
+            ).options(
+                selectinload(SaleFiscalDocument.uploaded_by_user.and_(User.tenant_id == tenant_id)),
+                selectinload(SaleFiscalDocument.file_history.and_(
+                    SaleFiscalDocumentFileVersion.tenant_id == tenant_id,
+                )).selectinload(SaleFiscalDocumentFileVersion.replaced_by_user.and_(User.tenant_id == tenant_id)),
+            ).order_by(SaleFiscalDocument.created_at, SaleFiscalDocument.id)
+            .execution_options(populate_existing=True)
+        ))
 
     def get_duplicate(
         self,
@@ -82,6 +102,7 @@ class SaleFiscalDocumentRepository:
             SaleFiscalDocument.fiscal_issuer_id == issuer_id,
             SaleFiscalDocument.document_type == document_type,
             SaleFiscalDocument.document_number == document_number,
+            SaleFiscalDocument.source == "manual",
         ]
         if exclude_document_id is not None:
             filters.append(SaleFiscalDocument.id != exclude_document_id)

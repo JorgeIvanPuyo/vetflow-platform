@@ -13,6 +13,9 @@ from app.api.debug import router as debug_router
 from app.api.exams import router as exams_router
 from app.api.file_references import router as file_references_router
 from app.api.fiscal_issuers import router as fiscal_issuers_router
+from app.api.fiscal_configuration import router as fiscal_configuration_router
+from app.api.fiscal_proposals import router as fiscal_proposals_router
+from app.api.fiscal_emissions import router as fiscal_emissions_router
 from app.api.follow_ups import router as follow_ups_router
 from app.api.health import router as health_router
 from app.api.inventory import router as inventory_router
@@ -69,6 +72,9 @@ api_v1_router.include_router(suppliers_router)
 api_v1_router.include_router(purchases_router)
 api_v1_router.include_router(purchase_returns_router)
 api_v1_router.include_router(fiscal_issuers_router)
+api_v1_router.include_router(fiscal_configuration_router)
+api_v1_router.include_router(fiscal_proposals_router)
+api_v1_router.include_router(fiscal_emissions_router)
 api_v1_router.include_router(payments_router)
 api_v1_router.include_router(payment_reports_router)
 api_v1_router.include_router(sales_router)

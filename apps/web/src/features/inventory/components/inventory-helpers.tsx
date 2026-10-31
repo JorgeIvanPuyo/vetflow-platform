@@ -72,6 +72,7 @@ export const inventoryStatusOptions: Array<{
   label: string;
 }> = [
   { value: "all", label: "Todos" },
+  { value: "pricing_pending", label: "Completar costo/porcentaje" },
   { value: "active", label: "Activos" },
   { value: "low_stock", label: "Bajo stock" },
   { value: "expiring_soon", label: "Por vencer" },
@@ -352,6 +353,9 @@ export function formatInventoryDateTime(value?: string | null) {
 
 export function getInventoryStatusBadges(item: InventoryItem) {
   const badges: Array<{ label: string; className: string }> = [];
+  if (item.pricing_pending) {
+    badges.push({ label: "Completar costo/porcentaje", className: "badge badge--warning" });
+  }
   const stockStatus = getInventoryStockStatus(item);
 
   if (stockStatus === "negative") {
@@ -548,7 +552,7 @@ export function isPositiveInteger(value: string) {
 
 export function validateInventoryForm(
   formState: InventoryFormState,
-  options: { isEdit?: boolean; manualSalePrice?: boolean } = {},
+  options: { isEdit?: boolean } = {},
 ) {
   if (!formState.name.trim()) {
     return "Escribe un nombre para el item.";
@@ -586,12 +590,8 @@ export function validateInventoryForm(
     return "El margen no puede ser negativo.";
   }
 
-  const salePriceValue = formState.sale_price_ars ? Number(formState.sale_price_ars) : null;
-  if (salePriceValue !== null && (Number.isNaN(salePriceValue) || salePriceValue < 0)) {
-    return "El precio de venta no puede ser negativo.";
-  }
-  if (options.manualSalePrice && salePriceValue === null) {
-    return "Ingresa el precio de venta manual o cambia a precio calculado por margen.";
+  if (!formState.profit_margin_percentage.trim()) {
+    return "Completar costo/porcentaje: ingresa el porcentaje de ganancia.";
   }
 
   const saleTaxRate = Number(formState.sale_tax_rate_percentage || "0");
@@ -606,12 +606,11 @@ export function calculateSalePricePreview(
   formState: InventoryFormState,
   roundingIncrement = 10,
 ) {
-  return calculateInventoryPricePreview(formState, false, roundingIncrement).saleWithoutTax;
+  return calculateInventoryPricePreview(formState, roundingIncrement).saleWithoutTax;
 }
 
 export function calculateInventoryPricePreview(
   formState: InventoryFormState,
-  manualSalePriceOverride: boolean,
   roundingIncrement = 10,
 ) {
   const purchasePrice = parseOptionalNonNegativeNumber(formState.purchase_price_ars);
@@ -629,9 +628,7 @@ export function calculateInventoryPricePreview(
       : null;
 
   let saleWithoutTax: number | null = null;
-  if (manualSalePriceOverride) {
-    saleWithoutTax = parseOptionalNonNegativeNumber(formState.sale_price_ars);
-  } else if (purchaseWithTax !== null && margin !== null) {
+  if (purchaseWithTax !== null && margin !== null) {
     const calculatedPrice = roundMoney(purchaseWithTax * (1 + margin / 100));
     const safeIncrement = Number.isFinite(roundingIncrement) && roundingIncrement > 0
       ? roundingIncrement
@@ -681,7 +678,6 @@ function roundMoney(value: number) {
 
 export function inventoryFormToCreatePayload(
   formState: InventoryFormState,
-  manualSalePriceOverride: boolean,
 ): CreateInventoryItemPayload {
   const payload: CreateInventoryItemPayload = {
     name: formState.name.trim(),
@@ -691,7 +687,7 @@ export function inventoryFormToCreatePayload(
     purchase_tax_rate_percentage: Number(
       formState.purchase_tax_rate_percentage || "0",
     ),
-    profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
+    profit_margin_percentage: Number(formState.profit_margin_percentage),
     sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
     is_active: true,
@@ -724,17 +720,12 @@ export function inventoryFormToCreatePayload(
   if (formState.notes.trim()) {
     payload.notes = formState.notes.trim();
   }
-  payload.sale_price_is_manual = manualSalePriceOverride;
-  if (manualSalePriceOverride && formState.sale_price_ars.trim()) {
-    payload.sale_price_ars = Number(formState.sale_price_ars);
-  }
 
   return payload;
 }
 
 export function inventoryFormToUpdatePayload(
   formState: InventoryFormState,
-  manualSalePriceOverride: boolean,
 ): UpdateInventoryItemPayload {
   const payload: UpdateInventoryItemPayload = {
     name: formState.name.trim(),
@@ -744,7 +735,7 @@ export function inventoryFormToUpdatePayload(
     purchase_tax_rate_percentage: Number(
       formState.purchase_tax_rate_percentage || "0",
     ),
-    profit_margin_percentage: Number(formState.profit_margin_percentage || "35"),
+    profit_margin_percentage: Number(formState.profit_margin_percentage),
     sale_tax_rate_percentage: Number(formState.sale_tax_rate_percentage || "0"),
     round_sale_price: formState.round_sale_price,
   };
@@ -760,11 +751,6 @@ export function inventoryFormToUpdatePayload(
     ? Number(formState.purchase_price_ars)
     : null;
   payload.notes = formState.notes.trim() || null;
-  payload.sale_price_is_manual = manualSalePriceOverride;
-  payload.sale_price_ars =
-    manualSalePriceOverride && formState.sale_price_ars.trim()
-      ? Number(formState.sale_price_ars)
-      : null;
 
   return payload;
 }
