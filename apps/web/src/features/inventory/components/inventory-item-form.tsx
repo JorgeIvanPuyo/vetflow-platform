@@ -29,8 +29,6 @@ type InventoryItemFormProps = {
   isSubmitting: boolean;
   submitLabel: string;
   flowMessage: string | null;
-  manualSalePriceOverride: boolean;
-  onManualSalePriceOverrideChange: (value: boolean) => void;
   isEdit?: boolean;
 };
 
@@ -44,8 +42,6 @@ export function InventoryItemForm({
   isSubmitting,
   submitLabel,
   flowMessage,
-  manualSalePriceOverride,
-  onManualSalePriceOverrideChange,
   isEdit = false,
 }: InventoryItemFormProps) {
   const { preferences } = useClinic();
@@ -57,7 +53,6 @@ export function InventoryItemForm({
   const roundingIncrement = Number(preferences?.money_rounding_increment ?? 10);
   const pricePreview = calculateInventoryPricePreview(
     formState,
-    manualSalePriceOverride,
     roundingIncrement,
   );
   const calculatedSalePrice = calculateSalePricePreview(formState, roundingIncrement);
@@ -111,14 +106,6 @@ export function InventoryItemForm({
       ...formState,
       [field]: value,
     });
-  }
-
-  function updateSalePriceMode(isManual: boolean) {
-    if (isManual && calculatedSalePrice !== null) {
-      // Start the manual price from the current calculation, not a stale stored price.
-      onChange({ ...formState, sale_price_ars: String(calculatedSalePrice) });
-    }
-    onManualSalePriceOverrideChange(isManual);
   }
 
   function updatePurchaseTaxMode(value: InventoryFormState["purchase_tax_mode"]) {
@@ -427,22 +414,6 @@ export function InventoryItemForm({
             <h3 id="sale-pricing-title">Venta</h3>
             <div className="form-grid">
               <label className="field">
-                <span>Tipo de precio de venta</span>
-                <select
-                  value={manualSalePriceOverride ? "manual" : "calculated"}
-                  onChange={(event) => updateSalePriceMode(event.target.value === "manual")}
-                >
-                  <option value="calculated">Calculado por margen</option>
-                  <option value="manual">Manual (precio fijo)</option>
-                </select>
-                <small>
-                  {manualSalePriceOverride
-                    ? "El precio no cambia con el margen ni al recibir compras."
-                    : "El precio se actualiza al cambiar el costo, el IVA o el margen, y al recibir compras."}
-                </small>
-              </label>
-
-              <label className="field">
                 <span>Margen de ganancia (%)</span>
                 <input
                   inputMode="decimal"
@@ -454,37 +425,20 @@ export function InventoryItemForm({
                     updateField("profit_margin_percentage", event.target.value)
                   }
                 />
-                {manualSalePriceOverride ? (
-                  <small>No se aplica mientras el precio sea manual.</small>
-                ) : null}
+
               </label>
 
               <div className="clinical-section inventory-price-preview">
                 <strong>
                   <Calculator size={16} />
-                  {manualSalePriceOverride ? "Precio calculado por margen (referencia)" : "Precio de venta calculado"}
+                  Precio de venta calculado
                 </strong>
                 <span>
                   {calculatedSalePrice !== null
                     ? formatInventoryCurrency(calculatedSalePrice, moneyPreferences)
-                    : "Agrega los precios para ver el total de venta."}
+                    : "Completar costo/porcentaje para calcular la venta."}
                 </span>
               </div>
-
-              {manualSalePriceOverride ? (
-                <label className="field">
-                  <span>Precio de venta manual sin impuesto *</span>
-                  <input
-                    inputMode="decimal"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formState.sale_price_ars}
-                    onChange={(event) => updateField("sale_price_ars", event.target.value)}
-                  />
-                  <small>Este valor es la base antes del impuesto de venta configurado.</small>
-                </label>
-              ) : null}
 
               <label className="field">
                 <span>Impuesto de venta (%)</span>
@@ -510,7 +464,7 @@ export function InventoryItemForm({
                 <span>
                   {pricePreview.saleWithTax !== null
                     ? formatInventoryCurrency(pricePreview.saleWithTax, moneyPreferences)
-                    : "Agrega los precios para ver el total de venta."}
+                    : "Completar costo/porcentaje para calcular la venta."}
                 </span>
                 {pricePreview.saleTaxAmount !== null ? (
                   <small>
@@ -531,7 +485,6 @@ export function InventoryItemForm({
             />
             <span>
               {`Redondear precio al múltiplo de ${roundingIncrement} más cercano`}
-              {manualSalePriceOverride ? " (sólo aplica al precio calculado)" : ""}
             </span>
           </label>
         </div>

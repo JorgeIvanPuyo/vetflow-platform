@@ -6,6 +6,8 @@ type RequestOptions = {
   retryTransient?: boolean;
   idempotencyKey?: string;
   signal?: AbortSignal;
+  // A fresh read can remain in the route recovery scope without sharing an older job.
+  readKey?: string;
 };
 
 type BlobResponse = {
@@ -67,7 +69,7 @@ async function request<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   if (method === "GET" && options.retryTransient !== false && !options.signal && pageReadHandler) {
-    return pageReadHandler(path, (signal) => request<T>(path, method, { ...options, signal, retryTransient: false }));
+    return pageReadHandler(options.readKey ? `${path}::${options.readKey}` : path, (signal) => request<T>(path, method, { ...options, signal, retryTransient: false }));
   }
   const token = await waitForAuthToken(options.signal);
   options.signal?.throwIfAborted();
@@ -330,7 +332,7 @@ export function isConfirmedAuthenticationError(error: unknown) {
 }
 
 export const api = {
-  get<T>(path: string, options: Pick<RequestOptions, "signal" | "retryTransient"> = {}): Promise<T> {
+  get<T>(path: string, options: Pick<RequestOptions, "signal" | "retryTransient" | "readKey"> = {}): Promise<T> {
     return request<T>(path, "GET", options);
   },
   getBlob(path: string): Promise<BlobResponse> {

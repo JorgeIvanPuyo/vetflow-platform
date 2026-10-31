@@ -695,6 +695,7 @@ export type InventoryUnit =
   | "other";
 
 export type InventoryStatusFilter =
+  | "pricing_pending"
   | "low_stock"
   | "expiring_soon"
   | "expired"
@@ -745,6 +746,7 @@ export type InventoryItem = {
   sale_price_with_tax_ars?: string | number | null;
   round_sale_price: boolean;
   sale_price_is_manual: boolean;
+  pricing_pending: boolean;
   notes: string | null;
   is_active: boolean;
   is_low_stock: boolean;
@@ -1043,6 +1045,7 @@ export type InventoryBulkOperationFilters = {
   brand?: string | null;
   supplier?: string | null;
   stock_status?: InventoryStockStatus | null;
+  status?: InventoryStatusFilter | null;
   is_active?: boolean | null;
 };
 
@@ -1692,6 +1695,8 @@ export type SupplierListFilters = {
   sort_direction?: "asc" | "desc";
 };
 
+export type PurchaseDiscountType = "none" | "percentage" | "amount";
+
 export type PurchaseSummary = {
   id: string;
   supplier_id: string;
@@ -1704,6 +1709,10 @@ export type PurchaseSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
+  discount_type: PurchaseDiscountType;
+  discount_value: string;
   status: PurchaseStatus;
   item_count: number;
   attachment_status: PurchaseAttachmentStatus;
@@ -1776,6 +1785,7 @@ export type PurchaseReturnSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  agreed_amount_ars: string | null;
   item_count: number;
   attachment_status: PurchaseAttachmentStatus;
   created_by_user_id: string | null;
@@ -1809,6 +1819,7 @@ export type PurchaseReturn = Omit<PurchaseReturnSummary, "item_count"> & {
     document_type: PurchaseDocumentType;
     document_number: string | null;
     total_ars: string;
+    discount_amount_ars: string;
     status: PurchaseStatus;
   };
   items: PurchaseReturnItem[];
@@ -1819,6 +1830,7 @@ export type PurchaseReturnWritePayload = {
   reason: string;
   document_type?: PurchaseReturnDocumentType | null;
   document_number?: string | null;
+  agreed_amount_ars?: string | null;
   items: PurchaseReturnItemInput[];
 };
 
@@ -1828,6 +1840,8 @@ export type PurchaseWritePayload = {
   document_type: PurchaseDocumentType;
   document_number?: string | null;
   notes?: string | null;
+  discount_type?: PurchaseDiscountType;
+  discount_value?: string;
   items: PurchaseItemInput[];
 };
 
@@ -1852,6 +1866,8 @@ export type PurchaseListSummary = {
   subtotal_ars: string;
   tax_total_ars: string;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
 };
 
 export type PurchaseDashboardFilters = {
@@ -1868,6 +1884,8 @@ export type PurchaseDashboardAttention = {
   supplier_name: string;
   document_number: string | null;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
   status: PurchaseStatus;
   attachment_status: PurchaseAttachmentStatus;
   alerts: Array<"old_draft" | "attachment_pending" | "reversed_receipt" | "document_number_missing">;
@@ -1880,6 +1898,8 @@ export type PurchaseDashboardTopSupplier = {
   purchase_count: number;
   registered_total_ars: string;
   received_total_ars: string;
+  registered_amount_payable_ars: string;
+  received_amount_payable_ars: string;
 };
 
 export type PurchaseDashboardRecentPurchase = {
@@ -1889,6 +1909,8 @@ export type PurchaseDashboardRecentPurchase = {
   document_type: PurchaseDocumentType;
   document_number: string | null;
   total_ars: string;
+  discount_amount_ars: string;
+  amount_payable_ars: string;
   status: PurchaseStatus;
   attachment_status: PurchaseAttachmentStatus;
   created_by_user_id: string | null;
@@ -1906,6 +1928,10 @@ export type PurchaseDashboard = {
     document_type: PurchaseDocumentType | null;
   };
   summary: {
+    registered_discount_amount_ars: string;
+    registered_amount_payable_ars: string;
+    received_amount_payable_ars: string;
+    net_received_amount_payable_ars: string;
     registered_total_ars: string;
     received_total_ars: string;
     returned_total_ars: string;

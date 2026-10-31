@@ -8,6 +8,7 @@ from math import ceil
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.purchase_discount import calculate_purchase_discount
 from app.models.purchase import Purchase, PurchaseItem
 from app.repositories.clinic import ClinicRepository
 from app.repositories.inventory import InventoryRepository
@@ -65,6 +66,7 @@ class PurchaseService:
             payload.items,
             default_tax_rate=money_settings.default_purchase_tax_rate,
         )
+        discount_amount = calculate_purchase_discount(totals["total_ars"], payload.discount_type, payload.discount_value)
         purchase = Purchase(
             tenant_id=tenant_id,
             supplier_id=supplier.id,
@@ -76,6 +78,9 @@ class PurchaseService:
             currency=money_settings.currency_code,
             notes=payload.notes,
             status="draft",
+            discount_type=payload.discount_type,
+            discount_value=payload.discount_value,
+            discount_amount_ars=discount_amount,
             created_by_user_id=created_by_user_id,
             **totals,
         )
@@ -148,6 +153,10 @@ class PurchaseService:
                 "subtotal_ars": purchase.subtotal_ars,
                 "tax_total_ars": purchase.tax_total_ars,
                 "total_ars": purchase.total_ars,
+                "discount_type": purchase.discount_type,
+                "discount_value": purchase.discount_value,
+                "discount_amount_ars": purchase.discount_amount_ars,
+                "amount_payable_ars": purchase.amount_payable_ars,
                 "status": purchase.status,
                 "item_count": item_count,
                 "attachment_status": "attached" if has_attachment else "pending",
@@ -166,6 +175,8 @@ class PurchaseService:
             subtotal_ars=self._money(Decimal(summary["subtotal_ars"] or 0)),
             tax_total_ars=self._money(Decimal(summary["tax_total_ars"] or 0)),
             total_ars=self._money(Decimal(summary["total_ars"] or 0)),
+            discount_amount_ars=self._money(Decimal(summary["discount_amount_ars"] or 0)),
+            amount_payable_ars=self._money(Decimal(summary["amount_payable_ars"] or 0)),
         ).model_dump(mode="json")
         return data, {
             "page": page,
@@ -189,28 +200,26 @@ class PurchaseService:
             raise AppError(404, "purchase_not_found", "Compra no encontrada")
         self._require_draft(purchase, "editar")
 
-        updates = payload.model_dump(exclude_unset=True, exclude={"items", "supplier_id"})
-        if "supplier_id" in payload.model_fields_set and payload.supplier_id != purchase.supplier_id:
-            supplier = self._get_active_supplier(tenant_id, payload.supplier_id)
-            purchase.supplier_id = supplier.id
-            purchase.supplier_name = supplier.name
-            purchase.supplier_tax_id = supplier.tax_id
-        for field_name, value in updates.items():
-            setattr(purchase, field_name, value)
-        if "items" in payload.model_fields_set:
-            money_settings = ensure_operational_money_settings(
-                self.clinic_repository, tenant_id
-            )
-            items, totals = self._build_items(
-                tenant_id,
-                payload.items or [],
-                default_tax_rate=money_settings.default_purchase_tax_rate,
-            )
-            self.repository.replace_items(purchase, items)
-            for field_name, value in totals.items():
-                setattr(purchase, field_name, value)
-        purchase.updated_at = datetime.now(UTC)
         try:
+            updates = payload.model_dump(exclude_unset=True, exclude={"items", "supplier_id", "discount_type", "discount_value"})
+            items = None
+            totals = {}
+            if "items" in payload.model_fields_set:
+                settings = ensure_operational_money_settings(self.clinic_repository, tenant_id)
+                items, totals = self._build_items(tenant_id, payload.items or [], default_tax_rate=settings.default_purchase_tax_rate)
+            discount_type = payload.discount_type if "discount_type" in payload.model_fields_set else purchase.discount_type
+            discount_value = (payload.discount_value or ZERO) if "discount_type" in payload.model_fields_set else purchase.discount_value
+            discount_amount = calculate_purchase_discount(totals.get("total_ars", purchase.total_ars), discount_type, discount_value)
+            if "supplier_id" in payload.model_fields_set and payload.supplier_id != purchase.supplier_id:
+                supplier = self._get_active_supplier(tenant_id, payload.supplier_id)
+                updates.update(supplier_id=supplier.id, supplier_name=supplier.name, supplier_tax_id=supplier.tax_id)
+            if items is not None:
+                self.repository.replace_items(purchase, items)
+            updates.update(totals)
+            updates.update(discount_type=discount_type, discount_value=discount_value, discount_amount_ars=discount_amount)
+            for field_name, value in updates.items():
+                setattr(purchase, field_name, value)
+            purchase.updated_at = datetime.now(UTC)
             self.db.add(purchase)
             self.db.commit()
         except Exception:
@@ -263,6 +272,8 @@ class PurchaseService:
                     "purchase_not_receivable",
                     "Sólo se puede recibir una compra en borrador",
                 )
+            if calculate_purchase_discount(purchase.total_ars, purchase.discount_type, purchase.discount_value) != purchase.discount_amount_ars:
+                raise AppError(409, "purchase_discount_inconsistent", "El descuento guardado es inconsistente; revisa la compra antes de recibirla")
             if not purchase.items:
                 raise AppError(
                     409,
@@ -308,14 +319,18 @@ class PurchaseService:
                     supplier=purchase.supplier_name,
                     created_by_user_id=received_by_user_id,
                 )
-                cost_updates = {
-                    "purchase_price_ars": line.unit_price_without_tax_ars,
-                    "purchase_tax_rate_percentage": line.tax_rate_percentage,
-                }
+                line.catalog_cost_updated = (
+                    item.purchase_price_ars is None
+                    or line.unit_price_without_tax_ars > item.purchase_price_ars
+                )
+                cost_updates = {}
+                if line.catalog_cost_updated:
+                    cost_updates = {
+                        "purchase_price_ars": line.unit_price_without_tax_ars,
+                        "purchase_tax_rate_percentage": line.tax_rate_percentage,
+                    }
                 self.inventory_service.apply_sale_price_updates(
-                    item,
-                    cost_updates,
-                    rounding_increment=rounding_increment,
+                    item, cost_updates, rounding_increment=rounding_increment,
                 )
                 self.inventory_repository.update_item(item, cost_updates)
 
@@ -426,6 +441,8 @@ class PurchaseService:
                     reason=reason,
                     created_by_user_id=reversed_by_user_id,
                 )
+                if line.catalog_cost_updated is False:
+                    continue
                 if (
                     item.purchase_price_ars == line.unit_price_without_tax_ars
                     and item.purchase_tax_rate_percentage == line.tax_rate_percentage

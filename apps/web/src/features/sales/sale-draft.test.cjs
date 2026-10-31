@@ -33,15 +33,16 @@ function nodes(tree) { if (Array.isArray(tree)) return tree.flatMap(nodes); if (
 function content(tree) { if (Array.isArray(tree)) return tree.map(content).join(''); if (tree && typeof tree === 'object') return content(tree.props?.children); return typeof tree === 'string' || typeof tree === 'number' ? String(tree) : ''; }
 const flush = async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); };
 const product = stock => ({ id: 'product', line_type: 'product', inventory_item_id: 'product', description_snapshot: 'Alimento', internal_code_snapshot: 'AL-1', unit_snapshot: 'unit', quantity: '5', unit_price_ars: '10', discount_percentage: '0', current_stock: stock });
-function setup(t, { saleId = 'draft', stock = '2', service = false, respond } = {}) {
+function setup(t, { saleId = 'draft', stock = '2', service = false, respond, productResults = [] } = {}) {
   const oldFetch = global.fetch, oldDocument = global.document, oldWindow = global.window;
   const h = { values: [], pending: [], requests: [], navigations: [] };
-  global.document = { addEventListener() {}, removeEventListener() {} };
-  global.window = { clearTimeout() {} };
+  global.document = { addEventListener() {}, removeEventListener() {}, getElementById() { return null; } };
+  global.window = { clearTimeout() {}, setTimeout(fn) { fn(); return 0; } };
   setAuthTokenProvider(async () => 'test-token');
   global.fetch = async (url, init) => {
     h.requests.push({ url: new URL(url), init });
     if (init.method !== 'GET' && respond) return respond(init);
+    if (new URL(url).pathname.endsWith('/inventory/items')) return new Response(JSON.stringify({ data: productResults, meta: { page: 1, total_pages: 1 } }), { status: 200 });
     return new Response(JSON.stringify({ data: { id: saleId || 'new-sale', status: 'draft', sale_date: '2026-10-02', notes: 'Texto conservado', items: [service ? { ...product(null), id: 'service', line_type: 'service', service_id: null, inventory_item_id: null } : product(stock)] }, meta: {} }), { status: 200 });
   };
   h.render = () => { current = h; h.index = 0; h.tree = SaleFormScreen({ saleId }); h.pending.splice(0).forEach(fn => fn()); return h.tree; };
@@ -99,4 +100,24 @@ test('zero stock warns even for one unit', async t => {
   const h = setup(t, { stock: '0' }); await h.ready(); h.quantity('1');
   assert.match(content(h.tree), /Disponible: 0 · En borrador: 1/);
   assert.equal(nodes(h.tree).find(n => n.props.type === 'submit').props.disabled, false);
+});
+
+for (const [name, price, pending, disabled] of [
+  ['missing', null, true, true], ['legacy reference', '999', true, true], ['legitimate zero', '0', false, false],
+]) test(`product selector: ${name}`, async t => {
+  const h = setup(t, { saleId: '', productResults: [{ id: 'catalog', name: 'Producto', internal_code: 'P-1', unit: 'unit', current_stock: '2', sale_price_ars: price, pricing_pending: pending }] });
+  await h.ready();
+  nodes(h.tree).find(n => n.props.id === 'sale-product-search').props.onFocus();
+  h.render(); await flush(); h.render();
+  const option = nodes(h.tree).find(n => n.props.id === 'sale-product-option-catalog');
+  assert.equal(option.props.disabled, disabled);
+  if (disabled) {
+    assert.match(content(option), /Completar costo\/porcentaje/);
+    option.props.onClick(); h.render();
+    assert.match(content(h.tree), /Completar costo\/porcentaje del producto/);
+    assert.equal(nodes(h.tree).some(n => n.props.inputMode === 'numeric'), false);
+  } else {
+    option.props.onClick(); h.render();
+    assert.ok(nodes(h.tree).some(n => n.type === 'input' && n.props.value === '0'));
+  }
 });

@@ -39,7 +39,7 @@ def _patient(client, tenant, owner_id, name="Firulais"):
 
 
 def _product(client, tenant, name="Alimento", price="100.00", active=True):
-    response = client.post("/api/v1/inventory/items", headers=_headers(tenant), json={"name": name, "category": "food", "unit": "unit", "minimum_stock": "0", "sale_price_ars": price, "is_active": active})
+    response = client.post("/api/v1/inventory/items", headers=_headers(tenant), json={"name": name, "category": "food", "unit": "unit", "minimum_stock": "0", "purchase_price_ars": price, "purchase_tax_rate_percentage": "0", "profit_margin_percentage": "0", "is_active": active})
     assert response.status_code == 201, response.text
     return response.json()["data"]
 

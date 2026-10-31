@@ -182,10 +182,12 @@ export function PurchaseDashboardScreen() {
 
       {data ? <>
         <section className="purchase-dashboard-metrics" aria-label="Métricas de compras">
-          <DashboardMetric href={listHref()} label="Total registrado" value={formatPurchaseCurrency(data.summary.registered_total_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
-          <DashboardMetric href={listHref({ status: "received" })} label="Total recibido" value={formatPurchaseCurrency(data.summary.received_total_ars, moneyPreferences)} icon={<CheckCircle2 size={19} />} />
-          <DashboardMetric label="Total devuelto" value={formatPurchaseCurrency(data.summary.returned_total_ars, moneyPreferences)} tone="info" icon={<PackageMinus size={19} />} />
-          <DashboardMetric label="Neto recibido" value={formatPurchaseCurrency(data.summary.net_received_total_ars, moneyPreferences)} icon={<ShoppingCart size={19} />} />
+          <DashboardMetric href={listHref()} label="A pagar registrado" value={formatPurchaseCurrency(data.summary.registered_amount_payable_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
+          <DashboardMetric href={listHref({ status: "received" })} label="Recibido a pagar" value={formatPurchaseCurrency(data.summary.received_amount_payable_ars, moneyPreferences)} icon={<CheckCircle2 size={19} />} />
+          <DashboardMetric label="Total original registrado" value={formatPurchaseCurrency(data.summary.registered_total_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
+          <DashboardMetric label="Descuentos registrados" value={formatPurchaseCurrency(data.summary.registered_discount_amount_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
+          <DashboardMetric label="Bruto devuelto de referencia" value={formatPurchaseCurrency(data.summary.returned_total_ars, moneyPreferences)} tone="info" icon={<PackageMinus size={19} />} />
+          <DashboardMetric label="Neto tras devoluciones" value={formatPurchaseCurrency(data.summary.net_received_amount_payable_ars, moneyPreferences)} icon={<ShoppingCart size={19} />} />
           <DashboardMetric label="Devoluciones confirmadas" value={data.summary.confirmed_return_count} icon={<PackageMinus size={19} />} />
           <DashboardMetric label="IVA registrado" value={formatPurchaseCurrency(data.summary.registered_tax_total_ars, moneyPreferences)} icon={<ReceiptText size={19} />} />
           <DashboardMetric href={listHref({ status: "draft" })} label="Borradores" value={data.summary.draft_count} icon={<ClipboardList size={19} />} />
@@ -208,7 +210,7 @@ export function PurchaseDashboardScreen() {
               return <Link href={`/purchases/${purchase.id}`} data-record-state={getRecordRowState(purchase.status)} className="purchase-dashboard-recent-row" key={purchase.id} aria-label={`Abrir compra de ${purchase.supplier_name}`}>
                 <span className="purchase-dashboard-recent-heading">
                   <strong className="purchase-dashboard-recent-supplier" title={purchase.supplier_name}>{purchase.supplier_name}</strong>
-                  <strong className="purchase-dashboard-recent-total">{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong>
+                  <strong className="purchase-dashboard-recent-total">A pagar {formatPurchaseCurrency(purchase.amount_payable_ars, moneyPreferences)}</strong>
                 </span>
                 <span className="purchase-dashboard-recent-meta">
                   <span className="purchase-dashboard-recent-date-status">
@@ -224,10 +226,11 @@ export function PurchaseDashboardScreen() {
           <section className="panel purchase-dashboard-suppliers">
             <div className="section-heading-inline"><h2>Principales proveedores</h2><Link href="/suppliers">Ver proveedores</Link></div>
             {data.top_suppliers.length === 0 ? <p className="empty-state empty-state--compact">Sin proveedores en el período.</p> : <div className="purchase-dashboard-supplier-list">{data.top_suppliers.map((supplier) => {
-              const useReceived = data.top_suppliers.some((item) => Number(item.received_total_ars) > 0);
-              const amount = Number(useReceived ? supplier.received_total_ars : supplier.registered_total_ars);
-              const maximum = Math.max(...data.top_suppliers.map((item) => Number(useReceived ? item.received_total_ars : item.registered_total_ars)), 1);
-              return <Link href={listHref({ supplier_id: supplier.supplier_id })} className="purchase-dashboard-supplier-row" key={supplier.supplier_id}><span><strong>{supplier.supplier_name}</strong><small>{supplier.purchase_count} compra{supplier.purchase_count === 1 ? "" : "s"} · {useReceived ? "recibido" : "registrado"}</small></span><strong>{formatPurchaseCurrency(amount, moneyPreferences)}</strong><span className="purchase-dashboard-supplier-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, amount / maximum * 100)}%` }} /></span></Link>;
+              const useReceived = data.top_suppliers.some((item) => Number(item.received_amount_payable_ars) > 0);
+              const amountText = useReceived ? supplier.received_amount_payable_ars : supplier.registered_amount_payable_ars;
+              const amount = Number(amountText);
+              const maximum = Math.max(...data.top_suppliers.map((item) => Number(useReceived ? item.received_amount_payable_ars : item.registered_amount_payable_ars)), 1);
+              return <Link href={listHref({ supplier_id: supplier.supplier_id })} className="purchase-dashboard-supplier-row" key={supplier.supplier_id}><span><strong>{supplier.supplier_name}</strong><small>{supplier.purchase_count} compra{supplier.purchase_count === 1 ? "" : "s"} · {useReceived ? "recibido a pagar" : "registrado a pagar"}</small></span><strong>{formatPurchaseCurrency(amountText, moneyPreferences)}</strong><span className="purchase-dashboard-supplier-bar" aria-hidden="true"><i style={{ width: `${Math.max(3, amount / maximum * 100)}%` }} /></span></Link>;
             })}</div>}
           </section>
         </section>
@@ -243,7 +246,7 @@ function DashboardMetric({ label, value, href, icon, tone }: { label: string; va
 }
 
 function AttentionRow({ item, moneyPreferences }: { item: PurchaseDashboardAttention; moneyPreferences: ReturnType<typeof resolveMoneyPreferences> }) {
-  return <Link href={`/purchases/${item.id}`} className={`purchase-dashboard-attention-row purchase-dashboard-attention-row--${item.priority}`}><AlertTriangle size={18} /><span><strong>{item.supplier_name}</strong><small>{formatPurchaseDate(item.purchase_date)} · {item.document_number || "Sin número"}</small></span><span className="purchase-dashboard-alert-labels">{item.alerts.map((alert) => <small key={alert}>{attentionLabel(alert)}</small>)}</span><strong>{formatPurchaseCurrency(item.total_ars, moneyPreferences)}</strong></Link>;
+  return <Link href={`/purchases/${item.id}`} className={`purchase-dashboard-attention-row purchase-dashboard-attention-row--${item.priority}`}><AlertTriangle size={18} /><span><strong>{item.supplier_name}</strong><small>{formatPurchaseDate(item.purchase_date)} · {item.document_number || "Sin número"}</small></span><span className="purchase-dashboard-alert-labels">{item.alerts.map((alert) => <small key={alert}>{attentionLabel(alert)}</small>)}</span><strong>{formatPurchaseCurrency(item.amount_payable_ars, moneyPreferences)}</strong></Link>;
 }
 
 function attentionLabel(alert: PurchaseDashboardAttention["alerts"][number]) {

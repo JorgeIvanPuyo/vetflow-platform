@@ -20,7 +20,6 @@ export function InventoryCreateScreen() {
   const [formState, setFormState] = useState<InventoryFormState>(
     getInitialInventoryFormState(preferences),
   );
-  const [manualSalePriceOverride, setManualSalePriceOverride] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [flowMessage, setFlowMessage] = useState<string | null>(null);
 
@@ -56,7 +55,6 @@ export function InventoryCreateScreen() {
     event.preventDefault();
 
     const validationMessage = validateInventoryForm(formState, {
-      manualSalePrice: manualSalePriceOverride,
     });
     if (validationMessage) {
       setFlowMessage(validationMessage);
@@ -68,7 +66,7 @@ export function InventoryCreateScreen() {
 
     try {
       const response = await createInventoryItem(
-        inventoryFormToCreatePayload(formState, manualSalePriceOverride),
+        inventoryFormToCreatePayload(formState),
       );
       router.push(`/inventory/${response.data.id}`);
     } catch (error) {
@@ -88,8 +86,6 @@ export function InventoryCreateScreen() {
       isSubmitting={isSubmitting}
       submitLabel="Crear item"
       flowMessage={flowMessage}
-      manualSalePriceOverride={manualSalePriceOverride}
-      onManualSalePriceOverrideChange={setManualSalePriceOverride}
     />
   );
 }

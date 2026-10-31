@@ -421,7 +421,7 @@ def test_import_detail_confirm_and_history_are_tenant_scoped(client, tenant, oth
     assert history_response.json()["data"] == []
 
 
-def test_reimport_with_unchanged_sale_price_keeps_calculated_mode(client, tenant, db_session):
+def test_import_cost_change_with_compatible_calculated_price(client, tenant, db_session):
     item = _create_item(db_session, tenant)
     response = _upload(
         client,
@@ -431,7 +431,7 @@ def test_reimport_with_unchanged_sale_price_keeps_calculated_mode(client, tenant
                 internal_code=item.internal_code,
                 stock="",
                 purchase_price_ars="2000",
-                sale_price_ars="1633.50",
+                sale_price_ars="3267.00",
             )
         ]),
     )
@@ -445,7 +445,7 @@ def test_reimport_with_unchanged_sale_price_keeps_calculated_mode(client, tenant
     assert item.sale_price_ars == Decimal("3267.00")
 
 
-def test_import_with_new_sale_price_switches_to_manual_mode(client, tenant, db_session):
+def test_import_incompatible_sale_price_is_reported_in_preview(client, tenant, db_session):
     item = _create_item(db_session, tenant)
     response = _upload(
         client,
@@ -458,5 +458,29 @@ def test_import_with_new_sale_price_switches_to_manual_mode(client, tenant, db_s
 
     assert confirm_response.status_code == 200
     db_session.refresh(item)
-    assert item.sale_price_is_manual is True
-    assert item.sale_price_ars == Decimal("2500.00")
+    row = response.json()["data"]["rows"][0]
+    assert row["status"] == "error"
+    assert "precio fijo" in row["errors"][0]
+    assert item.sale_price_is_manual is False
+    assert item.sale_price_ars == Decimal("1633.50")
+
+
+def test_import_missing_margin_is_reported_without_inventing_a_value(client, tenant):
+    response = _upload(client, tenant, _xlsx([_row(profit_margin_percentage="")]))
+    assert response.status_code == 201
+    row = response.json()["data"]["rows"][0]
+    assert row["status"] == "error"
+    assert "porcentaje" in row["errors"][0]
+    assert row["normalized_data"]["profit_margin_percentage"] is None
+
+
+def test_import_zero_cost_and_margin_are_valid(client, tenant, db_session):
+    response = _upload(client, tenant, _xlsx([_row(purchase_price_ars="0", profit_margin_percentage="0")]))
+    assert response.status_code == 201
+    assert response.json()["data"]["rows"][0]["status"] == "valid"
+    assert _confirm(client, tenant, response.json()["data"]).status_code == 200
+    item = db_session.scalar(select(InventoryItem).where(InventoryItem.tenant_id == tenant.id))
+    assert item.purchase_price_ars == 0
+    assert item.profit_margin_percentage == 0
+    assert item.sale_price_ars == 0
+    assert item.sale_price_is_manual is False

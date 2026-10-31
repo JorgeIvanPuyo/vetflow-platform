@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.errors import AppError
+from app.core.inventory_pricing import (
+    MONEY_MAX, CatalogPriceTargetError,
+    calculate_catalog_sale_price, resolve_catalog_price_target,
+)
 from app.core.tenant import TenantContext
 from app.models.inventory_bulk_operation import (
     InventoryBulkOperation,
@@ -22,9 +27,7 @@ from app.schemas.inventory import (
     InventoryBulkSelectionCreate,
 )
 from app.services.inventory import (
-    HUNDRED,
     InventoryService,
-    ZERO,
 )
 
 
@@ -32,7 +35,6 @@ MAX_BULK_SELECTED_IDS = 500
 MAX_BULK_EXCLUDED_IDS = 500
 MAX_BULK_PRODUCTS = 2_000
 PREVIEW_TTL_HOURS = 24
-PRICE_PERCENTAGE_LIMIT = Decimal("1000")
 CHANGE_STATUSES = {"pending", "changed"}
 SALE_PRICE_FIELDS = {"sale_price_ars", "profit_margin_percentage"}
 
@@ -136,9 +138,19 @@ class InventoryBulkOperationService:
                     raise AppError(
                         409,
                         "inventory_bulk_operation_conflict",
-                        "A product changed after preview. Generate a new preview.",
+                        "Un producto cambió después de simular. Genera una nueva previsualización.",
                     )
-                self.inventory_repository.update_item(item, self._updates_from_row(row, use_old=False))
+                updates = self._updates_from_row(row, use_old=False)
+                if row.field_name in SALE_PRICE_FIELDS:
+                    increment = self.inventory_service._resolve_pricing_defaults(tenant.tenant_id)["rounding_increment"]
+                    context = (row.new_value_json or {}).get("pricing_context")
+                    if context is None or context != self._pricing_context(item, increment):
+                        raise AppError(409, "inventory_bulk_operation_conflict", "Cambió el cálculo del precio. Genera una nueva previsualización.")
+                    try:
+                        self.inventory_service.apply_sale_price_updates(item, updates, rounding_increment=increment)
+                    except AppError as exc:
+                        raise AppError(409, "inventory_bulk_operation_conflict", "El precio aprobado ya no coincide. Genera una nueva previsualización.") from exc
+                self.inventory_repository.update_item(item, updates)
                 row.status = "changed"
                 self.db.add(row)
 
@@ -209,7 +221,38 @@ class InventoryBulkOperationService:
                 conflict_count += 1
                 self.db.add(row)
                 continue
-            self.inventory_repository.update_item(item, self._updates_from_row(row, use_old=True))
+            updates = self._updates_from_row(row, use_old=True)
+            if row.field_name in SALE_PRICE_FIELDS:
+                increment = self.inventory_service._resolve_pricing_defaults(tenant.tenant_id)["rounding_increment"]
+                context = (row.new_value_json or {}).get("pricing_context")
+                if context is not None and context != self._pricing_context(item, increment):
+                    row.status = "conflict"
+                    row.error_message = "pricing_changed_after_bulk_operation"
+                    conflict_count += 1
+                    self.db.add(row)
+                    continue
+                # Historical scalar price snapshots are evidence, never fixed-price writes.
+                try:
+                    if "profit_margin_percentage" not in updates:
+                        if updates.get("sale_price_ars") is None:
+                            raise CatalogPriceTargetError("catalog_pricing_incomplete")
+                        margin, _ = resolve_catalog_price_target(
+                            target=updates["sale_price_ars"],
+                            purchase_price_ars=item.purchase_price_ars,
+                            purchase_tax_rate_percentage=item.purchase_tax_rate_percentage,
+                            profit_margin_percentage=item.profit_margin_percentage,
+                            round_sale_price=item.round_sale_price, rounding_increment=increment,
+                        )
+                        updates["profit_margin_percentage"] = margin
+                    updates.pop("sale_price_ars", None)
+                    self.inventory_service.apply_sale_price_updates(item, updates, rounding_increment=increment)
+                except (AppError, CatalogPriceTargetError):
+                    row.status = "conflict"
+                    row.error_message = "catalog_target_not_representable"
+                    conflict_count += 1
+                    self.db.add(row)
+                    continue
+            self.inventory_repository.update_item(item, updates)
             row.status = "reverted"
             row.reverted_at = now
             self.db.add(row)
@@ -239,7 +282,7 @@ class InventoryBulkOperationService:
             raise AppError(404, "inventory_bulk_operation_not_found", "Bulk operation not found")
         self._mark_expired_if_needed(operation)
         rows, meta = self._list_rows(tenant_id, operation.id, page=page, page_size=page_size, status=status)
-        setattr(operation, "items", rows)
+        set_committed_value(operation, "items", rows)
         setattr(operation, "items_meta", meta)
         setattr(operation, "summary", self._summary(operation))
         return operation
@@ -308,6 +351,7 @@ class InventoryBulkOperationService:
             supplier=filters.supplier if filters else None,
             stock_status=filters.stock_status if filters else None,
             is_active=filters.is_active if filters else None,
+            status=filters.status if filters else None,
             excluded_ids=excluded_ids,
             limit=MAX_BULK_PRODUCTS + 1,
         )
@@ -336,15 +380,22 @@ class InventoryBulkOperationService:
         )
         status = "invalid" if error else "unchanged" if self._values_equal(old_value, new_value) else "pending"
         old_value_json = self._json_box(old_value)
+        new_value_json = self._json_box(new_value)
         if field_name in SALE_PRICE_FIELDS:
-            # Kept beside the boxed value so reversals restore the pricing mode.
             old_value_json["sale_price_is_manual"] = item.sale_price_is_manual
+            context = self._pricing_context(item, rounding_increment)
+            for box, value in ((old_value_json, old_value), (new_value_json, new_value)):
+                box["pricing_context"] = context
+                if isinstance(value, dict) and value.get("sale_price_ars") is not None:
+                    box["sale_price_with_tax_ars"] = str(self.inventory_service._price_with_tax(
+                        value["sale_price_ars"], item.sale_tax_rate_percentage,
+                    ))
         return {
             "tenant_id": tenant_id,
             "inventory_item_id": item.id,
             "field_name": field_name,
             "old_value_json": old_value_json,
-            "new_value_json": self._json_box(new_value),
+            "new_value_json": new_value_json,
             "product_updated_at_snapshot": item.updated_at,
             "status": status,
             "error_message": error,
@@ -359,47 +410,37 @@ class InventoryBulkOperationService:
     ) -> tuple[str, Any, Any, str | None]:
         operation = payload.operation
         operation_type = operation.operation_type
-        if operation_type in {"increase_sale_price_percentage", "decrease_sale_price_percentage"}:
-            if item.sale_price_ars is None:
-                return "sale_price_ars", None, None, "sale_price_missing"
-            percentage = operation.percentage or ZERO
-            factor = Decimal("1") + (percentage / HUNDRED)
-            if operation_type == "decrease_sale_price_percentage":
-                factor = Decimal("1") - (percentage / HUNDRED)
-            if factor < ZERO:
-                return "sale_price_ars", item.sale_price_ars, None, "sale_price_would_be_negative"
-            return (
-                "sale_price_ars",
-                item.sale_price_ars,
-                self.inventory_service._quantize_money(item.sale_price_ars * factor),
-                None,
-            )
-        if operation_type == "set_profit_margin_percentage":
-            margin = operation.profit_margin_percentage or ZERO
-            if item.purchase_price_ars is None:
-                return "profit_margin_percentage", item.profit_margin_percentage, margin, "purchase_price_missing"
-            sale_price = self.inventory_service._resolve_sale_price(
+        if operation_type in {"increase_sale_price_percentage", "decrease_sale_price_percentage", "set_sale_price", "set_profit_margin_percentage"}:
+            old = {"profit_margin_percentage": item.profit_margin_percentage, "sale_price_ars": item.sale_price_ars}
+            if item.pricing_pending:
+                return self._price_field(operation_type), old, None, "catalog_pricing_incomplete"
+            kwargs = dict(
                 purchase_price_ars=item.purchase_price_ars,
                 purchase_tax_rate_percentage=item.purchase_tax_rate_percentage,
-                profit_margin_percentage=margin,
-                round_sale_price=item.round_sale_price,
-                manual_sale_price_ars=None,
-                rounding_increment=rounding_increment,
+                round_sale_price=item.round_sale_price, rounding_increment=rounding_increment,
             )
-            return (
-                "profit_margin_percentage",
-                {
-                    "profit_margin_percentage": item.profit_margin_percentage,
-                    "sale_price_ars": item.sale_price_ars,
-                },
-                {
-                    "profit_margin_percentage": margin,
-                    "sale_price_ars": sale_price,
-                },
-                None,
-            )
-        if operation_type == "set_sale_price":
-            return "sale_price_ars", item.sale_price_ars, operation.sale_price_ars, None
+            if operation_type == "set_profit_margin_percentage":
+                margin = operation.profit_margin_percentage
+                price = calculate_catalog_sale_price(**kwargs, profit_margin_percentage=margin)
+                if price > MONEY_MAX:
+                    return "profit_margin_percentage", old, None, "catalog_price_limit"
+            else:
+                if operation_type == "set_sale_price":
+                    target = operation.sale_price_ars
+                else:
+                    if item.sale_price_ars is None:
+                        return "sale_price_ars", old, None, "sale_price_missing"
+                    factor = 1 + operation.percentage / 100
+                    if operation_type == "decrease_sale_price_percentage":
+                        factor = 1 - operation.percentage / 100
+                    target = (item.sale_price_ars * factor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                try:
+                    margin, price = resolve_catalog_price_target(
+                        **kwargs, profit_margin_percentage=item.profit_margin_percentage, target=target,
+                    )
+                except CatalogPriceTargetError as exc:
+                    return "sale_price_ars", old, None, exc.code
+            return self._price_field(operation_type), old, {"profit_margin_percentage": margin, "sale_price_ars": price}, None
         if operation_type == "set_brand":
             new_value = operation.brand or None
             return "brand", item.brand, new_value, None
@@ -414,30 +455,28 @@ class InventoryBulkOperationService:
             return "is_active", item.is_active, False, None
         raise AppError(422, "invalid_bulk_operation", "Invalid bulk operation")
 
+    def _price_field(self, operation_type: str) -> str:
+        return "profit_margin_percentage" if operation_type == "set_profit_margin_percentage" else "sale_price_ars"
+
+    def _pricing_context(self, item: InventoryItem, increment: Decimal) -> dict:
+        return {
+            "purchase_price_ars": str(item.purchase_price_ars),
+            "purchase_tax_rate_percentage": str(item.purchase_tax_rate_percentage),
+            "sale_tax_rate_percentage": str(item.sale_tax_rate_percentage),
+            "round_sale_price": item.round_sale_price,
+            "rounding_increment": str(increment) if item.round_sale_price else None,
+        }
+
     def _updates_from_row(self, row: InventoryBulkOperationItem, *, use_old: bool) -> dict[str, Any]:
         value_json = row.old_value_json if use_old else row.new_value_json
         value = self._value_from_json(value_json)
-        if row.field_name == "profit_margin_percentage" and isinstance(value, dict):
-            updates = {
-                "profit_margin_percentage": self._json_inner_decimal(value.get("profit_margin_percentage")),
-                "sale_price_ars": self._json_inner_decimal(value.get("sale_price_ars")),
-            }
-        else:
-            updates = {row.field_name: value}
-        if row.field_name in SALE_PRICE_FIELDS:
-            if not use_old:
-                # A margin operation recalculates the price; price operations set it by hand.
-                updates["sale_price_is_manual"] = row.field_name == "sale_price_ars"
-            elif value_json and "sale_price_is_manual" in value_json:
-                updates["sale_price_is_manual"] = bool(value_json["sale_price_is_manual"])
-        return updates
+        if row.field_name in SALE_PRICE_FIELDS and isinstance(value, dict):
+            return {key: self._json_inner_decimal(value[key]) for key in ("profit_margin_percentage", "sale_price_ars") if key in value}
+        return {row.field_name: value}
 
     def _current_value_for_row(self, item: InventoryItem, row: InventoryBulkOperationItem) -> Any:
-        if row.field_name == "profit_margin_percentage":
-            return {
-                "profit_margin_percentage": item.profit_margin_percentage,
-                "sale_price_ars": item.sale_price_ars,
-            }
+        if row.field_name in SALE_PRICE_FIELDS and isinstance(self._value_from_json(row.new_value_json), dict):
+            return {"profit_margin_percentage": item.profit_margin_percentage, "sale_price_ars": item.sale_price_ars}
         return getattr(item, row.field_name)
 
     def _value_from_json(self, value_json: dict | None) -> Any:

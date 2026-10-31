@@ -37,6 +37,10 @@ class PurchaseDashboardFiltersRead(BaseModel):
 class PurchaseDashboardSummaryRead(BaseModel):
     registered_total_ars: Decimal
     received_total_ars: Decimal
+    registered_discount_amount_ars: Decimal
+    registered_amount_payable_ars: Decimal
+    received_amount_payable_ars: Decimal
+    net_received_amount_payable_ars: Decimal
     registered_tax_total_ars: Decimal
     received_tax_total_ars: Decimal
     returned_total_ars: Decimal
@@ -57,6 +61,8 @@ class PurchaseDashboardAttentionRead(BaseModel):
     supplier_name: str
     document_number: str | None = None
     total_ars: Decimal
+    discount_amount_ars: Decimal
+    amount_payable_ars: Decimal
     status: PurchaseStatus
     attachment_status: PurchaseAttachmentStatus
     alerts: list[PurchaseAttentionType]
@@ -69,6 +75,8 @@ class PurchaseDashboardTopSupplierRead(BaseModel):
     purchase_count: int
     registered_total_ars: Decimal
     received_total_ars: Decimal
+    registered_amount_payable_ars: Decimal
+    received_amount_payable_ars: Decimal
 
 
 class PurchaseDashboardRecentPurchaseRead(BaseModel):
@@ -78,6 +86,8 @@ class PurchaseDashboardRecentPurchaseRead(BaseModel):
     document_type: PurchaseDocumentType
     document_number: str | None = None
     total_ars: Decimal
+    discount_amount_ars: Decimal
+    amount_payable_ars: Decimal
     status: PurchaseStatus
     attachment_status: PurchaseAttachmentStatus
     created_by_user_id: uuid.UUID | None = None

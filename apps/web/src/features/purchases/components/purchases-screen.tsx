@@ -26,6 +26,8 @@ const EMPTY_SUMMARY: PurchaseListSummary = {
   subtotal_ars: "0.00",
   tax_total_ars: "0.00",
   total_ars: "0.00",
+  discount_amount_ars: "0.00",
+  amount_payable_ars: "0.00",
 };
 
 
@@ -210,7 +212,7 @@ export function PurchasesScreen() {
             <select value={filters.sort_by ?? "purchase_date"} onChange={(event) => updateFilters({ sort_by: event.target.value })}>
               <option value="purchase_date">Fecha de compra</option>
               <option value="created_at">Fecha de registro</option>
-              <option value="total_ars">Total</option>
+              <option value="total_ars">Total original</option>
               <option value="supplier_name">Proveedor</option>
               <option value="status">Estado</option>
             </select>
@@ -240,7 +242,9 @@ export function PurchasesScreen() {
           <div><span>Compras</span><strong>{meta.summary.purchase_count}</strong></div>
           <div><span>Subtotal</span><strong>{formatPurchaseCurrency(meta.summary.subtotal_ars, moneyPreferences)}</strong></div>
           <div><span>IVA</span><strong>{formatPurchaseCurrency(meta.summary.tax_total_ars, moneyPreferences)}</strong></div>
-          <div><span>Total</span><strong>{formatPurchaseCurrency(meta.summary.total_ars, moneyPreferences)}</strong></div>
+          <div><span>Total original</span><strong>{formatPurchaseCurrency(meta.summary.total_ars, moneyPreferences)}</strong></div>
+          <div><span>Descuento</span><strong>{formatPurchaseCurrency(meta.summary.discount_amount_ars, moneyPreferences)}</strong></div>
+          <div><span>Total a pagar</span><strong>{formatPurchaseCurrency(meta.summary.amount_payable_ars, moneyPreferences)}</strong></div>
         </section>
       ) : null}
 
@@ -261,7 +265,7 @@ export function PurchasesScreen() {
                 <thead>
                   <tr>
                     <th>Fecha</th><th>Proveedor</th><th>Comprobante</th><th>Líneas</th>
-                    <th>Subtotal</th><th>IVA</th><th>Total</th><th>Estado</th><th>Usuario</th>
+                    <th>Subtotal</th><th>IVA</th><th>Total original</th><th>Descuento</th><th>A pagar</th><th>Estado</th><th>Usuario</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -287,7 +291,9 @@ export function PurchasesScreen() {
                       <td className="purchase-cell--number">{purchase.item_count}</td>
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.subtotal_ars, moneyPreferences)}</td>
                       <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.tax_total_ars, moneyPreferences)}</td>
-                      <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</strong></td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.total_ars, moneyPreferences)}</td>
+                      <td className="purchase-cell--money">{formatPurchaseCurrency(purchase.discount_amount_ars, moneyPreferences)}</td>
+                      <td className="purchase-cell--money"><strong>{formatPurchaseCurrency(purchase.amount_payable_ars, moneyPreferences)}</strong></td>
                       <td className="purchase-cell--status"><span className={`badge purchase-status purchase-status--${purchase.status}`}>{labelPurchaseStatus(purchase.status)}</span>{purchase.return_status !== "none" ? <small className={`badge purchase-return-indicator purchase-return-indicator--${purchase.return_status}`}>{purchase.return_status === "full" ? "Devolución total" : "Devolución parcial"}</small> : null}</td>
                       <td className="purchase-cell-text purchase-cell--user"><strong className="purchase-clamp-two" title={purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}>{purchase.created_by_user_name || purchase.created_by_user_email || "Sin usuario registrado"}</strong>{purchase.created_by_user_name && purchase.created_by_user_email ? <small className="purchase-ellipsis" title={purchase.created_by_user_email}>{purchase.created_by_user_email}</small> : null}</td>
                     </tr>

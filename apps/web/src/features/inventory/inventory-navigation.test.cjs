@@ -277,22 +277,23 @@ for (const view of ['Tarjetas', 'Tabla']) {
     reset(); const h = mount(InventoryScreen); await settle(h);
     if (view === 'Tabla') click(h, view);
     const before = requests.length;
+    // Every item URL transition replaces PageReadBoundary and renews its cancelled GETs.
     let prevented = false;
     detailLink(h).props.onClick({ button: 0, preventDefault() { prevented = true; } });
     await settle(h);
     assert.ok(prevented); assert.equal(url.searchParams.get('item'), fixture.id);
     const modal = find(h, n => n.type === InventoryDetailModal); assert.ok(modal);
     assert.equal(search(h).props.value, 'alimento & gato');
-    assert.equal(requests.length, before);
+    assert.equal(requests.length, before + 1);
     const openedUrl = url.href;
     modal.props.onClose(); await settle(h);
     assert.equal(url.pathname + url.search, context);
     assert.equal(find(h, n => n.type === InventoryDetailModal), undefined);
-    assert.equal(requests.length, before);
+    assert.equal(requests.length, before + 2);
     // Forward restores the modal from URL state; browser Back closes it again.
     router.push(openedUrl); await settle(h); assert.ok(find(h, n => n.type === InventoryDetailModal));
     router.back(); await settle(h); assert.equal(find(h, n => n.type === InventoryDetailModal), undefined);
-    assert.equal(requests.length, before); h.dispose();
+    assert.equal(requests.length, before + 4); h.dispose();
   });
 }
 
@@ -339,4 +340,131 @@ test('embedded detail preserves actions/history and uses one surface for editing
     click(h, 'Editar'); await editForm(h).props.onSubmit({ preventDefault() {} });
     assert.equal(changed, 1); assert.equal(closed, 1); assert.equal(navigations.length, 0);
   } finally { h.dispose(); api.getInventoryMovements = previousMovements; global.document = previousDocument; }
+});
+
+test('pending pricing filter requests the complete server result and resets pagination', async () => {
+  reset('/inventory?page=3&page_size=20&sort_by=name&sort_direction=asc');
+  const h = mount(InventoryScreen); await settle(h);
+  click(h, 'Completar costo/porcentaje'); await settle(h);
+  assert.equal(url.searchParams.get('status'), 'pricing_pending');
+  assert.equal(requests.at(-1).status, 'pricing_pending');
+  assert.equal(requests.at(-1).page, 1);
+  assert.equal(requests.at(-1).is_active, undefined);
+  assert.equal(requests.at(-1).stock_status, undefined);
+  h.dispose();
+});
+
+let bulkRequests = [], bulkConfirmCalls = 0, bulkServer, bulkTwoPages = false;
+api.previewInventoryBulkOperation = async payload => {
+  bulkRequests.push(payload);
+  const row = { id: 'row', inventory_item_id: fixture.id, inventory_item_name: fixture.name,
+    field_name: 'sale_price_ars', status: 'pending', error_message: null,
+    old_value_json: { value: { profit_margin_percentage: '30', sale_price_ars: '1300' }, pricing_context: { purchase_price_ars: '1000', sale_tax_rate_percentage: '21' }, sale_price_with_tax_ars: '1573' },
+    new_value_json: { value: { profit_margin_percentage: '43', sale_price_ars: '1430' }, pricing_context: { purchase_price_ars: '1000', sale_tax_rate_percentage: '21' }, sale_price_with_tax_ars: '1730.30' } };
+  bulkServer = { id: 'bulk', status: 'preview', affected_count: 1, unchanged_count: 0, invalid_count: bulkTwoPages ? 1 : 0,
+    selected_count: bulkTwoPages ? 2 : 1, excluded_count: 0, items: [row] };
+  return { data: bulkServer, meta: { page: 1, total_pages: bulkTwoPages ? 2 : 1 } };
+};
+api.getInventoryBulkOperation = async (id, page) => ({ data: { ...bulkServer, items: [{ ...bulkServer.items[0], status: 'invalid', error_message: 'catalog_target_not_representable' }] }, meta: { page, total_pages: 2 } });
+api.confirmInventoryBulkOperation = async id => {
+  bulkConfirmCalls++;
+  savedItem = { ...savedItem, name: 'Alimento confirmado', brand: 'Nueva' };
+  return { data: { ...bulkServer, status: 'confirmed' } };
+};
+async function bulkForm(operation, value, { filtered = false, href = context } = {}) {
+  reset(href); bulkRequests = []; bulkConfirmCalls = 0;
+  const h = mount(InventoryScreen); await settle(h);
+  click(h, filtered ? 'Seleccionar todos los resultados' : 'Seleccionar esta página');
+  click(h, 'Editar grupo');
+  const operationSelect = find(h, n => n.type === 'select' && nodes(n.props.children).some(c => c.props?.value === 'set_sale_price'));
+  assert.ok(operationSelect);
+  assert.equal(nodes(operationSelect.props.children).filter(c => c.type === 'option').length, 9);
+  operationSelect.props.onChange({ target: { value: operation } }); h.render();
+  const input = find(h, n => n.type === 'input' && n.props.placeholder && ['Porcentaje', 'Precio final', 'Stock mínimo', 'Marca', 'Proveedor'].includes(n.props.placeholder));
+  if (input) { input.props.onChange({ target: { value } }); h.render(); }
+  return h;
+}
+for (const [operation, raw, field, value] of [
+  ['increase_sale_price_percentage', '10', 'percentage', 10],
+  ['decrease_sale_price_percentage', '10', 'percentage', 10],
+  ['set_profit_margin_percentage', '0', 'profit_margin_percentage', 0],
+  ['set_sale_price', '1500', 'sale_price_ars', 1500],
+  ['set_brand', 'Nueva', 'brand', 'Nueva'], ['set_supplier', 'Nuevo', 'supplier', 'Nuevo'],
+  ['set_minimum_stock', '0', 'minimum_stock', 0], ['activate', '', null, null], ['deactivate', '', null, null],
+]) test(`bulk component sends only the intended fields: ${operation}`, async () => {
+  const h = await bulkForm(operation, raw);
+  try {
+    click(h, 'Simular'); await settle(h);
+    assert.equal(bulkRequests.length, 1);
+    assert.deepEqual(bulkRequests[0].operation, { operation_type: operation, confirm_clear: false, ...(field ? { [field]: value } : {}) });
+    assert.deepEqual(bulkRequests[0].selection, { selection_mode: 'selected', selected_ids: [fixture.id], excluded_ids: [] });
+    assert.match(text(h.tree), /Se aplicarán 1 filas válidas/);
+  } finally { h.dispose(); }
+});
+
+test('bulk selection preserves filters, pending status and exclusions across pages', async () => {
+  const h = await bulkForm('set_brand', 'Nueva', { filtered: true, href: context + '&status=pricing_pending' });
+  try {
+    // Exclude the visible product while retaining all other pages.
+    find(h, n => n.type === 'input' && n.props.type === 'checkbox' && n.props.onChange && n.props.checked === true).props.onChange(); h.render();
+    click(h, 'Simular'); await settle(h);
+    const selection = bulkRequests[0].selection;
+    assert.equal(selection.selection_mode, 'filtered');
+    assert.deepEqual(selection.excluded_ids, [fixture.id]);
+    assert.deepEqual(selection.filters, { search: 'alimento & gato', category: 'food', brand: 'Marca', supplier: 'Proveedor', stock_status: 'low_stock', is_active: false, status: 'pricing_pending' });
+    assert.equal(selection.filters.page, undefined);
+  } finally { h.dispose(); }
+});
+
+test('bulk preview displays base, sale tax, per-row reason and all preview pages', async () => {
+  bulkTwoPages = true;
+  const h = await bulkForm('set_sale_price', '1430');
+  try {
+    click(h, 'Simular'); await settle(h);
+    assert.match(text(h.tree), /Venta base/); assert.match(text(h.tree), /Con impuesto de venta/);
+    assert.match(text(h.tree), /Se omitirán 0 sin cambios y 1 inválidas/);
+    const next = find(h, n => n.type === 'button' && text(n).trim() === 'Siguiente' && n.props.onClick.toString().includes('loadBulkPreviewPage'));
+    assert.ok(next); await next.props.onClick(); await settle(h);
+    assert.match(text(h.tree), /Página 2 de 2/);
+    assert.match(text(h.tree), /No se alcanza el importe exacto/);
+    assert.equal(bulkRequests.length, 1);
+  } finally { h.dispose(); bulkTwoPages = false; }
+});
+
+for (const [operation, value] of [
+  ['increase_sale_price_percentage', '1000.01'], ['set_profit_margin_percentage', '30.001'],
+  ['set_sale_price', '99999999999'], ['set_minimum_stock', '1.001'], ['set_brand', ''], ['set_supplier', ''],
+]) test(`bulk component validates limits or explicit clearing: ${operation}`, async () => {
+  const h = await bulkForm(operation, value);
+  try {
+    click(h, 'Simular'); await settle(h);
+    assert.equal(bulkRequests.length, 0);
+    if (operation === 'set_brand' || operation === 'set_supplier') {
+      const checkbox = find(h, n => n.type === 'input' && n.props.type === 'checkbox' && n.props.checked === false);
+      checkbox.props.onChange({ target: { checked: true } }); h.render();
+      click(h, 'Simular'); await settle(h);
+      assert.equal(bulkRequests[0].operation.confirm_clear, true);
+      assert.equal(bulkRequests[0].operation[operation === 'set_brand' ? 'brand' : 'supplier'], '');
+    }
+  } finally { h.dispose(); }
+});
+
+test('bulk confirmation disables duplicate sends and reports a read failure separately', async () => {
+  const h = await bulkForm('set_brand', 'Nueva');
+  const original = api.getInventoryItems;
+  try {
+    click(h, 'Simular'); await settle(h);
+    api.getInventoryItems = async () => { throw new (require('../../lib/api.ts').ApiClientError)('No pudimos leer', 422, 'read_failed'); };
+    const confirm = find(h, n => n.type === 'button' && text(n).trim() === 'Confirmar 1 productos');
+    const first = confirm.props.onClick(), second = confirm.props.onClick();
+    await Promise.all([first, second]); await settle(h);
+    assert.equal(bulkConfirmCalls, 1);
+    assert.match(text(h.tree), /Operación confirmada/);
+    assert.match(text(h.tree), /Los cambios se guardaron.*No pudimos leer/);
+    api.getInventoryItems = original;
+    click(h, 'Reintentar'); await settle(h);
+    assert.match(text(h.tree), /Alimento confirmado/);
+    assert.doesNotMatch(text(h.tree), /No pudimos leer/);
+    assert.equal(bulkConfirmCalls, 1);
+  } finally { api.getInventoryItems = original; h.dispose(); }
 });
