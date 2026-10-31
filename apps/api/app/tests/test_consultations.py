@@ -1,3 +1,4 @@
+from app.tests.catalog_pricing import calculated_product_fields
 from app.tests.role_helpers import veterinarian_headers
 
 import uuid
@@ -97,12 +98,13 @@ def _create_consultation(client, tenant, patient_id, **overrides):
 
 def _create_inventory_item(client, tenant, **overrides):
     initial_stock = overrides.pop("current_stock", "10")
+    sale_price = overrides.pop("sale_price_ars", "1500")
     payload = {
         "name": "Amoxicilina stock",
         "category": "medication",
         "unit": "tablet",
         "minimum_stock": "2",
-        "sale_price_ars": "1500",
+        **calculated_product_fields(sale_price),
     }
     payload.update(overrides)
     response = client.post(

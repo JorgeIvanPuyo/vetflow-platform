@@ -9,6 +9,7 @@ from app.models.inventory_bulk_operation import InventoryBulkOperation
 from app.models.inventory_item import InventoryItem
 from app.models.inventory_movement import InventoryMovement
 from app.models.user import User
+from app.models.supplier import Supplier
 from app.repositories.inventory import InventoryRepository
 
 
@@ -60,6 +61,20 @@ def _create_item(db_session, tenant, **overrides) -> InventoryItem:
     db_session.commit()
     db_session.refresh(item)
     return item
+
+
+def _supplier(db_session, tenant, name="Proveedor existente", *, active=True):
+    supplier = Supplier(tenant_id=tenant.id, name=name, normalized_name=name.casefold(), is_active=active)
+    db_session.add(supplier)
+    db_session.commit()
+    return supplier
+
+
+def _registered_supplier_operation(db_session, tenant, operation):
+    if operation["operation_type"] != "set_supplier":
+        return operation
+    supplier = _supplier(db_session, tenant, operation["supplier"])
+    return {"operation_type": "set_supplier", "supplier_id": str(supplier.id)}
 
 
 def _payload(item_ids, operation=None, excluded_ids=None):
@@ -216,6 +231,7 @@ def test_bulk_preview_does_not_modify_products_or_stock(client, tenant, db_sessi
     ],
 )
 def test_bulk_preview_calculates_supported_operations(client, tenant, db_session, operation, field, expected):
+    operation = _registered_supplier_operation(db_session, tenant, operation)
     item = _create_item(db_session, tenant, purchase_price_ars=Decimal("50"), purchase_tax_rate_percentage="0", profit_margin_percentage="100", sale_price_ars=Decimal("100"), is_active=True)
 
     response = _preview(client, tenant, _payload([item.id], operation=operation))
@@ -227,6 +243,8 @@ def test_bulk_preview_calculates_supported_operations(client, tenant, db_session
     if field == "sale_price_ars":
         assert Decimal(value["sale_price_ars"]) == Decimal(expected)
         assert row["status"] == "pending"
+    elif field == "supplier":
+        assert value == {"supplier": expected, "supplier_id": operation["supplier_id"]}
     else:
         assert value == expected
 
@@ -420,6 +438,7 @@ def test_bulk_history_hides_cross_tenant_user_summary(client, tenant, other_tena
     ],
 )
 def test_bulk_reverse_reverts_supported_operations(client, tenant, db_session, operation):
+    operation = _registered_supplier_operation(db_session, tenant, operation)
     item = _create_item(
         db_session,
         tenant,
@@ -625,8 +644,8 @@ def test_price_target_uses_purchase_tax_base_and_distinguishes_sale_tax(client, 
 @pytest.mark.parametrize(("overrides", "target", "error"), [
     ({}, "1300.01", "catalog_target_not_representable"),
     ({"round_sale_price": True}, "1431", "catalog_target_not_representable"),
-    ({}, "900", "catalog_target_not_representable"),
-    ({}, "11001", "catalog_target_not_representable"),
+    ({}, "900", "catalog_target_requires_negative_margin"),
+    ({}, "11001", "catalog_target_margin_out_of_range"),
     ({"purchase_price_ars": Decimal("0"), "sale_price_ars": Decimal("0")}, "1", "catalog_zero_cost_target"),
     ({"purchase_price_ars": None}, "1300", "catalog_pricing_incomplete"),
 ])
@@ -672,6 +691,7 @@ def test_margin_only_change_is_applied_even_if_rounded_sale_is_unchanged(client,
 ])
 @pytest.mark.parametrize("pending", [False, True])
 def test_non_price_operations_preserve_all_pricing_and_available_stock(client, tenant, db_session, operation, pending):
+    operation = _registered_supplier_operation(db_session, tenant, operation)
     item = _priced_item(db_session, tenant, purchase_price_ars=None if pending else Decimal("1000"),
                         sale_price_is_manual=pending, is_active=operation["operation_type"] != "activate")
     before = (item.purchase_price_ars, item.purchase_tax_rate_percentage, item.profit_margin_percentage,
@@ -786,3 +806,96 @@ def test_explicit_clear_preserves_pricing_and_can_be_reversed(client, tenant, db
     assert _reverse(client, tenant, preview["id"]).status_code == 200
     db_session.refresh(item)
     assert getattr(item, field) == original
+
+
+@pytest.mark.parametrize(("action", "adjustment", "cost", "tax", "margin", "increment"), [
+    ("increase_sale_price_percentage", "10", "1000", "21", "30", "50"),
+    ("decrease_sale_price_percentage", "10", "1000", "21", "30", "50"),
+    ("increase_sale_price_percentage", "0.01", "5000", "21", "35", "100"),
+    ("decrease_sale_price_percentage", "0.01", "5000", "21", "35", "100"),
+    ("increase_sale_price_percentage", "10", "1234.56", "0", "32.17", "0.01"),
+])
+def test_relative_adjustment_uses_nearest_calculated_rounded_price(client, tenant, db_session, action, adjustment, cost, tax, margin, increment):
+    from app.core.inventory_pricing import calculate_catalog_sale_price
+    from app.models.tenant_preference import TenantPreference
+    prefs = TenantPreference(tenant_id=tenant.id, money_rounding_increment=Decimal(increment))
+    db_session.add(prefs)
+    db_session.commit()
+    inputs = dict(purchase_price_ars=Decimal(cost), purchase_tax_rate_percentage=Decimal(tax), round_sale_price=True, rounding_increment=Decimal(increment))
+    original_price = calculate_catalog_sale_price(**inputs, profit_margin_percentage=Decimal(margin))
+    item = _priced_item(db_session, tenant, **{key: val for key, val in inputs.items() if key != "rounding_increment"}, profit_margin_percentage=Decimal(margin), sale_price_ars=original_price, sale_tax_rate_percentage="21")
+    original = (item.purchase_price_ars, item.current_stock, item.purchase_tax_rate_percentage, item.sale_tax_rate_percentage, item.brand, item.supplier, item.minimum_stock)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": action, "percentage": adjustment})).json()["data"]
+    assert preview["invalid_count"] == 0
+    box = preview["items"][0]["new_value_json"]
+    price = Decimal(box["value"]["sale_price_ars"])
+    new_margin = Decimal(box["value"]["profit_margin_percentage"])
+    target = (original_price * (1 + (1 if action.startswith("increase") else -1) * Decimal(adjustment) / 100)).quantize(Decimal("0.01"))
+    assert Decimal(box["requested_sale_price_ars"]) == target
+    assert Decimal(box["price_difference_ars"]) == price - target
+    assert price == calculate_catalog_sale_price(**inputs, profit_margin_percentage=new_margin)
+    assert price >= original_price if action.startswith("increase") else price <= original_price
+    # Neighbour percentages cannot produce a closer allowed monetary result.
+    for candidate in (new_margin - Decimal("0.01"), new_margin + Decimal("0.01")):
+        if 0 <= candidate <= 1000:
+            alternative = calculate_catalog_sale_price(**inputs, profit_margin_percentage=candidate)
+            assert abs(price - target) <= abs(alternative - target)
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    detail = client.get(f"/api/v1/inventory/items/{item.id}", headers=_headers(tenant)).json()["data"]
+    assert Decimal(detail["sale_price_ars"]) == price and Decimal(detail["profit_margin_percentage"]) == new_margin
+    db_session.refresh(item)
+    assert (item.purchase_price_ars, item.current_stock, item.purchase_tax_rate_percentage, item.sale_tax_rate_percentage, item.brand, item.supplier, item.minimum_stock) == original
+    assert item.sale_price_is_manual is False
+    assert _confirm(client, tenant, preview["id"]).status_code == 409
+    assert _reverse(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert item.sale_price_ars == original_price and item.profit_margin_percentage == Decimal(margin)
+
+
+def test_rounded_adjustment_distinguishes_percentage_change_from_no_change(client, tenant, db_session):
+    from app.models.tenant_preference import TenantPreference
+    db_session.add(TenantPreference(tenant_id=tenant.id, money_rounding_increment=Decimal("100")))
+    item = _priced_item(db_session, tenant, round_sale_price=True)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "increase_sale_price_percentage", "percentage": "1"})).json()["data"]
+    assert preview["affected_count"] == 1 and preview["unchanged_count"] == 0
+    box = preview["items"][0]["new_value_json"]
+    assert box["sale_price_unchanged"] is True
+    assert box["value"] == {"profit_margin_percentage": "31.30", "sale_price_ars": "1300.00"}
+    zero = _priced_item(db_session, tenant, purchase_price_ars=Decimal("0"), sale_price_ars=Decimal("0"), round_sale_price=True)
+    unchanged = _preview(client, tenant, _payload([zero.id])).json()["data"]
+    assert unchanged["unchanged_count"] == 1 and unchanged["affected_count"] == 0
+
+
+def test_bulk_supplier_uses_existing_record_preserves_other_fields_and_reverses(client, tenant, db_session):
+    previous = _supplier(db_session, tenant, "Anterior")
+    selected = _supplier(db_session, tenant, "Seleccionado")
+    item = _priced_item(db_session, tenant, purchase_price_ars=None, supplier=previous.name, supplier_id=previous.id)
+    for supplier_id, clear in [(selected.id, False), (None, True)]:
+        operation = {"operation_type": "set_supplier", "supplier_id": str(supplier_id) if supplier_id else None, "confirm_clear": clear}
+        preview = _preview(client, tenant, _payload([item.id], operation)).json()["data"]
+        assert _confirm(client, tenant, preview["id"]).status_code == 200
+        read = client.get(f"/api/v1/inventory/items/{item.id}", headers=_headers(tenant)).json()["data"]
+        assert read["supplier_id"] == (str(supplier_id) if supplier_id else None)
+        assert read["supplier"] == (selected.name if supplier_id else None)
+        assert read["purchase_price_ars"] is None and read["sale_price_ars"] == "1300.00"
+        assert read["current_stock"] == "5.00"
+        assert _reverse(client, tenant, preview["id"]).status_code == 200
+        db_session.refresh(item)
+        assert item.supplier_id == previous.id and item.supplier == previous.name
+
+
+def test_bulk_supplier_rejects_unknown_foreign_inactive_and_stale_records(client, tenant, other_tenant, db_session):
+    item = _priced_item(db_session, tenant)
+    foreign = _supplier(db_session, other_tenant)
+    inactive = _supplier(db_session, tenant, "Inactivo", active=False)
+    for supplier_id, status in [(uuid.uuid4(), 404), (foreign.id, 404), (inactive.id, 409)]:
+        response = _preview(client, tenant, _payload([item.id], {"operation_type": "set_supplier", "supplier_id": str(supplier_id)}))
+        assert response.status_code == status
+    assert _preview(client, tenant, _payload([item.id], {"operation_type": "set_supplier", "supplier": "Texto arbitrario"})).status_code == 422
+    selected = _supplier(db_session, tenant, "Vigente")
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "set_supplier", "supplier_id": str(selected.id)})).json()["data"]
+    selected.is_active = False
+    db_session.commit()
+    assert _confirm(client, tenant, preview["id"]).status_code == 409
+    db_session.refresh(item)
+    assert item.supplier_id is None and item.supplier == "Proveedor"

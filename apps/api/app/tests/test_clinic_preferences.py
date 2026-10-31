@@ -1,3 +1,4 @@
+from app.tests.catalog_pricing import calculated_product_fields
 import uuid
 
 from app.models.user import User
@@ -126,7 +127,7 @@ def test_currency_change_is_locked_after_monetary_activity(client, db_session, t
             "category": "medication",
             "unit": "unit",
             "minimum_stock": "0",
-            "sale_price_ars": "100.00",
+            **calculated_product_fields("100.00"),
         },
     )
     assert item_response.status_code == 201, item_response.text

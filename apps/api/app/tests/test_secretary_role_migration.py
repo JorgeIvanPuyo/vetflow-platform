@@ -34,7 +34,7 @@ def test_secretary_upgrade_and_safe_downgrade(monkeypatch):
                 INSERT INTO users (id, tenant_id, email, full_name, role, is_active)
                 VALUES (:id, :tenant, 'secretary@example.com', 'Secretary', 'contador', true)
             """), {"id": user_id, "tenant": tenant_id})
-        command.upgrade(config, "head")
+        command.upgrade(config, "0051_secretary_role")
         with engine.begin() as connection:
             assert connection.scalar(sa.text("SELECT role FROM users WHERE id=:id"), {"id": user_id}) == "contador"
             connection.execute(sa.text("UPDATE users SET role='secretaria' WHERE id=:id"), {"id": user_id})
@@ -47,7 +47,7 @@ def test_secretary_upgrade_and_safe_downgrade(monkeypatch):
         with pytest.raises(sa.exc.IntegrityError):
             with engine.begin() as connection:
                 connection.execute(sa.text("UPDATE users SET role='secretaria' WHERE id=:id"), {"id": user_id})
-        command.upgrade(config, "head")
+        command.upgrade(config, "0051_secretary_role")
         with engine.begin() as connection:
             connection.execute(sa.text("UPDATE users SET role='secretaria' WHERE id=:id"), {"id": user_id})
     finally:

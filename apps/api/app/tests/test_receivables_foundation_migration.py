@@ -22,7 +22,7 @@ from app.tests.test_service_pricing_migration import _config
 
 def test_receivables_migration_follows_batches_as_single_head():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0059_merge_arca_inventory"]
+    assert script.get_heads() == ["0062_purchase_return_agreed"]
     assert script.get_revision("0054_receivables_foundation").down_revision == "0053_sale_payment_batches"
 
 
@@ -60,7 +60,7 @@ def test_postgresql_upgrade_history_restrict_archive_cutoff_and_downgrade(monkey
                 return [dict(row) for row in connection.execute(sa.text(f"SELECT * FROM {table} ORDER BY id")).mappings()]
 
         original = {table: snapshot(table) for table in ["sales", "owners", "tenant_preferences", "sale_payments", "sale_payment_batches", "inventory_movements"]}
-        command.upgrade(config, "head")
+        command.upgrade(config, "0054_receivables_foundation")
         inspector = sa.inspect(engine)
         column = next(c for c in inspector.get_columns("tenant_preferences") if c["name"] == "receivables_tracking_started_at")
         assert column["nullable"] and column["default"] is None and column["type"].timezone
@@ -118,7 +118,7 @@ def test_postgresql_upgrade_history_restrict_archive_cutoff_and_downgrade(monkey
                 for row in actual + rows:
                     row.pop("updated_at")  # Explicit archive/reactivation changed this timestamp.
             assert actual == rows
-        command.upgrade(config, "head")
+        command.upgrade(config, "0054_receivables_foundation")
         assert snapshot("sales") == original["sales"]
     finally:
         engine.dispose()
