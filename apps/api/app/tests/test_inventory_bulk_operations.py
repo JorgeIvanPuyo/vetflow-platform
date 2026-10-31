@@ -50,8 +50,8 @@ def _create_item(db_session, tenant, **overrides) -> InventoryItem:
         purchase_tax_rate_percentage=Decimal(str(overrides.pop("purchase_tax_rate_percentage", "21"))),
         profit_margin_percentage=Decimal(str(overrides.pop("profit_margin_percentage", "35"))),
         sale_price_ars=overrides.pop("sale_price_ars", Decimal("163.35")),
-        sale_tax_rate_percentage=Decimal("0"),
-        round_sale_price=False,
+        sale_tax_rate_percentage=Decimal(str(overrides.pop("sale_tax_rate_percentage", "0"))),
+        round_sale_price=overrides.pop("round_sale_price", False),
         is_active=overrides.pop("is_active", True),
         notes=overrides.pop("notes", None),
         **overrides,
@@ -207,7 +207,7 @@ def test_bulk_preview_does_not_modify_products_or_stock(client, tenant, db_sessi
     [
         ({"operation_type": "increase_sale_price_percentage", "percentage": "10"}, "sale_price_ars", "110.00"),
         ({"operation_type": "decrease_sale_price_percentage", "percentage": "10"}, "sale_price_ars", "90.00"),
-        ({"operation_type": "set_sale_price", "sale_price_ars": "0"}, "sale_price_ars", "0"),
+        ({"operation_type": "set_sale_price", "sale_price_ars": "150"}, "sale_price_ars", "150.00"),
         ({"operation_type": "set_minimum_stock", "minimum_stock": "4.5"}, "minimum_stock", "4.5"),
         ({"operation_type": "set_brand", "brand": "Nueva marca"}, "brand", "Nueva marca"),
         ({"operation_type": "set_supplier", "supplier": "Nuevo proveedor"}, "supplier", "Nuevo proveedor"),
@@ -216,14 +216,19 @@ def test_bulk_preview_does_not_modify_products_or_stock(client, tenant, db_sessi
     ],
 )
 def test_bulk_preview_calculates_supported_operations(client, tenant, db_session, operation, field, expected):
-    item = _create_item(db_session, tenant, sale_price_ars=Decimal("100"), is_active=True)
+    item = _create_item(db_session, tenant, purchase_price_ars=Decimal("50"), purchase_tax_rate_percentage="0", profit_margin_percentage="100", sale_price_ars=Decimal("100"), is_active=True)
 
     response = _preview(client, tenant, _payload([item.id], operation=operation))
 
     assert response.status_code == 201
     row = response.json()["data"]["items"][0]
     assert row["field_name"] == field
-    assert row["new_value_json"]["value"] == expected
+    value = row["new_value_json"]["value"]
+    if field == "sale_price_ars":
+        assert Decimal(value["sale_price_ars"]) == Decimal(expected)
+        assert row["status"] == "pending"
+    else:
+        assert value == expected
 
 
 @pytest.mark.parametrize(
@@ -540,8 +545,8 @@ def test_filtered_selection_reuses_category_supplier_stock_and_active(client, te
 @pytest.mark.parametrize(
     ("operation", "initial_manual", "expected_manual"),
     [
-        ({"operation_type": "set_sale_price", "sale_price_ars": "321"}, False, True),
-        ({"operation_type": "increase_sale_price_percentage", "percentage": "10"}, False, True),
+        ({"operation_type": "set_sale_price", "sale_price_ars": "321"}, False, False),
+        ({"operation_type": "increase_sale_price_percentage", "percentage": "10"}, False, False),
         (
             {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "50"},
             True,
@@ -563,5 +568,221 @@ def test_bulk_price_operations_set_and_reverse_sale_price_mode(
     assert reversed_response.status_code == 200
     assert reversed_response.json()["data"]["status"] == "reversed"
     db_session.refresh(item)
-    assert item.sale_price_is_manual is initial_manual
+    assert item.sale_price_is_manual is False
     assert item.sale_price_ars == Decimal("163.35")
+
+
+
+
+def _priced_item(db, tenant, **overrides):
+    values = dict(purchase_price_ars=Decimal("1000"), purchase_tax_rate_percentage="0",
+                  profit_margin_percentage="30", sale_price_ars=Decimal("1300"))
+    values.update(overrides)
+    return _create_item(db, tenant, **values)
+
+
+@pytest.mark.parametrize(("operation", "margin", "price"), [
+    ({"operation_type": "increase_sale_price_percentage", "percentage": "10"}, "43", "1430"),
+    ({"operation_type": "decrease_sale_price_percentage", "percentage": "10"}, "17", "1170"),
+    ({"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "40"}, "40", "1400"),
+    ({"operation_type": "set_sale_price", "sale_price_ars": "1500"}, "50", "1500"),
+])
+def test_price_targets_match_preview_confirmation_and_readback(client, tenant, db_session, operation, margin, price):
+    item = _priced_item(db_session, tenant)
+    preview = _preview(client, tenant, _payload([item.id], operation)).json()["data"]
+    row = preview["items"][0]
+    assert row["status"] == "pending"
+    assert Decimal(row["new_value_json"]["value"]["profit_margin_percentage"]) == Decimal(margin)
+    assert Decimal(row["new_value_json"]["value"]["sale_price_ars"]) == Decimal(price)
+    response = _confirm(client, tenant, preview["id"])
+    assert response.status_code == 200
+    assert response.json()["data"]["items"][0]["new_value_json"] == row["new_value_json"]
+    read = client.get(f"/api/v1/inventory/items/{item.id}", headers=_headers(tenant)).json()["data"]
+    assert Decimal(read["profit_margin_percentage"]) == Decimal(margin)
+    assert Decimal(read["sale_price_ars"]) == Decimal(price)
+    assert read["sale_price_is_manual"] is False
+    assert read["purchase_price_ars"] == "1000.00" and read["current_stock"] == "5.00"
+    assert _confirm(client, tenant, preview["id"]).status_code == 409
+    assert db_session.scalar(select(InventoryMovement)) is None
+    assert _reverse(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert item.profit_margin_percentage == Decimal("30") and item.sale_price_ars == Decimal("1300")
+    assert item.sale_price_is_manual is False
+
+
+def test_price_target_uses_purchase_tax_base_and_distinguishes_sale_tax(client, tenant, db_session):
+    item = _priced_item(db_session, tenant, purchase_tax_rate_percentage="21", sale_tax_rate_percentage="21", sale_price_ars=Decimal("1573"))
+    preview = _preview(client, tenant, _payload([item.id])).json()["data"]
+    box = preview["items"][0]["new_value_json"]
+    assert box["value"] == {"profit_margin_percentage": "43.00", "sale_price_ars": "1730.30"}
+    assert box["sale_price_with_tax_ars"] == "2093.66"
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert item.purchase_price_ars == 1000 and item.purchase_tax_rate_percentage == 21
+    assert item.sale_price_ars == Decimal("1730.30") and item.sale_tax_rate_percentage == 21
+
+
+@pytest.mark.parametrize(("overrides", "target", "error"), [
+    ({}, "1300.01", "catalog_target_not_representable"),
+    ({"round_sale_price": True}, "1431", "catalog_target_not_representable"),
+    ({}, "900", "catalog_target_not_representable"),
+    ({}, "11001", "catalog_target_not_representable"),
+    ({"purchase_price_ars": Decimal("0"), "sale_price_ars": Decimal("0")}, "1", "catalog_zero_cost_target"),
+    ({"purchase_price_ars": None}, "1300", "catalog_pricing_incomplete"),
+])
+def test_unrepresentable_target_is_invalid_before_confirmation(client, tenant, db_session, overrides, target, error):
+    item = _priced_item(db_session, tenant, **overrides)
+    before = (item.purchase_price_ars, item.profit_margin_percentage, item.sale_price_ars, item.current_stock)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "set_sale_price", "sale_price_ars": target})).json()["data"]
+    assert preview["items"][0]["status"] == "invalid"
+    assert preview["items"][0]["error_message"] == error
+    assert preview["affected_count"] == 0
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert (item.purchase_price_ars, item.profit_margin_percentage, item.sale_price_ars, item.current_stock) == before
+
+
+@pytest.mark.parametrize("operation", [
+    {"operation_type": "increase_sale_price_percentage", "percentage": "10"},
+    {"operation_type": "decrease_sale_price_percentage", "percentage": "100"},
+    {"operation_type": "set_sale_price", "sale_price_ars": "0"},
+    {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "0"},
+])
+def test_zero_cost_and_zero_sale_do_not_mean_missing(client, tenant, db_session, operation):
+    item = _priced_item(db_session, tenant, purchase_price_ars=Decimal("0"), profit_margin_percentage="0", sale_price_ars=Decimal("0"))
+    preview = _preview(client, tenant, _payload([item.id], operation)).json()["data"]
+    assert preview["items"][0]["status"] == "unchanged"
+    assert preview["invalid_count"] == 0
+
+
+def test_margin_only_change_is_applied_even_if_rounded_sale_is_unchanged(client, tenant, db_session):
+    item = _priced_item(db_session, tenant, purchase_price_ars=Decimal("1"), profit_margin_percentage="30", sale_price_ars=Decimal("0"), round_sale_price=True)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "40"})).json()["data"]
+    assert preview["affected_count"] == 1
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert item.sale_price_ars == 0 and item.profit_margin_percentage == 40
+
+
+@pytest.mark.parametrize("operation", [
+    {"operation_type": "set_brand", "brand": "Nueva"},
+    {"operation_type": "set_supplier", "supplier": "Nuevo"},
+    {"operation_type": "set_minimum_stock", "minimum_stock": "7"},
+    {"operation_type": "activate"}, {"operation_type": "deactivate"},
+])
+@pytest.mark.parametrize("pending", [False, True])
+def test_non_price_operations_preserve_all_pricing_and_available_stock(client, tenant, db_session, operation, pending):
+    item = _priced_item(db_session, tenant, purchase_price_ars=None if pending else Decimal("1000"),
+                        sale_price_is_manual=pending, is_active=operation["operation_type"] != "activate")
+    before = (item.purchase_price_ars, item.purchase_tax_rate_percentage, item.profit_margin_percentage,
+              item.sale_price_ars, item.sale_tax_rate_percentage, item.round_sale_price, item.sale_price_is_manual, item.current_stock)
+    preview = _preview(client, tenant, _payload([item.id], {**operation, "sale_price_ars": None})).json()["data"]
+    assert preview["invalid_count"] == 0
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert (item.purchase_price_ars, item.purchase_tax_rate_percentage, item.profit_margin_percentage,
+            item.sale_price_ars, item.sale_tax_rate_percentage, item.round_sale_price, item.sale_price_is_manual, item.current_stock) == before
+
+
+def test_invalid_rows_are_explicitly_skipped_without_losing_valid_rows(client, tenant, db_session):
+    good = _priced_item(db_session, tenant)
+    pending = _priced_item(db_session, tenant, purchase_price_ars=None)
+    preview = _preview(client, tenant, _payload([good.id, pending.id])).json()["data"]
+    assert (preview["affected_count"], preview["invalid_count"]) == (1, 1)
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(good); db_session.refresh(pending)
+    assert good.sale_price_ars == 1430 and pending.sale_price_ars == 1300
+    assert pending.purchase_price_ars is None
+
+
+def test_rounding_preference_change_conflicts_even_without_item_timestamp_change(client, tenant, db_session):
+    from app.models.tenant_preference import TenantPreference
+    item = _priced_item(db_session, tenant, round_sale_price=True)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "set_sale_price", "sale_price_ars": "1430"})).json()["data"]
+    prefs = db_session.scalar(select(TenantPreference).where(TenantPreference.tenant_id == tenant.id))
+    prefs.money_rounding_increment = Decimal("25")
+    db_session.commit()
+    response = _confirm(client, tenant, preview["id"])
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "inventory_bulk_operation_conflict"
+    db_session.refresh(item)
+    assert item.sale_price_ars == 1300 and item.profit_margin_percentage == 30
+
+
+def test_reversal_detects_cost_change_even_when_sale_did_not_change(client, tenant, db_session):
+    item = _priced_item(db_session, tenant)
+    preview = _preview(client, tenant, _payload([item.id])).json()["data"]
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    item.purchase_price_ars = Decimal("900")
+    db_session.commit()
+    response = _reverse(client, tenant, preview["id"])
+    assert response.status_code == 200
+    assert response.json()["data"]["conflict_count"] == 1
+    db_session.refresh(item)
+    assert item.purchase_price_ars == 900 and item.sale_price_ars == 1430
+
+
+def test_historical_fixed_price_snapshots_reverse_to_derived_price_without_rewriting_evidence(client, tenant, db_session):
+    from app.models.inventory_bulk_operation import InventoryBulkOperationItem
+    item = _priced_item(db_session, tenant)
+    preview = _preview(client, tenant, _payload([item.id], {"operation_type": "set_sale_price", "sale_price_ars": "1500"})).json()["data"]
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    row = db_session.scalar(select(InventoryBulkOperationItem).where(InventoryBulkOperationItem.operation_id == uuid.UUID(preview["id"])))
+    old = {"value": "1300", "type": "decimal", "sale_price_is_manual": True}
+    new = {"value": "1500", "type": "decimal"}
+    row.old_value_json, row.new_value_json = old, new
+    db_session.commit()
+    assert _reverse(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item); db_session.refresh(row)
+    assert item.sale_price_ars == 1300 and item.profit_margin_percentage == 30
+    assert item.sale_price_is_manual is False
+    assert row.old_value_json == old and row.new_value_json == new
+
+
+def test_filtered_selection_uses_all_pages_status_exclusions_and_tenant(client, tenant, other_tenant, db_session):
+    items = [_priced_item(db_session, tenant, name=f"Pendiente {i}", brand="A", category="food", purchase_price_ars=None, is_active=i % 2 == 0) for i in range(105)]
+    foreign = _priced_item(db_session, other_tenant, brand="A", category="food", purchase_price_ars=None)
+    _priced_item(db_session, tenant, brand="B", category="food", purchase_price_ars=None)
+    _priced_item(db_session, tenant, brand="A", category="food")
+    preview = _preview(client, tenant, _filtered_payload({"brand": "A", "category": "food", "status": "pricing_pending"}, excluded_ids=[items[0].id])).json()["data"]
+    assert preview["affected_count"] == 104 and preview["excluded_count"] == 1
+    assert len(preview["items"]) == 100
+    page2 = client.get(f"/api/v1/inventory/bulk-operations/{preview['id']}?page=2", headers=_headers(tenant)).json()
+    assert len(page2["data"]["items"]) == 4 and page2["meta"]["total"] == 104
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    for item in items[1:]:
+        db_session.refresh(item)
+        assert item.brand == "Nueva" and item.purchase_price_ars is None
+    db_session.refresh(items[0]); db_session.refresh(foreign)
+    assert items[0].brand == "A" and foreign.brand == "A"
+    assert _confirm(client, other_tenant, preview["id"]).status_code == 404
+    assert _reverse(client, other_tenant, preview["id"]).status_code == 404
+
+
+@pytest.mark.parametrize("operation", [
+    {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "30.001"},
+    {"operation_type": "set_profit_margin_percentage", "profit_margin_percentage": "1000.01"},
+    {"operation_type": "set_sale_price", "sale_price_ars": "1300.001"},
+    {"operation_type": "set_supplier", "supplier": None},
+    {"operation_type": "set_supplier", "supplier": "Otro", "supplier_id": str(uuid.uuid4())},
+])
+def test_bulk_payload_precision_limits_and_null_do_not_silently_change_inputs(client, tenant, db_session, operation):
+    item = _priced_item(db_session, tenant)
+    assert _preview(client, tenant, _payload([item.id], operation)).status_code == 422
+
+
+@pytest.mark.parametrize(("operation", "field"), [
+    ({"operation_type": "set_brand", "brand": "", "confirm_clear": True}, "brand"),
+    ({"operation_type": "set_supplier", "supplier": "", "confirm_clear": True}, "supplier"),
+])
+def test_explicit_clear_preserves_pricing_and_can_be_reversed(client, tenant, db_session, operation, field):
+    item = _priced_item(db_session, tenant, purchase_price_ars=None)
+    original = getattr(item, field)
+    preview = _preview(client, tenant, _payload([item.id], operation)).json()["data"]
+    assert _confirm(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert getattr(item, field) is None
+    assert item.purchase_price_ars is None and item.sale_price_ars == 1300
+    assert _reverse(client, tenant, preview["id"]).status_code == 200
+    db_session.refresh(item)
+    assert getattr(item, field) == original

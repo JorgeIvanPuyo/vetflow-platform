@@ -18,6 +18,26 @@ from app.main import app
 from app.models.tenant import Tenant
 
 
+@pytest.fixture(autouse=True)
+def arca2_blocks_uninjected_network(request, monkeypatch):
+    """ARCA.2/3 tests: HTTP must use explicit transports, never real services.
+
+    psycopg2's verified local PostgreSQL connections use libpq directly and the
+    PostgreSQL test file still translates every mapped table to its own schema.
+    """
+    if not request.node.path.name.startswith(("test_arca2_", "test_arca3_")):
+        return
+    import socket
+    import httpx
+
+    def blocked(*_args, **_kwargs):
+        raise AssertionError("ARCA.2/3 tests cannot use uninjected network transport")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked)
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
+
+
 
 @pytest.fixture()
 def postgres_test_session_factory():

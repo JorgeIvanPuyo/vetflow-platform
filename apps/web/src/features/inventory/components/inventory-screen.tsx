@@ -22,6 +22,7 @@ import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useStat
 
 import { InventoryDetailModal } from "./inventory-detail-modal";
 import { InventoryPrintDialog } from "./inventory-print-dialog";
+import { bulkFieldLabel, bulkRowReason, bulkRowStatus, formatBulkValue } from "./inventory-bulk-values";
 
 import { useClinic } from "@/features/clinic/clinic-context";
 import {
@@ -42,11 +43,12 @@ import {
   InventoryFilterState,
 } from "@/features/inventory/components/inventory-helpers";
 import { formatUserName } from "@/features/inventory/components/inventory-bulk-operations-screen";
-import { getApiErrorMessage } from "@/lib/api";
+import { ApiClientError, getApiErrorMessage } from "@/lib/api";
 import {
   exportInventory,
   confirmInventoryBulkOperation,
   getInventoryFilterOptions,
+  getInventoryBulkOperation,
   getInventoryItems,
   getInventorySummary,
   previewInventoryBulkOperation,
@@ -102,6 +104,7 @@ const DEFAULT_PAGE_SIZE = 20;
 const DEFAULT_SORT_BY: InventorySortBy = "name";
 const DEFAULT_SORT_DIRECTION: InventorySortOrder = "asc";
 const SEARCH_DEBOUNCE_MS = 400;
+let inventoryReadSequence = 0;
 const bulkOperationOptions: Array<{ value: InventoryBulkOperationType; label: string }> = [
   { value: "increase_sale_price_percentage", label: "Aumentar precio %" },
   { value: "decrease_sale_price_percentage", label: "Disminuir precio %" },
@@ -126,6 +129,7 @@ const inventorySortDirectionValues = new Set(
   inventorySortDirectionOptions.map((option) => option.value),
 );
 const legacyStatusValues = new Set<InventoryStatusFilter>([
+  "pricing_pending",
   "low_stock",
   "expiring_soon",
   "expired",
@@ -156,6 +160,7 @@ export function InventoryScreen() {
   };
   const router = useRouter();
   const searchParams = useSearchParams();
+  const routeQuery = searchParams.toString();
   const selectedItemId = searchParams.get("item");
   const listParams = new URLSearchParams(searchParams.toString());
   listParams.delete("item");
@@ -163,6 +168,10 @@ export function InventoryScreen() {
   const openedDetailHere = useRef(false);
   const queryState = useMemo(() => readInventoryQuery(queryString), [queryString]);
   const latestLoadRef = useRef(0);
+  const savedChangesRef = useRef(false);
+  const bulkConfirmingRef = useRef(false);
+  const bulkPreviewingRef = useRef(false);
+  const bulkPreviewVersionRef = useRef(0);
   const latestFilterOptionsLoadRef = useRef(0);
   const [state, setState] = useState<InventoryScreenState>(initialState);
   const [filterOptionsState, setFilterOptionsState] = useState<InventoryFilterOptionsState>({
@@ -200,6 +209,8 @@ export function InventoryScreen() {
   const [bulkValue, setBulkValue] = useState("");
   const [bulkConfirmClear, setBulkConfirmClear] = useState(false);
   const [bulkPreview, setBulkPreview] = useState<InventoryBulkOperation | null>(null);
+  const [bulkPreviewPage, setBulkPreviewPage] = useState(1);
+  const [bulkPreviewPages, setBulkPreviewPages] = useState(1);
   const [bulkResult, setBulkResult] = useState<InventoryBulkOperation | null>(null);
   const [bulkErrorMessage, setBulkErrorMessage] = useState<string | null>(null);
   const [isBulkPreviewing, setIsBulkPreviewing] = useState(false);
@@ -271,6 +282,7 @@ export function InventoryScreen() {
   const loadInventory = useCallback(async () => {
     const loadId = latestLoadRef.current + 1;
     latestLoadRef.current = loadId;
+    const readKey = `inventory:${++inventoryReadSequence}`;
 
     setState((current) => ({
       ...current,
@@ -281,8 +293,8 @@ export function InventoryScreen() {
 
     try {
       const [summaryResponse, itemsResponse] = await Promise.all([
-        getInventorySummary(),
-        getInventoryItems(activeFilters),
+        getInventorySummary(readKey),
+        getInventoryItems(activeFilters, readKey),
       ]);
 
       if (latestLoadRef.current !== loadId) {
@@ -297,6 +309,7 @@ export function InventoryScreen() {
         errorMessage: null,
         meta: itemsResponse.meta,
       });
+      savedChangesRef.current = false;
     } catch (error) {
       if (latestLoadRef.current !== loadId) {
         return;
@@ -306,7 +319,9 @@ export function InventoryScreen() {
         ...current,
         isLoading: false,
         isRefreshing: false,
-        errorMessage: getApiErrorMessage(error),
+        errorMessage: error instanceof ApiClientError && error.code === "read_cancelled"
+          ? null
+          : `${savedChangesRef.current ? "Los cambios se guardaron, pero no pudimos actualizar la lista y el resumen. " : ""}${getApiErrorMessage(error)}`,
       }));
     }
   }, [activeFilters]);
@@ -322,7 +337,7 @@ export function InventoryScreen() {
     }));
 
     try {
-      const response = await getInventoryFilterOptions();
+      const response = await getInventoryFilterOptions(`inventory-filters:${++inventoryReadSequence}`);
       if (latestFilterOptionsLoadRef.current !== loadId) {
         return;
       }
@@ -338,7 +353,8 @@ export function InventoryScreen() {
       setFilterOptionsState((current) => ({
         ...current,
         isLoading: false,
-        errorMessage: getApiErrorMessage(error),
+        errorMessage: error instanceof ApiClientError && error.code === "read_cancelled"
+          ? null : getApiErrorMessage(error),
       }));
     }
   }, []);
@@ -381,12 +397,26 @@ export function InventoryScreen() {
   }, [filterState, isFilterOpen]);
 
   useEffect(() => {
+    // PageReadBoundary replaces its GET scope on every URL change, including item.
+    // Start the replacement reads after its layout effect installs the new scope.
     void loadInventory();
-  }, [loadInventory]);
-
-  useEffect(() => {
     void loadFilterOptions();
-  }, [loadFilterOptions]);
+    return () => {
+      latestLoadRef.current += 1;
+      latestFilterOptionsLoadRef.current += 1;
+    };
+  }, [loadInventory, loadFilterOptions, routeQuery]);
+
+  function handleDetailChanged(closing = false) {
+    savedChangesRef.current = true;
+    latestLoadRef.current += 1;
+    latestFilterOptionsLoadRef.current += 1;
+    if (!closing) {
+      void loadInventory();
+      void loadFilterOptions();
+    }
+    // A closing edit refreshes from the effect after the new URL is committed.
+  }
 
   useEffect(() => {
     const trimmedQuery = queryInput.trim();
@@ -521,6 +551,7 @@ export function InventoryScreen() {
   }
 
   function clearBulkSelection() {
+    bulkPreviewVersionRef.current += 1;
     setBulkSelectionMode("selected");
     setSelectedIds(new Set());
     setExcludedIds(new Set());
@@ -528,7 +559,13 @@ export function InventoryScreen() {
     setBulkErrorMessage(null);
   }
 
+  function closeBulk() {
+    bulkPreviewVersionRef.current += 1;
+    setIsBulkOpen(false);
+  }
+
   async function handleBulkPreview() {
+    if (bulkPreviewingRef.current || bulkConfirmingRef.current) return;
     const payload = buildBulkOperationPayload(
       bulkSelectionMode,
       selectedIds,
@@ -542,35 +579,64 @@ export function InventoryScreen() {
       setBulkErrorMessage(payload);
       return;
     }
+    const version = ++bulkPreviewVersionRef.current;
+    bulkPreviewingRef.current = true;
     setIsBulkPreviewing(true);
     setBulkErrorMessage(null);
     try {
       const response = await previewInventoryBulkOperation(payload);
+      if (version !== bulkPreviewVersionRef.current) return;
       setBulkPreview(response.data);
+      setBulkPreviewPage(1);
+      setBulkPreviewPages(response.meta.total_pages ?? 1);
       setBulkResult(null);
     } catch (error) {
-      setBulkErrorMessage(getApiErrorMessage(error));
+      if (version === bulkPreviewVersionRef.current) setBulkErrorMessage(getApiErrorMessage(error));
     } finally {
+      bulkPreviewingRef.current = false;
+      setIsBulkPreviewing(false);
+    }
+  }
+
+  async function loadBulkPreviewPage(page: number) {
+    if (!bulkPreview || bulkPreviewingRef.current || bulkConfirmingRef.current) return;
+    const version = ++bulkPreviewVersionRef.current;
+    bulkPreviewingRef.current = true;
+    setIsBulkPreviewing(true);
+    setBulkErrorMessage(null);
+    try {
+      const response = await getInventoryBulkOperation(bulkPreview.id, page);
+      if (version !== bulkPreviewVersionRef.current) return;
+      setBulkPreview(response.data);
+      setBulkPreviewPage(page);
+      setBulkPreviewPages(response.meta.total_pages ?? 1);
+    } catch (error) {
+      if (version === bulkPreviewVersionRef.current) setBulkErrorMessage(getApiErrorMessage(error));
+    } finally {
+      bulkPreviewingRef.current = false;
       setIsBulkPreviewing(false);
     }
   }
 
   async function handleBulkConfirm() {
-    if (!bulkPreview) {
+    if (!bulkPreview || bulkConfirmingRef.current || bulkPreviewingRef.current) {
       return;
     }
+    bulkConfirmingRef.current = true;
     setIsBulkConfirming(true);
     setBulkErrorMessage(null);
     try {
       const response = await confirmInventoryBulkOperation(bulkPreview.id);
       setBulkPreview(response.data);
       setBulkResult(response.data);
-      await loadInventory();
+      savedChangesRef.current = true;
+      await Promise.all([loadInventory(), loadFilterOptions()]);
       clearBulkSelection();
       setIsBulkOpen(false);
     } catch (error) {
       setBulkErrorMessage(getApiErrorMessage(error));
     } finally {
+      bulkConfirmingRef.current = false;
       setIsBulkConfirming(false);
     }
   }
@@ -684,6 +750,10 @@ export function InventoryScreen() {
         </button>
       </section>
 
+      <button type="button" className="secondary-button" onClick={() => applyLegacyStatusQuickFilter("pricing_pending")}>
+        Completar costo/porcentaje
+      </button>
+
       <section className="panel inventory-toolbar">
         <form className="search-form" onSubmit={handleSearch}>
           <label className="search-field">
@@ -795,6 +865,7 @@ export function InventoryScreen() {
             disabled={selectedCount === 0}
             type="button"
             onClick={() => {
+              bulkPreviewVersionRef.current += 1;
               setBulkPreview(null);
               setBulkResult(null);
               setBulkErrorMessage(null);
@@ -816,18 +887,23 @@ export function InventoryScreen() {
         </section>
       ) : null}
 
-      {state.errorMessage && state.summary === null ? (
+      {state.errorMessage ? (
         <section className="error-state">
-          <strong>No pudimos cargar el inventario.</strong> {state.errorMessage}
+          <strong>{state.summary === null ? "No pudimos cargar el inventario." : "No pudimos actualizar el inventario; se muestra la última información disponible."}</strong> {state.errorMessage}
           <button
             className="secondary-button secondary-button--full"
             type="button"
-            onClick={() => void loadInventory()}
+            onClick={() => { void loadInventory(); void loadFilterOptions(); }}
           >
             Reintentar
           </button>
         </section>
       ) : null}
+
+      {filterOptionsState.errorMessage ? <div className="error-state">
+        No pudimos actualizar las marcas y proveedores. {filterOptionsState.errorMessage}
+        <button type="button" className="secondary-button" onClick={() => void loadFilterOptions()}>Reintentar filtros</button>
+      </div> : null}
 
       {state.isLoading && state.summary === null ? (
         <section className="panel empty-state">
@@ -838,12 +914,6 @@ export function InventoryScreen() {
 
       {state.summary ? (
         <>
-          {state.errorMessage ? (
-            <section className="error-state">
-              <strong>Mostrando la última información disponible.</strong> {state.errorMessage}
-            </section>
-          ) : null}
-
           {state.items.length > 0 && viewMode === "cards" ? (
             <section className="inventory-card-list" aria-busy={state.isRefreshing}>
                   {state.items.map((item) => (
@@ -882,7 +952,7 @@ export function InventoryScreen() {
                     <div className="inventory-card__stats">
                       <span>Stock: {formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</span>
                       <span>Mínimo: {formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</span>
-                      <span>Venta: {formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</span>
+                      <span>Venta: {item.pricing_pending ? "Completar costo/porcentaje" : formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</span>
                     </div>
                     <div className="timeline-card__badges">
                       {getInventoryStatusBadges(item).map((badge) => (
@@ -974,7 +1044,7 @@ export function InventoryScreen() {
                           </td>
                           <td>{formatInventoryQuantity(item.current_stock, item.unit, moneyPreferences.locale)}</td>
                           <td>{formatInventoryQuantity(item.minimum_stock, item.unit, moneyPreferences.locale)}</td>
-                          <td>{formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</td>
+                          <td>{item.pricing_pending ? "Completar costo/porcentaje" : formatInventoryCurrency(item.sale_price_ars, moneyPreferences)}</td>
                           <td>
                             <span className="inventory-table__badges">
                               {statusBadges.map((badge) => (
@@ -1238,7 +1308,7 @@ export function InventoryScreen() {
 
       {selectedItemId ? (
         <InventoryDetailModal key={selectedItemId} itemId={selectedItemId}
-          onClose={closeDetail} onChanged={() => void loadInventory()} />
+          onClose={closeDetail} onChanged={handleDetailChanged} />
       ) : null}
 
       {isPrintOpen ? (
@@ -1317,7 +1387,7 @@ export function InventoryScreen() {
       ) : null}
 
       {isBulkOpen ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setIsBulkOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeBulk}>
           <section
             className="bottom-sheet inventory-bulk-sheet"
             role="dialog"
@@ -1330,11 +1400,11 @@ export function InventoryScreen() {
                 <p className="eyebrow">Inventario</p>
                 <h2 id="inventory-bulk-title">Edición grupal</h2>
               </div>
-              <button className="icon-button" type="button" onClick={() => setIsBulkOpen(false)}>
+              <button className="icon-button" type="button" onClick={closeBulk}>
                 <X size={18} />
               </button>
             </div>
-            <div className="inventory-filter-grid">
+            <fieldset className="inventory-filter-grid" disabled={isBulkPreviewing || isBulkConfirming}>
               <label className="field">
                 <span>Operación</span>
                 <select
@@ -1367,12 +1437,13 @@ export function InventoryScreen() {
                   <input
                     checked={bulkConfirmClear}
                     type="checkbox"
-                    onChange={(event) => setBulkConfirmClear(event.target.checked)}
+                    onChange={(event) => { setBulkConfirmClear(event.target.checked); setBulkPreview(null); }}
                   />
                   <span>Confirmar limpieza si el valor está vacío</span>
                 </label>
               ) : null}
-            </div>
+            </fieldset>
+            <p className="panel-note">Los importes de precio operan sobre la venta base en {moneyPreferences.currencyCode}, antes del impuesto de venta mostrado en la previsualización.</p>
             <div className="panel-note">
               {bulkSelectionMode === "filtered"
                 ? "Se seleccionaron todos los productos que cumplen los filtros actuales."
@@ -1393,37 +1464,43 @@ export function InventoryScreen() {
                       </tr>
                     </thead>
                     <tbody>
-                      {bulkPreview.items.slice(0, 20).map((row) => (
+                      {bulkPreview.items.map((row) => (
                         <tr key={row.id} className="inventory-table__row--static">
                           <td>{row.inventory_item_name ?? row.inventory_item_id}</td>
-                          <td>{row.field_name}</td>
-                          <td>{formatBulkValue(row.old_value_json)}</td>
-                          <td>{formatBulkValue(row.new_value_json)}</td>
-                          <td>{row.status}</td>
+                          <td>{bulkFieldLabel(row.field_name)}</td>
+                          <td>{formatBulkValue(row.old_value_json, moneyPreferences)}</td>
+                          <td>{formatBulkValue(row.new_value_json, moneyPreferences)}</td>
+                          <td>{bulkRowStatus(row.status)}{row.error_message ? <small role="status">{bulkRowReason(row.error_message)}</small> : null}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 <p className="panel-note">
-                  Afectados {bulkPreview.affected_count}, sin cambio {bulkPreview.unchanged_count}, inválidos {bulkPreview.invalid_count}.
+                  Se aplicarán {bulkPreview.affected_count} filas válidas. Se omitirán {bulkPreview.unchanged_count} sin cambios y {bulkPreview.invalid_count} inválidas.
+                  Si una fila válida cambió después de simular, no se aplicará el grupo y será necesario volver a simular.
                 </p>
+                {bulkPreviewPages > 1 ? <div className="pagination-controls">
+                  <button type="button" className="secondary-button" disabled={bulkPreviewPage <= 1 || isBulkPreviewing || isBulkConfirming} onClick={() => void loadBulkPreviewPage(bulkPreviewPage - 1)}>Anterior</button>
+                  <span>Página {bulkPreviewPage} de {bulkPreviewPages}</span>
+                  <button type="button" className="secondary-button" disabled={bulkPreviewPage >= bulkPreviewPages || isBulkPreviewing || isBulkConfirming} onClick={() => void loadBulkPreviewPage(bulkPreviewPage + 1)}>Siguiente</button>
+                </div> : null}
               </section>
             ) : null}
             <div className="modal-actions">
-              <button className="secondary-button" type="button" onClick={() => setIsBulkOpen(false)}>
+              <button className="secondary-button" type="button" onClick={closeBulk}>
                 Cancelar
               </button>
-              <button className="secondary-button" disabled={isBulkPreviewing} type="button" onClick={handleBulkPreview}>
+              <button className="secondary-button" disabled={isBulkPreviewing || isBulkConfirming} type="button" onClick={handleBulkPreview}>
                 Simular
               </button>
               <button
                 className="primary-button"
-                disabled={!bulkPreview || bulkPreview.affected_count === 0 || isBulkConfirming}
+                disabled={!bulkPreview || bulkPreview.affected_count === 0 || isBulkConfirming || isBulkPreviewing}
                 type="button"
                 onClick={handleBulkConfirm}
               >
-                Confirmar
+                Confirmar {bulkPreview?.affected_count ?? 0} productos
               </button>
             </div>
           </section>
@@ -1591,32 +1668,34 @@ function buildBulkOperationPayload(
 
   if (operationType === "increase_sale_price_percentage" || operationType === "decrease_sale_price_percentage") {
     const value = readBulkNumber(rawValue);
-    if (value === null || value <= 0) {
-      return "Ingresa un porcentaje mayor que cero.";
+    if (value === null || value <= 0 || value > 1000 || !hasTwoDecimals(value)) {
+      return "Ingresa un porcentaje mayor que cero y hasta 1000, con hasta dos decimales.";
     }
     operation.percentage = value;
   } else if (operationType === "set_profit_margin_percentage") {
     const value = readBulkNumber(rawValue);
-    if (value === null || value < 0) {
-      return "Ingresa un margen mayor o igual a cero.";
+    if (value === null || value < 0 || value > 1000 || !hasTwoDecimals(value)) {
+      return "Ingresa un margen de 0 a 1000, con hasta dos decimales.";
     }
     operation.profit_margin_percentage = value;
   } else if (operationType === "set_sale_price") {
     const value = readBulkNumber(rawValue);
-    if (value === null || value < 0) {
-      return "Ingresa un precio mayor o igual a cero.";
+    if (value === null || value < 0 || value > 9999999999.99 || !hasTwoDecimals(value)) {
+      return "Ingresa un precio de 0 a 9999999999.99, con hasta dos decimales.";
     }
     operation.sale_price_ars = value;
   } else if (operationType === "set_minimum_stock") {
     const value = readBulkNumber(rawValue);
-    if (value === null || value < 0) {
-      return "Ingresa un stock mínimo mayor o igual a cero.";
+    if (value === null || value < 0 || value > 9999999999.99 || !hasTwoDecimals(value)) {
+      return "Ingresa un stock mínimo de 0 a 9999999999.99, con hasta dos decimales.";
     }
     operation.minimum_stock = value;
-  } else if (operationType === "set_brand") {
-    operation.brand = rawValue.trim();
-  } else if (operationType === "set_supplier") {
-    operation.supplier = rawValue.trim();
+  } else if (operationType === "set_brand" || operationType === "set_supplier") {
+    const value = rawValue.trim();
+    if (!value && !confirmClear) return "Confirma la limpieza del campo vacío.";
+    if (value.length > (operationType === "set_brand" ? 150 : 255)) return "El texto supera la longitud permitida.";
+    if (operationType === "set_brand") operation.brand = value;
+    else operation.supplier = value;
   }
 
   if (selectionMode === "selected") {
@@ -1643,7 +1722,7 @@ function buildBulkOperationPayload(
   return {
     selection: {
       selection_mode: "filtered",
-      filters,
+      filters: { ...filters, ...(queryState.legacyStatus ? { status: queryState.legacyStatus } : {}) },
       excluded_ids: Array.from(excludedIds),
     },
     operation,
@@ -1682,15 +1761,6 @@ function bulkValuePlaceholder(operationType: InventoryBulkOperationType) {
   return "Valor";
 }
 
-function formatBulkValue(value: Record<string, unknown> | null) {
-  if (!value) {
-    return "";
-  }
-  const innerValue = value.value;
-  if (innerValue && typeof innerValue === "object") {
-    return Object.entries(innerValue as Record<string, unknown>)
-      .map(([key, item]) => `${key}: ${String(item ?? "")}`)
-      .join(", ");
-  }
-  return String(innerValue ?? "");
+function hasTwoDecimals(value: number) {
+  return Math.abs(value * 100 - Math.round(value * 100)) < 0.000001;
 }

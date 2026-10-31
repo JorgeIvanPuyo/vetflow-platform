@@ -674,6 +674,10 @@ export function SettingsScreen() {
                   </span>
                   <span aria-hidden="true">→</span>
                 </Link>
+                <Link className="settings-navigation-row" href="/settings/sales/fiscal">
+                  <span><strong>Configuración fiscal argentina</strong><small>Política, ambientes, puntos de venta y atribución de cobros.</small></span>
+                  <span aria-hidden="true">→</span>
+                </Link>
               </div>
             ) : null}
           </section>

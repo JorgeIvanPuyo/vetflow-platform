@@ -3,6 +3,10 @@ from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.exam import Exam
 from app.models.follow_up import FollowUp
+from app.models.fiscal_configuration import FiscalPolicy, FiscalPolicyReview, FiscalSeries
+from app.models.fiscal_proposal import FiscalProposal, FiscalPaymentAllocation
+from app.models.arca_auth import ArcaAuthCache, ArcaTenantTicketGrant
+from app.models.arca_emission import ArcaSeriesOwnership, ArcaEmissionIntent, ArcaEmissionAttempt, ArcaDocumentFile, ArcaParameterCache
 from app.models.inventory_bulk_operation import InventoryBulkOperation, InventoryBulkOperationItem
 from app.models.inventory_code_sequence import InventoryCodeSequence
 from app.models.inventory_import import InventoryImport, InventoryImportRow
@@ -33,6 +37,8 @@ from app.models.tenant_preference import TenantPreference
 from app.models.user import User
 
 __all__ = [
+    "ArcaAuthCache", "ArcaTenantTicketGrant", "ArcaSeriesOwnership", "ArcaEmissionIntent", "ArcaEmissionAttempt", "ArcaDocumentFile", "ArcaParameterCache",
+    "FiscalPolicy", "FiscalPolicyReview", "FiscalSeries", "FiscalProposal", "FiscalPaymentAllocation",
     "Tenant",
     "TenantPreference",
     "Service",

@@ -72,6 +72,7 @@ class PurchaseReturnService:
                 document_type=payload.document_type,
                 document_number=payload.document_number,
                 currency=purchase.currency,
+                agreed_amount_ars=payload.agreed_amount_ars,
                 created_by_user_id=created_by_user_id,
                 **totals,
             )
@@ -145,6 +146,7 @@ class PurchaseReturnService:
                 "subtotal_ars": item.subtotal_ars,
                 "tax_total_ars": item.tax_total_ars,
                 "total_ars": item.total_ars,
+                "agreed_amount_ars": item.agreed_amount_ars,
                 "item_count": item_count,
                 "attachment_status": "attached" if has_attachment else "pending",
                 "created_by_user_id": item.created_by_user_id,
@@ -234,6 +236,7 @@ class PurchaseReturnService:
             purchase = self._get_received_purchase(
                 tenant_id, purchase_return.purchase_id, for_update=True
             )
+            self._validate_agreed_amount(purchase, purchase_return)
             confirmed = self.repository.confirmed_quantities_by_purchase_item(
                 tenant_id, purchase.id
             )
@@ -454,6 +457,19 @@ class PurchaseReturnService:
                 "Sólo una compra recibida puede registrar devoluciones",
             )
         return purchase
+
+    @staticmethod
+    def _validate_agreed_amount(purchase: Purchase, purchase_return: PurchaseReturn) -> None:
+        amount = purchase_return.agreed_amount_ars
+        if purchase.discount_amount_ars > ZERO and amount is None:
+            raise AppError(
+                422, "purchase_return_agreed_amount_required",
+                "Ingresa el importe acordado con el proveedor para confirmar esta devolución de una compra con descuento. Puede ser cero.",
+            )
+        if amount is not None and (
+            not amount.is_finite() or amount < ZERO or amount >= Decimal("100000000000000")
+        ):
+            raise AppError(422, "purchase_return_invalid_agreed_amount", "El importe acordado debe ser finito y no negativo.")
 
     def _require_draft(self, purchase_return: PurchaseReturn, action: str) -> None:
         if purchase_return.status != "draft":

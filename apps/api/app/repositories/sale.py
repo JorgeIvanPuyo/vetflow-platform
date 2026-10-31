@@ -58,7 +58,6 @@ class SaleRepository:
                 selectinload(
                     Sale.fiscal_documents.and_(
                         SaleFiscalDocument.tenant_id == tenant_id,
-                        SaleFiscalDocument.is_active.is_(True),
                     )
                 ).options(
                     selectinload(
@@ -141,6 +140,10 @@ class SaleRepository:
                 SaleFiscalDocument.tenant_id == tenant_id,
                 SaleFiscalDocument.sale_id == Sale.id,
                 SaleFiscalDocument.is_active.is_(True),
+                or_(
+                    SaleFiscalDocument.source == "manual",
+                    and_(SaleFiscalDocument.authorization_status == "authorized", SaleFiscalDocument.environment == "production"),
+                ),
             )
         )
         if fiscal_status == "pending":
@@ -178,7 +181,6 @@ class SaleRepository:
                 selectinload(
                     Sale.fiscal_documents.and_(
                         SaleFiscalDocument.tenant_id == tenant_id,
-                        SaleFiscalDocument.is_active.is_(True),
                     )
                 ),
             )

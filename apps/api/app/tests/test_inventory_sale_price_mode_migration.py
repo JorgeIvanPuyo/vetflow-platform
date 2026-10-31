@@ -12,9 +12,10 @@ from app.core.config import get_settings
 from app.tests.test_service_pricing_migration import _config
 
 
-def test_sale_price_mode_migration_is_single_head():
+def test_sale_price_mode_migration_is_in_merged_chain():
     script = ScriptDirectory.from_config(_config())
-    assert script.get_heads() == ["0055_inventory_sale_price_mode"]
+    # This historical revision is an ancestor after the ARCA/inventory merge.
+    assert "0055_inventory_sale_price_mode" in {revision.revision for revision in script.walk_revisions()}
     assert (
         script.get_revision("0055_inventory_sale_price_mode").down_revision
         == "0054_receivables_foundation"

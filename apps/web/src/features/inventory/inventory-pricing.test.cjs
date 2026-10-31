@@ -23,23 +23,34 @@ function formState(overrides = {}) {
   return { ...helpers.getInitialInventoryFormState(), name: 'Bravecto', purchase_price_ars: '26849.90', profit_margin_percentage: '80', sale_price_ars: '64038.87', ...overrides };
 }
 
-test('calculated price mode drops a stale sale price so the margin applies', () => {
-  const payload = helpers.inventoryFormToUpdatePayload(formState(), false);
-  assert.equal(payload.sale_price_is_manual, false);
-  assert.equal(payload.sale_price_ars, null);
-  assert.equal(payload.profit_margin_percentage, 80);
+test('individual payloads contain pricing inputs and omit a stale direct price', () => {
+  for (const build of [helpers.inventoryFormToCreatePayload, helpers.inventoryFormToUpdatePayload]) {
+    const payload = build(formState());
+    assert.equal(payload.sale_price_is_manual, undefined);
+    assert.equal(payload.sale_price_ars, undefined);
+    assert.equal(payload.profit_margin_percentage, 80);
+    assert.equal(payload.purchase_price_ars, 26849.90);
+  }
 });
 
-test('manual price mode sends the fixed sale price', () => {
-  const payload = helpers.inventoryFormToUpdatePayload(formState(), true);
-  assert.equal(payload.sale_price_is_manual, true);
-  assert.equal(payload.sale_price_ars, 64038.87);
-  const createPayload = helpers.inventoryFormToCreatePayload(formState(), true);
-  assert.equal(createPayload.sale_price_is_manual, true);
-  assert.equal(createPayload.sale_price_ars, 64038.87);
+test('purchase tax precedes markup and sale tax is applied once', () => {
+  const preview = helpers.calculateInventoryPricePreview(formState({ purchase_price_ars: '100', purchase_tax_rate_percentage: '21', profit_margin_percentage: '30', sale_tax_rate_percentage: '10' }));
+  assert.equal(preview.saleWithoutTax, 157.30);
+  assert.equal(preview.saleWithTax, 173.03);
+  assert.equal(helpers.calculateInventoryPricePreview(formState({ purchase_price_ars: '100', purchase_tax_rate_percentage: '21', profit_margin_percentage: '30', round_sale_price: true }), 25).saleWithoutTax, 150);
 });
 
-test('manual price mode requires a sale price', () => {
-  assert.match(helpers.validateInventoryForm(formState({ sale_price_ars: '' }), { manualSalePrice: true }), /precio de venta manual/);
-  assert.equal(helpers.validateInventoryForm(formState({ sale_price_ars: '' }), { manualSalePrice: false }), null);
+test('zero inputs are valid and absent inputs remain pending', () => {
+  const zero = formState({ purchase_price_ars: '0', profit_margin_percentage: '0' });
+  assert.equal(helpers.validateInventoryForm(zero), null);
+  assert.equal(helpers.calculateInventoryPricePreview(zero).saleWithoutTax, 0);
+  assert.equal(helpers.inventoryFormToCreatePayload(zero).profit_margin_percentage, 0);
+  assert.equal(helpers.calculateInventoryPricePreview(formState({ purchase_price_ars: '' })).saleWithoutTax, null);
+  assert.match(helpers.validateInventoryForm(formState({ profit_margin_percentage: '' })), /porcentaje/);
+  assert.equal(helpers.calculateInventoryPricePreview(formState({ profit_margin_percentage: '' })).saleWithoutTax, null);
+});
+
+test('pending products carry an inventory badge', () => {
+  const badges = helpers.getInventoryStatusBadges({ pricing_pending: true, current_stock: '0', minimum_stock: '0', is_active: true });
+  assert.ok(badges.some((badge) => badge.label === 'Completar costo/porcentaje'));
 });

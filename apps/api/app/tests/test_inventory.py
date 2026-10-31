@@ -547,9 +547,9 @@ def test_filter_stock_statuses_are_mutually_exclusive(client, db_session, tenant
     ],
 )
 def test_inventory_sorting(client, tenant, sort_by, sort_direction, expected_names):
-    _create_item(client, tenant, name="Stock 1", current_stock="1", sale_price_ars="200")
-    _create_item(client, tenant, name="Stock 5", current_stock="5", sale_price_ars="300")
-    _create_item(client, tenant, name="Stock 9", current_stock="9", sale_price_ars="100")
+    _create_item(client, tenant, name="Stock 1", current_stock="1", purchase_price_ars="200", profit_margin_percentage="0")
+    _create_item(client, tenant, name="Stock 5", current_stock="5", purchase_price_ars="300", profit_margin_percentage="0")
+    _create_item(client, tenant, name="Stock 9", current_stock="9", purchase_price_ars="100", profit_margin_percentage="0")
 
     response = client.get(
         "/api/v1/inventory/items",
@@ -1066,20 +1066,13 @@ def test_create_item_calculates_purchase_and_sale_tax(client, tenant):
     assert item["sale_price_with_tax_ars"] == "2635.38"
 
 
-def test_create_item_preserves_manual_sale_price_and_calculates_tax(client, tenant):
-    item = _create_item(
-        client,
-        tenant,
-        purchase_price_ars="1000",
-        purchase_tax_rate_percentage="21",
-        profit_margin_percentage="80",
-        sale_price_ars="3874",
-        sale_tax_rate_percentage="21",
-    )
-
-    assert item["sale_price_ars"] == "3874.00"
-    assert item["sale_tax_amount_ars"] == "813.54"
-    assert item["sale_price_with_tax_ars"] == "4687.54"
+def test_create_item_rejects_incompatible_direct_sale_price(client, tenant):
+    response = client.post("/api/v1/inventory/items", headers=_headers(tenant), json=_item_payload(
+        purchase_price_ars="1000", purchase_tax_rate_percentage="21",
+        profit_margin_percentage="80", sale_price_ars="3874", sale_tax_rate_percentage="21",
+    ))
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "catalog_sale_price_is_calculated"
 
 
 def test_round_sale_price_before_calculating_sale_tax(client, tenant):
@@ -1147,20 +1140,14 @@ def test_update_sale_tax_changes_totals_without_changing_sale_price(client, tena
     assert data["sale_price_with_tax_ars"] == "1633.50"
 
 
-def test_update_manual_sale_price_preserves_value_and_calculates_tax(client, tenant):
+def test_update_direct_sale_price_rejected_without_changing_catalog(client, tenant):
     item = _create_item(client, tenant, sale_tax_rate_percentage="21")
+    response = client.patch(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant), json={"sale_price_ars": "3874"})
+    assert response.status_code == 422
+    current = client.get(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant)).json()["data"]
+    assert current["sale_price_ars"] == "1350.00"
+    assert current["sale_tax_amount_ars"] == "283.50"
 
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={"sale_price_ars": "3874"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["sale_price_ars"] == "3874.00"
-    assert data["sale_tax_amount_ars"] == "813.54"
-    assert data["sale_price_with_tax_ars"] == "4687.54"
 
 
 @pytest.mark.parametrize(
@@ -1241,7 +1228,7 @@ def test_register_entry_movement_increases_stock(client, tenant):
 
 
 def test_register_exit_movement_decreases_stock(client, db_session, tenant):
-    item = _create_item(client, tenant, current_stock="10", sale_price_ars="2000")
+    item = _create_item(client, tenant, current_stock="10", purchase_price_ars="2000", profit_margin_percentage="0")
     owner = _create_owner(client, tenant)
     patient = _create_patient(client, tenant, owner["id"])
     consultation = _create_consultation(db_session, tenant, patient["id"])
@@ -1625,112 +1612,106 @@ def test_response_includes_created_by_display_fields_when_available(
     assert item["created_by_user_email"] == "inventory@example.com"
 
 
-def test_sale_price_mode_is_inferred_on_create(client, tenant):
-    calculated = _create_item(client, tenant)
-    manual = _create_item(client, tenant, name="Manual", sale_price_ars="5000")
-
-    assert calculated["sale_price_is_manual"] is False
-    assert calculated["sale_price_ars"] == "1350.00"
-    assert manual["sale_price_is_manual"] is True
-    assert manual["sale_price_ars"] == "5000.00"
-
-
-def test_create_calculated_mode_ignores_sent_sale_price(client, tenant):
-    item = _create_item(
-        client,
-        tenant,
-        sale_price_ars="5000",
-        sale_price_is_manual=False,
-    )
-
+@pytest.mark.parametrize("mode", [None, False, True])
+def test_compatible_direct_price_cannot_enable_fixed_mode(client, tenant, mode):
+    item = _create_item(client, tenant, sale_price_ars="1350", sale_price_is_manual=mode)
     assert item["sale_price_is_manual"] is False
     assert item["sale_price_ars"] == "1350.00"
 
 
-def test_manual_mode_requires_a_sale_price(client, tenant):
-    response = client.post(
-        "/api/v1/inventory/items",
-        headers=_headers(tenant),
-        json=_item_payload(sale_price_is_manual=True),
-    )
-
+@pytest.mark.parametrize("mode", [False, True])
+def test_incompatible_direct_price_is_rejected_in_every_mode(client, tenant, mode):
+    response = client.post("/api/v1/inventory/items", headers=_headers(tenant), json=_item_payload(
+        sale_price_ars="5000", sale_price_is_manual=mode,
+    ))
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "manual_sale_price_required"
 
 
-def test_manual_sale_price_is_kept_when_margin_changes(client, tenant):
-    item = _create_item(client, tenant, sale_price_ars="5000")
-
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={"profit_margin_percentage": "80", "sale_price_is_manual": True},
-    )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["profit_margin_percentage"] == "80.00"
-    assert data["sale_price_ars"] == "5000.00"
-    assert data["sale_price_is_manual"] is True
-
-
-def test_switching_manual_price_to_calculated_applies_margin(client, tenant):
-    item = _create_item(client, tenant, sale_price_ars="5000")
-
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={"profit_margin_percentage": "80", "sale_price_is_manual": False},
-    )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["sale_price_ars"] == "1800.00"
-    assert data["sale_price_is_manual"] is False
-
-
-def test_calculated_price_follows_margin_even_if_stale_price_is_sent(client, tenant):
+def test_legacy_manual_price_recalculates_when_margin_changes(client, db_session, tenant):
     item = _create_item(client, tenant)
+    legacy = db_session.get(InventoryItem, uuid.UUID(item["id"]))
+    legacy.sale_price_is_manual = True
+    legacy.sale_price_ars = Decimal("5000")
+    db_session.commit()
+    response = client.patch(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant), json={
+        "profit_margin_percentage": "80", "sale_price_is_manual": True,
+    })
+    assert response.status_code == 200
+    assert response.json()["data"]["sale_price_ars"] == "1800.00"
+    assert response.json()["data"]["sale_price_is_manual"] is False
 
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={
-            "profit_margin_percentage": "80",
-            "sale_price_ars": item["sale_price_ars"],
-            "sale_price_is_manual": False,
-        },
-    )
 
+def test_stale_direct_price_is_rejected_instead_of_silently_discarded(client, tenant):
+    item = _create_item(client, tenant)
+    response = client.patch(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant), json={
+        "profit_margin_percentage": "80", "sale_price_ars": item["sale_price_ars"], "sale_price_is_manual": False,
+    })
+    assert response.status_code == 422
+    response = client.patch(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant), json={
+        "profit_margin_percentage": "80",
+    })
     assert response.status_code == 200
     assert response.json()["data"]["sale_price_ars"] == "1800.00"
 
 
-def test_legacy_update_with_sale_price_marks_item_manual(client, tenant):
-    item = _create_item(client, tenant)
+def test_pending_filter_covers_pages_and_inactive_without_leaking_tenants(client, db_session, tenant, other_tenant):
+    first = _create_item(client, tenant, purchase_price_ars=None)
+    second = _create_item(client, tenant, purchase_price_ars=None, is_active=False)
+    _create_item(client, tenant, purchase_price_ars="0", profit_margin_percentage="0")
+    _create_item(client, other_tenant, purchase_price_ars=None)
+    legacy = db_session.get(InventoryItem, uuid.UUID(first["id"]))
+    legacy.sale_price_ars = Decimal("99")
+    legacy.sale_price_is_manual = True
+    db_session.commit()
+    pages = [client.get("/api/v1/inventory/items", headers=_headers(tenant), params={
+        "status": "pricing_pending", "page_size": 1, "page": page,
+    }).json() for page in (1, 2)]
+    assert all(page["meta"]["total"] == 2 for page in pages)
+    assert {page["data"][0]["id"] for page in pages} == {first["id"], second["id"]}
+    assert all(page["data"][0]["pricing_pending"] for page in pages)
+    reference = client.get(f"/api/v1/inventory/items/{first['id']}", headers=_headers(tenant)).json()["data"]
+    assert reference["sale_price_ars"] == "99.00"
+    assert reference["sale_price_with_tax_ars"] is None
+    completed = client.patch(f"/api/v1/inventory/items/{first['id']}", headers=_headers(tenant), json={
+        "purchase_price_ars": "0", "profit_margin_percentage": "0",
+    }).json()["data"]
+    assert completed["pricing_pending"] is False
+    assert completed["sale_price_ars"] == "0.00"
+    assert completed["sale_price_is_manual"] is False
 
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={"sale_price_ars": "4321"},
-    )
 
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["sale_price_ars"] == "4321.00"
-    assert data["sale_price_is_manual"] is True
+def test_rounding_preferences_recalculate_only_own_catalog(client, db_session, tenant, other_tenant):
+    admin = _create_admin(db_session, tenant, "rounding@example.com", "Admin")
+    first = _create_item(client, tenant, purchase_price_ars="100", purchase_tax_rate_percentage="21", profit_margin_percentage="30", round_sale_price=True)
+    second = _create_item(client, other_tenant, purchase_price_ars="100", purchase_tax_rate_percentage="21", profit_margin_percentage="30", round_sale_price=True)
+    assert first["sale_price_ars"] == "160.00"
+    response = client.patch("/api/v1/clinic/preferences", headers=_user_headers(admin.email), json={"money_rounding_increment": "25"})
+    assert response.status_code == 200, response.text
+    data = client.get(f"/api/v1/inventory/items/{first['id']}", headers=_headers(tenant)).json()["data"]
+    other = client.get(f"/api/v1/inventory/items/{second['id']}", headers=_headers(other_tenant)).json()["data"]
+    assert data["sale_price_ars"] == "150.00"
+    assert other["sale_price_ars"] == "160.00"
 
 
-def test_non_pricing_update_keeps_sale_price_mode(client, tenant):
-    item = _create_item(client, tenant, sale_price_ars="5000")
-
-    response = client.patch(
-        f"/api/v1/inventory/items/{item['id']}",
-        headers=_headers(tenant),
-        json={"name": "Nombre nuevo"},
-    )
-
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["sale_price_ars"] == "5000.00"
-    assert data["sale_price_is_manual"] is True
+def test_sale_selection_requires_derived_price_but_keeps_explicit_sale_amounts(client, db_session, tenant):
+    item = _create_item(client, tenant, purchase_price_ars=None)
+    model = db_session.get(InventoryItem, uuid.UUID(item["id"]))
+    model.sale_price_ars = Decimal("999")
+    model.sale_price_is_manual = True
+    db_session.commit()
+    line = {"line_type": "product", "inventory_item_id": item["id"], "quantity": "1"}
+    payload = {"sale_date": "2026-10-30", "items": [line]}
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json=payload)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "sale_price_missing"
+    line["unit_price_ars"] = "12.00"
+    line["discount_percentage"] = "10"
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json=payload)
+    assert response.status_code == 201
+    assert response.json()["data"]["total_ars"] == "10.80"
+    completed = client.patch(f"/api/v1/inventory/items/{item['id']}", headers=_headers(tenant), json={"purchase_price_ars": "0", "profit_margin_percentage": "0"})
+    assert completed.status_code == 200
+    line.pop("unit_price_ars")
+    response = client.post("/api/v1/sales", headers=_headers(tenant), json=payload)
+    assert response.status_code == 201
+    assert response.json()["data"]["total_ars"] == "0.00"

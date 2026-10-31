@@ -21,6 +21,16 @@ PurchaseSortBy = Literal[
     "purchase_date", "created_at", "total_ars", "supplier_name", "status"
 ]
 SortDirection = Literal["asc", "desc"]
+PurchaseDiscountType = Literal["none", "percentage", "amount"]
+
+
+def _validate_discount_pair(discount_type, value):
+    if discount_type == "none" and value != 0:
+        raise ValueError("Sin descuento requiere un valor cero")
+    if discount_type == "percentage" and value > 100:
+        raise ValueError("El porcentaje de descuento debe estar entre 0 y 100")
+
+
 PurchaseAttachmentStatus = Literal["pending", "attached"]
 
 
@@ -43,6 +53,16 @@ class PurchaseCreate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
     items: list[PurchaseItemInput] = Field(min_length=1, max_length=200)
 
+    discount_type: PurchaseDiscountType = "none"
+    discount_value: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("99999999999999.99"), decimal_places=2, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_discount(self):
+        if self.discount_type != "none" and "discount_value" not in self.model_fields_set:
+            raise ValueError("Ingresa el valor del descuento junto con su modalidad")
+        _validate_discount_pair(self.discount_type, self.discount_value)
+        return self
+
     @field_validator("document_number", "notes", mode="before")
     @classmethod
     def strip_optional_strings(cls, value):
@@ -61,6 +81,20 @@ class PurchaseUpdate(BaseModel):
     document_number: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=4000)
     items: list[PurchaseItemInput] | None = Field(default=None, min_length=1, max_length=200)
+
+    discount_type: PurchaseDiscountType | None = None
+    discount_value: Decimal | None = Field(default=None, ge=0, le=Decimal("99999999999999.99"), decimal_places=2, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_discount(self):
+        fields = self.model_fields_set
+        if "discount_type" in fields or "discount_value" in fields:
+            if self.discount_type is None or ("discount_value" in fields and self.discount_value is None):
+                raise ValueError("Indica modalidad y valor de descuento; no se admite null")
+            if self.discount_type != "none" and "discount_value" not in fields:
+                raise ValueError("Ingresa el valor del descuento junto con su modalidad")
+            _validate_discount_pair(self.discount_type, self.discount_value or Decimal("0"))
+        return self
 
     @field_validator("document_number", "notes", mode="before")
     @classmethod
@@ -183,6 +217,10 @@ class PurchaseSummaryRead(BaseModel):
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
+    discount_amount_ars: Decimal
+    amount_payable_ars: Decimal
+    discount_type: PurchaseDiscountType
+    discount_value: Decimal
     status: PurchaseStatus
     item_count: int
     attachment_status: PurchaseAttachmentStatus
@@ -205,6 +243,8 @@ class PurchaseListSummaryRead(BaseModel):
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
+    discount_amount_ars: Decimal
+    amount_payable_ars: Decimal
 
 
 class PurchaseCreatorOptionRead(BaseModel):
@@ -230,6 +270,10 @@ class PurchaseDetailRead(BaseModel):
     subtotal_ars: Decimal
     tax_total_ars: Decimal
     total_ars: Decimal
+    discount_amount_ars: Decimal
+    amount_payable_ars: Decimal
+    discount_type: PurchaseDiscountType
+    discount_value: Decimal
     notes: str | None = None
     status: PurchaseStatus
     created_by_user_id: uuid.UUID | None = None

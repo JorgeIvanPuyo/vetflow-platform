@@ -45,6 +45,11 @@ class PurchaseReturn(BaseModel):
             "subtotal_ars >= 0 AND tax_total_ars >= 0 AND total_ars >= 0",
             name="ck_purchase_returns_totals_non_negative",
         ),
+        CheckConstraint(
+            "agreed_amount_ars IS NULL OR "
+            "(agreed_amount_ars >= 0 AND agreed_amount_ars < 100000000000000)",
+            name="ck_purchase_returns_agreed_amount",
+        ),
         Index(
             "ix_purchase_returns_tenant_return_date",
             "tenant_id",
@@ -108,6 +113,9 @@ class PurchaseReturn(BaseModel):
     )
     total_ars: Mapped[Decimal] = mapped_column(
         Numeric(16, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    agreed_amount_ars: Mapped[Decimal | None] = mapped_column(
+        Numeric(16, 2), nullable=True
     )
     inventory_operation_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), nullable=True, index=True

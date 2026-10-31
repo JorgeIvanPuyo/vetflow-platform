@@ -26,6 +26,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
   const [reason, setReason] = useState("");
   const [documentType, setDocumentType] = useState<PurchaseReturnDocumentType | "">("");
   const [documentNumber, setDocumentNumber] = useState("");
+  const [agreedAmount, setAgreedAmount] = useState("");
   const [quantities, setQuantities] = useState<Quantities>({});
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,7 +52,8 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
           setReason(current.reason);
           setDocumentType(current.document_type ?? "");
           setDocumentNumber(current.document_number ?? "");
-          setQuantities(Object.fromEntries(current.items.map((item) => [item.purchase_item_id, item.quantity])));
+          setAgreedAmount(current.agreed_amount_ars ?? "");
+          setQuantities(Object.fromEntries(current.items.map((item) => [item.purchase_item_id, String(Number(item.quantity))])));
         } else if (purchaseId) {
           const response = await getPurchase(purchaseId);
           if (!active) return;
@@ -83,6 +85,13 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!purchase) return;
+    const amount = agreedAmount.trim();
+    if (Number(purchase.discount_amount_ars) > 0 && amount && (
+      !/^\d+(\.\d{1,2})?$/.test(amount) || !Number.isFinite(Number(amount)) || Number(amount) >= 100000000000000
+    )) {
+      setErrorMessage("El importe acordado debe ser finito, no negativo y tener hasta dos decimales.");
+      return;
+    }
     if (!reason.trim()) {
       setErrorMessage("Ingresa el motivo de la devolución.");
       return;
@@ -117,6 +126,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
       document_type: documentType || null,
       document_number: documentNumber.trim() || null,
       items: selected,
+      ...(Number(purchase.discount_amount_ars) > 0 ? { agreed_amount_ars: amount || null } : {}),
     };
     setIsSaving(true);
     setErrorMessage(null);
@@ -145,6 +155,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
   if (unavailableMessage || (!purchase && errorMessage)) return <div className="page-stack purchases-page"><section className="error-state">{unavailableMessage ?? errorMessage}</section><Link className="secondary-button" href={backHref}>Volver</Link></div>;
   if (!purchase) return null;
 
+
   return (
     <form className="page-stack purchases-page" onSubmit={handleSubmit}>
       <section className="screen-heading list-page__header">
@@ -164,6 +175,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
           <label className="field"><span>Fecha *</span><input required type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} /></label>
           <label className="field"><span>Tipo de documento</span><select value={documentType} onChange={(event) => setDocumentType(event.target.value as PurchaseReturnDocumentType | "")}><option value="">Sin especificar</option><option value="credit_note">Nota de crédito</option><option value="return_delivery_note">Remito de devolución</option><option value="other">Otro</option></select></label>
           <label className="field"><span>Número</span><input maxLength={120} value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value)} /></label>
+          {Number(purchase.discount_amount_ars) > 0 ? <label className="field"><span>Importe acordado con el proveedor (ARS)</span><input type="number" inputMode="decimal" min="0" max="99999999999999.99" step="0.01" value={agreedAmount} onChange={(event) => setAgreedAmount(event.target.value)} /><small>Puede quedar pendiente en borrador. Es obligatorio al confirmar y puede ser cero; no modifica los costos ni el IVA de las líneas.</small></label> : null}
           <label className="field purchase-notes-field"><span>Motivo *</span><textarea required rows={4} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
         </div>
       </section>
@@ -176,7 +188,7 @@ export function PurchaseReturnFormScreen({ purchaseId, returnId }: Props) {
         })}</tbody></table></div>
       </section>
 
-      <section className="panel purchase-summary"><div><span>Subtotal estimado</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div><div><span>IVA estimado</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div><div><span>Total estimado</span><strong>{formatPurchaseCurrency(estimate.total, moneyPreferences)}</strong></div><p>El backend recalculará y guardará los importes definitivos con los valores históricos.</p></section>
+      <section className="panel purchase-summary"><div><span>Subtotal estimado</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div><div><span>IVA estimado</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div><div><span>Bruto estimado de referencia</span><strong>{formatPurchaseCurrency(estimate.total, moneyPreferences)}</strong></div><p>El backend recalculará el bruto con los valores históricos. El importe acordado se guarda por separado, sin prorratearlo.</p></section>
 
       {!isEditing ? <section className="panel purchase-form-section"><div className="section-heading"><h2>Comprobante opcional</h2><p>PDF, JPEG o PNG de hasta 10 MB. También podrás adjuntarlo después.</p></div><label className="purchase-attachment-picker"><FileUp size={22} /><span>{attachmentFile?.name ?? "Seleccionar archivo"}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)} /></label></section> : null}
 

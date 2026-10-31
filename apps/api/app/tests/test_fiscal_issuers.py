@@ -4,10 +4,11 @@ import pytest
 
 from app.core.config import get_settings
 from app.models.user import User
+from app.tests.fiscal_test_support import fiscal_admin_headers
 
 
 def _headers(tenant):
-    return {"X-Tenant-Id": str(tenant.id)}
+    return fiscal_admin_headers(tenant)
 
 
 def _user(db, tenant, *, email="issuer@example.com", name="Dra. Emisora"):

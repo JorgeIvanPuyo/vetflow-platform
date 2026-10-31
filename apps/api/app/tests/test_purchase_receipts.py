@@ -50,7 +50,6 @@ def _create_item(client, tenant, *, name="Producto", is_active=True):
             "purchase_price_ars": "25.00",
             "purchase_tax_rate_percentage": "10.00",
             "profit_margin_percentage": "40.00",
-            "sale_price_ars": "100.00",
             "is_active": is_active,
         },
     )
@@ -133,7 +132,7 @@ def test_receive_purchase_is_atomic_traceable_and_updates_stock_and_last_cost(
     assert second_model.current_stock == Decimal("3.00")
     assert first_model.purchase_price_ars == Decimal("50.00")
     assert first_model.purchase_tax_rate_percentage == Decimal("21.00")
-    assert first_model.sale_price_ars == Decimal("100.00")
+    assert first_model.sale_price_ars == Decimal("84.70")
     assert first_model.profit_margin_percentage == Decimal("40.00")
     assert second_model.is_active is False
 
@@ -309,7 +308,7 @@ def test_reverse_receipt_is_atomic_keeps_originals_and_restores_safe_cost(
     assert item_model.current_stock == Decimal("0")
     assert item_model.purchase_price_ars == Decimal("25.00")
     assert item_model.purchase_tax_rate_percentage == Decimal("10.00")
-    assert item_model.sale_price_ars == Decimal("100.00")
+    assert item_model.sale_price_ars == Decimal("38.50")
     movements = list(db_session.scalars(select(InventoryMovement)).all())
     assert len(movements) == 2
     original = next(movement for movement in movements if movement.movement_type == "purchase")
@@ -551,7 +550,11 @@ def test_receive_recalculates_calculated_sale_price_and_reversal_restores_it(
     client, db_session, tenant
 ):
     item = _create_calculated_price_item(client, tenant)
-    manual_item = _create_item(client, tenant, name="Producto precio manual")
+    manual_item = _create_item(client, tenant, name="Producto antes manual")
+    legacy = db_session.get(InventoryItem, uuid.UUID(manual_item["id"]))
+    legacy.sale_price_is_manual = True
+    legacy.sale_price_ars = Decimal("100")
+    db_session.commit()
     purchase = _create_purchase(
         client,
         tenant,
@@ -567,8 +570,8 @@ def test_receive_recalculates_calculated_sale_price_and_reversal_restores_it(
     assert item_model.purchase_price_ars == Decimal("50.00")
     assert item_model.sale_price_ars == Decimal("84.70")
     assert item_model.sale_price_is_manual is False
-    assert manual_model.sale_price_ars == Decimal("100.00")
-    assert manual_model.sale_price_is_manual is True
+    assert manual_model.sale_price_ars == Decimal("84.70")
+    assert manual_model.sale_price_is_manual is False
 
     response = client.post(
         f"/api/v1/purchases/{purchase['id']}/reverse-receipt",
@@ -581,3 +584,71 @@ def test_receive_recalculates_calculated_sale_price_and_reversal_restores_it(
     item_model = db_session.get(InventoryItem, uuid.UUID(item["id"]))
     assert item_model.purchase_price_ars == Decimal("25.00")
     assert item_model.sale_price_ars == Decimal("38.50")
+
+
+@pytest.mark.parametrize(("new_cost", "expected_cost", "expected_tax", "expected_sale", "cost_changed"), [
+    ("50", "50", "21", "84.70", True),
+    ("20", "25", "10", "38.50", False),
+    ("25", "25", "10", "38.50", False),
+])
+def test_receipt_preserves_current_max_cost_and_actual_line_values(
+    client, db_session, tenant, new_cost, expected_cost, expected_tax, expected_sale, cost_changed,
+):
+    item = _create_item(client, tenant)
+    purchase = _create_purchase(client, tenant, [(item, "2", new_cost, "21")])
+    assert _receive(client, tenant, purchase["id"]).status_code == 200
+    db_session.expire_all()
+    model = db_session.get(InventoryItem, uuid.UUID(item["id"]))
+    line = db_session.scalar(select(PurchaseItem).where(PurchaseItem.purchase_id == uuid.UUID(purchase["id"])))
+    movement = db_session.scalar(select(InventoryMovement).where(InventoryMovement.source_id == purchase["id"]))
+    assert model.current_stock == Decimal("2")
+    assert model.purchase_price_ars == Decimal(expected_cost)
+    assert model.purchase_tax_rate_percentage == Decimal(expected_tax)
+    assert model.sale_price_ars == Decimal(expected_sale)
+    assert line.unit_price_without_tax_ars == Decimal(new_cost)
+    assert line.tax_rate_percentage == Decimal("21")
+    assert line.catalog_cost_updated is cost_changed
+    assert movement.unit_cost_ars == Decimal(new_cost)
+    assert movement.total_cost_ars == Decimal(new_cost) * 2
+    assert _receive(client, tenant, purchase["id"]).status_code == 409
+    response = client.post(f"/api/v1/purchases/{purchase['id']}/reverse-receipt", headers=_headers(tenant), json={"reason": "Corrección"})
+    assert response.status_code == 200
+    assert response.json()["data"]["reversal_warnings"] == []
+    db_session.refresh(model)
+    assert model.current_stock == 0
+    assert model.purchase_price_ars == Decimal("25")
+    assert model.purchase_tax_rate_percentage == Decimal("10")
+    assert model.sale_price_ars == Decimal("38.50")
+
+
+def test_manual_cost_reduction_establishes_new_reference_for_next_purchase(client, db_session, tenant):
+    item = _create_item(client, tenant)
+    endpoint = f"/api/v1/inventory/items/{item['id']}"
+    assert client.patch(endpoint, headers=_headers(tenant), json={
+        "purchase_price_ars": "1000", "purchase_tax_rate_percentage": "0", "profit_margin_percentage": "30",
+    }).status_code == 200
+    purchases = []
+    for cost in ("1200", "1100"):
+        purchase = _create_purchase(client, tenant, [(item, "1", cost, "0")])
+        assert _receive(client, tenant, purchase["id"]).status_code == 200
+        purchases.append(purchase)
+    assert client.get(endpoint, headers=_headers(tenant)).json()["data"]["purchase_price_ars"] == "1200.00"
+    assert client.patch(endpoint, headers=_headers(tenant), json={"purchase_price_ars": "900"}).json()["data"]["sale_price_ars"] == "1170.00"
+    purchase = _create_purchase(client, tenant, [(item, "1", "950", "0")])
+    assert _receive(client, tenant, purchase["id"]).status_code == 200
+    data = client.get(endpoint, headers=_headers(tenant)).json()["data"]
+    assert (data["purchase_price_ars"], data["sale_price_ars"], data["current_stock"]) == ("950.00", "1235.00", "3.00")
+    first = client.get(f"/api/v1/purchases/{purchases[0]['id']}", headers=_headers(tenant)).json()["data"]
+    assert first["items"][0]["unit_price_without_tax_ars"] == "1200.00"
+
+
+def test_receipt_sets_absent_cost_even_for_zero(client, tenant):
+    item = _create_item(client, tenant)
+    endpoint = f"/api/v1/inventory/items/{item['id']}"
+    assert client.patch(endpoint, headers=_headers(tenant), json={"purchase_price_ars": None}).status_code == 200
+    purchase = _create_purchase(client, tenant, [(item, "1", "0", "21")])
+    assert _receive(client, tenant, purchase["id"]).status_code == 200
+    data = client.get(endpoint, headers=_headers(tenant)).json()["data"]
+    assert data["purchase_price_ars"] == "0.00"
+    assert data["sale_price_ars"] == "0.00"
+    assert data["pricing_pending"] is False

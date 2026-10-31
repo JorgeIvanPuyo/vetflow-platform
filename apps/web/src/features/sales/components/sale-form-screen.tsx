@@ -162,8 +162,13 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   }
 
   function addProduct(item: InventoryItem) {
+    if (item.pricing_pending || item.sale_price_ars === null) {
+      setErrorMessage("Completar costo/porcentaje del producto antes de agregarlo a la venta.");
+      return;
+    }
     if (lines.some((line) => line.type === "product" && line.inventoryItemId === item.id)) { setErrorMessage("Ese producto ya está agregado a la venta."); return; }
-    setLines((current) => [...current, { key: item.id, type: "product", inventoryItemId: item.id, description: item.name, code: item.internal_code, unit: item.unit, stock: item.current_stock, quantity: "1", price: item.sale_price_ars ?? "0", discount: "0" }]);
+    const price = item.sale_price_ars;
+    setLines((current) => [...current, { key: item.id, type: "product", inventoryItemId: item.id, description: item.name, code: item.internal_code, unit: item.unit, stock: item.current_stock, quantity: "1", price, discount: "0" }]);
     setProductQuery("");
     setProducts([]);
     setProductSearchError(null);
@@ -171,7 +176,7 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
   }
 
   function handleProductKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    const selectableIndexes = products.flatMap((item, index) => addedProductIds.has(item.id) ? [] : [index]);
+    const selectableIndexes = products.flatMap((item, index) => addedProductIds.has(item.id) || item.pricing_pending || item.sale_price_ars === null ? [] : [index]);
 
     if (event.key === "Escape" && isProductSelectorOpen) {
       event.preventDefault();
@@ -288,12 +293,12 @@ export function SaleFormScreen({ saleId }: { saleId?: string }) {
                 type="button"
                 role="option"
                 aria-selected={activeProductIndex === index}
-                disabled={isAdded}
+                disabled={isAdded || item.pricing_pending || item.sale_price_ars === null}
                 key={item.id}
                 onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => { if (!isAdded) setActiveProductIndex(index); }}
+                onMouseEnter={() => { if (!isAdded && !item.pricing_pending && item.sale_price_ars !== null) setActiveProductIndex(index); }}
                 onClick={() => addProduct(item)}
-              ><span><strong>{item.name}</strong><small className="sale-product-selector__metadata"><span>{item.internal_code}</span><span>Stock {item.current_stock} {item.unit}</span></small></span><span className="sale-product-selector__price"><strong>{formatPurchaseCurrency(item.sale_price_ars ?? 0, moneyPreferences)}</strong>{isAdded ? <small>Ya agregado</small> : <PackagePlus aria-hidden="true" size={17} />}</span></button>;
+              ><span><strong>{item.name}</strong><small className="sale-product-selector__metadata"><span>{item.internal_code}</span><span>Stock {item.current_stock} {item.unit}</span></small></span><span className="sale-product-selector__price"><strong>{item.pricing_pending || item.sale_price_ars === null ? "Completar costo/porcentaje" : formatPurchaseCurrency(item.sale_price_ars, moneyPreferences)}</strong>{isAdded ? <small>Ya agregado</small> : <PackagePlus aria-hidden="true" size={17} />}</span></button>;
             })}
           </div>
           {!isSearchingProducts && !productSearchError && productPage < productTotalPages ? <div className="sale-product-selector__footer"><button className="secondary-button" type="button" disabled={isLoadingMoreProducts} onMouseDown={(event) => event.preventDefault()} onClick={() => void loadMoreProducts()}>{isLoadingMoreProducts ? "Cargando..." : "Cargar más"}</button></div> : null}

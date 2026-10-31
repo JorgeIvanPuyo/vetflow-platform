@@ -244,6 +244,8 @@ class PurchaseRepository:
             func.coalesce(func.sum(Purchase.subtotal_ars), 0).label("subtotal_ars"),
             func.coalesce(func.sum(Purchase.tax_total_ars), 0).label("tax_total_ars"),
             func.coalesce(func.sum(Purchase.total_ars), 0).label("total_ars"),
+            func.coalesce(func.sum(Purchase.discount_amount_ars), 0).label("discount_amount_ars"),
+            func.coalesce(func.sum(Purchase.amount_payable_ars), 0).label("amount_payable_ars"),
         ).where(*filters)
 
         sort_columns = {

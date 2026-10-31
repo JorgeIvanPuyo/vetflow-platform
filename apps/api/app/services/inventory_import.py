@@ -150,7 +150,7 @@ class InventoryImportService:
             "Unidades: " + ", ".join(sorted(UNITS)) + ".",
             "Usa decimales con punto o coma. Evita valores ambiguos como 1,234.",
             f"IVA de compra vacío en nuevos productos usa el default de la clínica ({settings.default_purchase_tax_rate}%); vacío en actualizaciones conserva el valor actual.",
-            "sale_price_ars es precio final al público; no se agrega IVA de venta.",
+            "sale_price_ars es calculado por costo, impuesto de compra y porcentaje; dejar vacío o enviar el cálculo exacto.",
             "initial_load concilia el stock hasta el valor objetivo de stock.",
             "catalog_update ignora la columna stock y no modifica existencias.",
             f"Límite: {MAX_IMPORT_ROWS} filas y {MAX_IMPORT_FILE_SIZE_BYTES // (1024 * 1024)} MB.",
@@ -484,6 +484,17 @@ class InventoryImportService:
                     match_type = "possible_match"
                     proposed_action = "review_required"
 
+            if not errors and proposed_action in {"create", "update"}:
+                try:
+                    if proposed_action == "create":
+                        proposed = self._item_create_data(tenant_id, values)
+                        if proposed["purchase_price_ars"] is None:
+                            warnings.append("Completar costo/porcentaje: falta costo")
+                    else:
+                        self._item_update_data(existing_item, values)
+                except AppError as exc:
+                    errors.append(exc.message)
+
             status = "error" if errors else "warning" if warnings else "valid"
             snapshot = self._snapshot_item(existing_item) if existing_item is not None else None
             changed_fields = (
@@ -628,7 +639,7 @@ class InventoryImportService:
             purchase_tax = defaults["purchase_tax_rate"]
         profit_margin = data.get("profit_margin_percentage")
         if profit_margin is None:
-            profit_margin = defaults["profit_margin"]
+            raise AppError(422, "catalog_margin_required", "Completa el porcentaje de ganancia en Excel")
         item_data = {
             "name": data["name"],
             "category": data["category"],
@@ -643,7 +654,7 @@ class InventoryImportService:
             "sale_price_ars": data.get("sale_price_ars"),
             "sale_tax_rate_percentage": defaults["sale_tax_rate"],
             "round_sale_price": False,
-            "sale_price_is_manual": data.get("sale_price_ars") is not None,
+            "sale_price_is_manual": False,
             "notes": data.get("notes"),
             "is_active": True if data.get("is_active") is None else data["is_active"],
             "current_stock": ZERO,
@@ -676,14 +687,6 @@ class InventoryImportService:
         ):
             if data.get(field) is not None:
                 updates[field] = data[field]
-        if (
-            updates.get("sale_price_ars") is not None
-            and item.sale_price_ars is not None
-            and Decimal(str(updates["sale_price_ars"])) == item.sale_price_ars
-        ):
-            # Re-imported exports repeat the current price; only a new price
-            # should switch a calculated item to a manual price.
-            updates.pop("sale_price_ars")
         self.inventory_service.apply_sale_price_updates(
             item,
             updates,

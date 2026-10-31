@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>{{ document_label }} {{ number }}</title>
+  <style>
+    @page { size: A4; margin: 16mm 15mm 18mm; @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt sans-serif; color: #556; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #192e36; font-family: "DejaVu Sans", sans-serif; font-size: 9pt; line-height: 1.45; }
+    h1, h2, p { margin: 0; }
+    .environment { padding: 3mm; margin-bottom: 6mm; border: 1.5pt solid #953d31; color: #953d31; font-size: 12pt; font-weight: bold; text-align: center; }
+    .heading { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+    .heading td { vertical-align: top; width: 50%; padding-bottom: 4mm; }
+    .heading .issuer { padding-right: 7mm; }
+    h1 { font-size: 17pt; letter-spacing: .4pt; }
+    .fiscal-letter { display: inline-block; padding: 1mm 4mm; border: 1pt solid #192e36; margin-bottom: 2mm; font-size: 19pt; font-weight: bold; }
+    .label { color: #526871; font-size: 8pt; }
+    .muted { color: #526871; }
+    .data { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .receiver { border-top: 1pt solid #a3b3b8; border-bottom: 1pt solid #a3b3b8; padding: 4mm 0; margin-bottom: 5mm; }
+    .receiver h2 { font-size: 10pt; margin-bottom: 2mm; }
+    .receiver p { margin-top: 1mm; }
+    .period { margin-bottom: 4mm; padding: 3mm; background: #f3f6f6; }
+    .items { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    .items thead { display: table-header-group; }
+    .items th { text-align: left; background: #eaf0ef; padding: 3mm 2mm; font-size: 8pt; border-bottom: 1pt solid #a3b3b8; }
+    .items td { vertical-align: top; padding: 3mm 2mm; border-bottom: .5pt solid #dce4e3; }
+    .items .description { width: 52%; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .items .quantity { width: 12%; text-align: right; }
+    .items .amount { width: 18%; text-align: right; white-space: nowrap; }
+    .totals { margin-top: 5mm; text-align: right; break-inside: avoid; }
+    .totals strong { font-size: 16pt; }
+    .authorization { width: 100%; margin-top: 9mm; border-top: 1pt solid #a3b3b8; padding-top: 5mm; break-inside: avoid; }
+    .authorization td { vertical-align: top; }
+    .authorization .qr { width: 40mm; padding-right: 5mm; }
+    .authorization img { display: block; width: 35mm; height: 35mm; }
+    .authorization .codes { padding-top: 2mm; }
+    .codes p { margin: 1mm 0; }
+    .notice { margin-top: 5mm; font-size: 7.5pt; color: #526871; }
+  </style>
+</head>
+<body>
+  {% if is_homologation %}<div class="environment">HOMOLOGACIÓN — SIN VALIDEZ FISCAL</div>{% endif %}
+  <table class="heading"><tr>
+    <td class="issuer"><h1 class="data">{{ invoice.issuer.legal_name }}</h1><p class="data">{{ invoice.issuer.fiscal_address }}</p><p><span class="label">CUIT:</span> {{ invoice.issuer.cuit }}</p><p class="data"><span class="label">Condición fiscal:</span> {{ invoice.issuer.tax_condition }}</p><p><span class="label">Ingresos brutos:</span> {{ invoice.issuer.gross_income_registration or "No informado" }}</p><p><span class="label">Inicio de actividades:</span> {{ invoice.issuer.activity_start_date or "No informado" }}</p></td>
+    <td><div class="fiscal-letter">C</div><h1>{{ document_label }}</h1><p>Código {{ document_code }}</p><p><strong>N.º {{ number }}</strong></p><p>Fecha de emisión: {{ voucher_date }}</p><p>Concepto: {% if invoice.concept == 1 %}Productos{% elif invoice.concept == 2 %}Servicios{% else %}Productos y servicios{% endif %}</p></td>
+  </tr></table>
+  {% if invoice.issuer.get("fiscal_data_review_note") %}<p class="notice data">Revisión de datos fiscales: {{ invoice.issuer.fiscal_data_review_note }}</p>{% endif %}
+  <section class="receiver"><h2>Receptor</h2><p class="data"><strong>{{ invoice.receiver.name }}</strong></p><p class="data">{{ invoice.receiver.address }}</p><p>Tipo de documento: {{ invoice.receiver.document_type }} · Número: {{ invoice.receiver.document_number }}</p><p>Condición IVA del receptor: código {{ invoice.receiver.iva_condition_id }}{% if invoice.receiver.consumer_final %} · Consumidor final confirmado{% endif %}</p></section>
+  {% if invoice.concept in [2, 3] %}<div class="period">Período de prestación: {{ invoice.service_from }} al {{ invoice.service_to }} · Vencimiento de pago: {{ invoice.payment_due }}</div>{% endif %}
+  <table class="items"><thead><tr><th class="description">Detalle de la porción documentada</th><th class="quantity">Cantidad</th><th class="amount">Precio unitario</th><th class="amount">Importe ARS</th></tr></thead><tbody>{% for line in lines %}<tr><td class="description">{{ line.description }}</td><td class="quantity">{{ line.quantity }}</td><td class="amount">{{ line.unit_price | unitmoney }}</td><td class="amount">{{ line.total | money }}</td></tr>{% endfor %}</tbody></table>
+  <div class="totals"><p>Moneda: pesos argentinos (PES) · Cotización: {{ invoice.exchange_rate }}</p><strong>TOTAL ARS {{ total | money }}</strong><p>Comprobante C · No se discrimina IVA</p></div>
+  <table class="authorization"><tr><td class="qr"><img src="{{ qr_asset_url }}" alt="QR de datos del comprobante autorizado"></td><td class="codes"><h2>Comprobante autorizado</h2><p><strong>CAE: {{ authorization.cae }}</strong></p><p>Vencimiento del CAE: {{ cae_expiry }}</p><p class="muted">El QR contiene exclusivamente los datos de este comprobante autorizado.</p>{% if is_homologation %}<p><strong>Documento de prueba. No constituye cobertura fiscal productiva.</strong></p>{% endif %}</td></tr></table>
+  <p class="notice">Los importes corresponden únicamente a los conceptos detallados en este comprobante.</p>
+</body>
+</html>

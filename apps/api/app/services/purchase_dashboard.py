@@ -80,6 +80,10 @@ class PurchaseDashboardService:
                     summary["registered_total_ars"]
                 ),
                 "received_total_ars": self._money(summary["received_total_ars"]),
+                "registered_discount_amount_ars": self._money(summary["registered_discount_amount_ars"]),
+                "registered_amount_payable_ars": self._money(summary["registered_amount_payable_ars"]),
+                "received_amount_payable_ars": self._money(summary["received_amount_payable_ars"]),
+                "net_received_amount_payable_ars": self._money(Decimal(summary["received_amount_payable_ars"] or 0) - Decimal(return_summary["returned_amount_ars"] or 0)),
                 "registered_tax_total_ars": self._money(
                     summary["registered_tax_total_ars"]
                 ),
@@ -116,6 +120,8 @@ class PurchaseDashboardService:
                     purchase_count=int(row["purchase_count"] or 0),
                     registered_total_ars=self._money(row["registered_total_ars"]),
                     received_total_ars=self._money(row["received_total_ars"]),
+                    registered_amount_payable_ars=self._money(row["registered_amount_payable_ars"]),
+                    received_amount_payable_ars=self._money(row["received_amount_payable_ars"]),
                 )
                 for row in supplier_rows
             ],
@@ -127,6 +133,8 @@ class PurchaseDashboardService:
                     document_type=row["document_type"],
                     document_number=row["document_number"],
                     total_ars=self._money(row["total_ars"]),
+                    discount_amount_ars=self._money(row["discount_amount_ars"]),
+                    amount_payable_ars=self._money(row["amount_payable_ars"]),
                     status=row["status"],
                     attachment_status=(
                         "attached" if row["has_attachment"] else "pending"
@@ -194,6 +202,8 @@ class PurchaseDashboardService:
             supplier_name=row["supplier_name"],
             document_number=row["document_number"],
             total_ars=cls._money(row["total_ars"]),
+            discount_amount_ars=cls._money(row["discount_amount_ars"]),
+            amount_payable_ars=cls._money(row["amount_payable_ars"]),
             status=row["status"],
             attachment_status=("attached" if row["has_attachment"] else "pending"),
             alerts=alerts,

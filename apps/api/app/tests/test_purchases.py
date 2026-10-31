@@ -516,6 +516,8 @@ def test_list_purchases_filters_paginates_searches_and_omits_full_lines(client, 
             "subtotal_ars": "20000.00",
             "tax_total_ars": "4200.00",
             "total_ars": "24200.00",
+            "discount_amount_ars": "0.00",
+            "amount_payable_ars": "24200.00",
         },
     }
     assert paged.json()["data"][0]["item_count"] == 1

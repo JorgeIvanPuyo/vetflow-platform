@@ -110,6 +110,10 @@ class InventoryItem(BaseModel):
     )
 
     @property
+    def pricing_pending(self) -> bool:
+        return self.purchase_price_ars is None or self.profit_margin_percentage is None
+
+    @property
     def supplier_name(self) -> str | None:
         if self.supplier_record is None or self.supplier_record.tenant_id != self.tenant_id:
             return None
@@ -157,6 +161,8 @@ class InventoryItem(BaseModel):
 
     @property
     def sale_tax_amount_ars(self) -> Decimal | None:
+        if self.pricing_pending:
+            return None
         return self._tax_amount(
             self.sale_price_ars,
             self.sale_tax_rate_percentage,
@@ -164,6 +170,8 @@ class InventoryItem(BaseModel):
 
     @property
     def sale_price_with_tax_ars(self) -> Decimal | None:
+        if self.pricing_pending:
+            return None
         return self._price_with_tax(
             self.sale_price_ars,
             self.sale_tax_rate_percentage,

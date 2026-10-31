@@ -260,6 +260,9 @@ class SaleService:
                     "Sólo se puede revertir una venta confirmada",
                 )
 
+            from app.services.fiscal_commitment import ensure_no_fiscal_reservations
+
+            ensure_no_fiscal_reservations(self.db, tenant_id, sale_id)
             product_lines = self._validated_product_lines(tenant_id, sale)
             lines_by_item_id = {
                 line.inventory_item_id: line for line in product_lines
@@ -393,7 +396,7 @@ class SaleService:
                 product = products[item_input.inventory_item_id]
                 if not product.is_active:
                     raise AppError(409, "inventory_item_inactive", f"{product.name} no está activo para venta")
-                price = item_input.unit_price_ars if item_input.unit_price_ars is not None else product.sale_price_ars
+                price = item_input.unit_price_ars if item_input.unit_price_ars is not None else (None if product.pricing_pending else product.sale_price_ars)
                 if price is None:
                     raise AppError(409, "sale_price_missing", f"{product.name} no tiene precio de venta")
                 description, code, unit, inventory_id = product.name, product.internal_code, product.unit, product.id

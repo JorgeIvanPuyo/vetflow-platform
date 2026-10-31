@@ -283,6 +283,7 @@ class InventoryRepository:
         excluded_ids: set[uuid.UUID],
         limit: int,
         for_update: bool = False,
+        status: str | None = None,
     ) -> tuple[list[InventoryItem], int]:
         statement = self._build_item_list_statement(
             tenant_id,
@@ -290,7 +291,7 @@ class InventoryRepository:
             category=category,
             brand=brand,
             supplier=supplier,
-            status=None,
+            status=status,
             stock_status=stock_status,
             is_active=is_active,
             sort_by="id",
@@ -302,7 +303,7 @@ class InventoryRepository:
             category=category,
             brand=brand,
             supplier=supplier,
-            status=None,
+            status=status,
             stock_status=stock_status,
             is_active=is_active,
         )
@@ -1197,6 +1198,16 @@ class InventoryRepository:
             statement = statement.where(InventoryItem.current_stock == 0)
         elif stock_status == "negative":
             statement = statement.where(InventoryItem.current_stock < 0)
+
+        if status == "pricing_pending":
+            # Include inactive pending products too; filtering happens before pagination/count.
+            statement = statement.where(or_(
+                InventoryItem.purchase_price_ars.is_(None),
+                InventoryItem.profit_margin_percentage.is_(None),
+            ))
+            if is_active is not None:
+                statement = statement.where(InventoryItem.is_active.is_(is_active))
+            return statement
 
         if status == "low_stock":
             statement = statement.where(

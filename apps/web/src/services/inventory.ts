@@ -74,8 +74,8 @@ type InventoryBulkOperationResponse = ApiItemResponse<InventoryBulkOperation> & 
   };
 };
 
-export function getInventorySummary() {
-  return api.get<ApiItemResponse<InventorySummary>>("/api/v1/inventory/summary");
+export function getInventorySummary(readKey?: string) {
+  return api.get<ApiItemResponse<InventorySummary>>("/api/v1/inventory/summary", { readKey });
 }
 
 export function getInventoryDashboard(filters: InventoryDashboardFilters = {}) {
@@ -94,11 +94,11 @@ export function getInventoryDashboard(filters: InventoryDashboardFilters = {}) {
   );
 }
 
-export function getInventoryFilterOptions() {
-  return api.get<ApiItemResponse<InventoryFilterOptions>>("/api/v1/inventory/filter-options");
+export function getInventoryFilterOptions(readKey?: string) {
+  return api.get<ApiItemResponse<InventoryFilterOptions>>("/api/v1/inventory/filter-options", { readKey });
 }
 
-export function getInventoryItems(filters: InventoryListFilters = {}) {
+export function getInventoryItems(filters: InventoryListFilters = {}, readKey?: string) {
   const params = new URLSearchParams();
 
   Object.entries(filters).forEach(([key, value]) => {
@@ -112,6 +112,7 @@ export function getInventoryItems(filters: InventoryListFilters = {}) {
   const query = params.toString();
   return api.get<InventoryListResponse>(
     query ? `/api/v1/inventory/items?${query}` : "/api/v1/inventory/items",
+    { readKey },
   );
 }
 

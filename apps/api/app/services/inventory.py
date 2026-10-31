@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.inventory_pricing import calculate_catalog_sale_price
 from app.models.catalog_item import CatalogItem
 from app.models.consultation import Consultation
 from app.models.inventory_item import InventoryItem
@@ -135,20 +136,13 @@ class InventoryService:
         item_data["purchase_tax_rate_percentage"] = purchase_tax_rate
         item_data["profit_margin_percentage"] = profit_margin
         item_data["sale_tax_rate_percentage"] = sale_tax_rate
-        sale_price_is_manual = self._resolve_sale_price_is_manual(
-            payload.sale_price_is_manual,
-            payload.sale_price_ars,
-            "sale_price_ars" in payload.model_fields_set,
-            current=False,
-        )
-        self._validate_manual_sale_price(sale_price_is_manual, payload.sale_price_ars)
-        item_data["sale_price_is_manual"] = sale_price_is_manual
+        item_data["sale_price_is_manual"] = False
         item_data["sale_price_ars"] = self._resolve_sale_price(
             purchase_price_ars=payload.purchase_price_ars,
             purchase_tax_rate_percentage=purchase_tax_rate,
             profit_margin_percentage=profit_margin,
             round_sale_price=payload.round_sale_price,
-            manual_sale_price_ars=payload.sale_price_ars if sale_price_is_manual else None,
+            manual_sale_price_ars=payload.sale_price_ars,
             rounding_increment=defaults["rounding_increment"],
         )
         item_data["current_stock"] = ZERO
@@ -322,7 +316,9 @@ class InventoryService:
         item = self.inventory_repository.get_item_by_id(tenant_id, item_id)
         if item is None:
             raise AppError(404, "inventory_item_not_found", "Inventory item not found")
-        unit_sale_price = payload.unit_sale_price_ars or item.sale_price_ars
+        unit_sale_price = payload.unit_sale_price_ars
+        if unit_sale_price is None and not item.pricing_pending:
+            unit_sale_price = item.sale_price_ars
         total_sale_price = None
         if unit_sale_price is not None:
             total_sale_price = self._quantize_money(unit_sale_price * payload.quantity)
@@ -843,21 +839,25 @@ class InventoryService:
         manual_sale_price_ars: Decimal | None,
         rounding_increment: Decimal,
     ) -> Decimal | None:
-        if manual_sale_price_ars is not None:
-            return self._quantize_money(manual_sale_price_ars)
-        if purchase_price_ars is None or profit_margin_percentage is None:
-            return None
-        purchase_price_with_tax = self._price_with_tax(
-            purchase_price_ars,
-            purchase_tax_rate_percentage,
+        price = calculate_catalog_sale_price(
+            purchase_price_ars=purchase_price_ars,
+            purchase_tax_rate_percentage=purchase_tax_rate_percentage,
+            profit_margin_percentage=profit_margin_percentage,
+            round_sale_price=round_sale_price,
+            rounding_increment=rounding_increment,
         )
-        sale_price = purchase_price_with_tax * (
-            Decimal("1") + (profit_margin_percentage / HUNDRED)
-        )
-        sale_price = self._quantize_money(sale_price)
-        if round_sale_price:
-            sale_price = self._round_to_increment(sale_price, rounding_increment)
-        return sale_price
+        self._validate_direct_sale_price(manual_sale_price_ars, price)
+        return price
+
+    def _validate_direct_sale_price(self, requested: Decimal | None, calculated: Decimal | None) -> None:
+        if requested is not None and (calculated is None or requested != calculated):
+            raise AppError(
+                422,
+                "catalog_sale_price_is_calculated",
+                "El precio de catálogo se calcula con costo y porcentaje. Modifica esos datos; no se admite un precio fijo.",
+            )
+        if calculated is not None and calculated > Decimal("9999999999.99"):
+            raise AppError(422, "invalid_price", "El precio calculado supera el límite monetario")
 
     def apply_sale_price_updates(
         self,
@@ -866,84 +866,24 @@ class InventoryService:
         *,
         rounding_increment: Decimal,
     ) -> None:
-        """Resolve the sale price mode and value for a partial item update.
-
-        Calculated prices follow purchase cost, IVA and margin changes; manual
-        prices are kept until the user switches the item back to calculated.
-        """
-        if not self._should_recalculate_sale_price(updates):
-            updates.pop("sale_price_is_manual", None)
-            return
-        sale_price_is_manual = self._resolve_sale_price_is_manual(
-            updates.get("sale_price_is_manual"),
-            updates.get("sale_price_ars"),
-            "sale_price_ars" in updates,
-            current=item.sale_price_is_manual,
-        )
-        manual_sale_price = (
-            updates.get("sale_price_ars", item.sale_price_ars)
-            if sale_price_is_manual
-            else None
-        )
-        self._validate_manual_sale_price(sale_price_is_manual, manual_sale_price)
-        updates["sale_price_is_manual"] = sale_price_is_manual
-        updates["sale_price_ars"] = self._resolve_sale_price(
+        """Persist the catalog calculation; retain incomplete legacy prices only as reference."""
+        price = self._resolve_sale_price(
             purchase_price_ars=updates.get("purchase_price_ars", item.purchase_price_ars),
             purchase_tax_rate_percentage=updates.get(
-                "purchase_tax_rate_percentage",
-                item.purchase_tax_rate_percentage,
+                "purchase_tax_rate_percentage", item.purchase_tax_rate_percentage,
             ),
-            profit_margin_percentage=updates.get(
-                "profit_margin_percentage",
-                item.profit_margin_percentage,
-            ),
+            profit_margin_percentage=updates.get("profit_margin_percentage", item.profit_margin_percentage),
             round_sale_price=updates.get("round_sale_price", item.round_sale_price),
-            manual_sale_price_ars=manual_sale_price,
+            manual_sale_price_ars=updates.get("sale_price_ars"),
             rounding_increment=rounding_increment,
         )
-
-    def _resolve_sale_price_is_manual(
-        self,
-        requested: bool | None,
-        sale_price_ars: Decimal | None,
-        sale_price_provided: bool,
-        *,
-        current: bool,
-    ) -> bool:
-        if requested is not None:
-            return requested
-        # Clients that do not send the mode keep the historical contract:
-        # a sale price means manual and an explicit null means calculated.
-        if sale_price_provided:
-            return sale_price_ars is not None
-        return current
-
-    def _validate_manual_sale_price(
-        self,
-        sale_price_is_manual: bool,
-        sale_price_ars: Decimal | None,
-    ) -> None:
-        if sale_price_is_manual and sale_price_ars is None:
-            raise AppError(
-                422,
-                "manual_sale_price_required",
-                "A manual sale price requires a sale price value",
-            )
-
-    def _should_recalculate_sale_price(self, updates: dict) -> bool:
-        if "sale_price_ars" in updates:
-            return True
-        if updates.get("sale_price_is_manual") is not None:
-            return True
-        return bool(
-            {
-                "purchase_price_ars",
-                "purchase_tax_rate_percentage",
-                "profit_margin_percentage",
-                "round_sale_price",
-            }
-            & set(updates)
-        )
+        updates.pop("sale_price_is_manual", None)
+        if price is not None:
+            updates["sale_price_is_manual"] = False
+            updates["sale_price_ars"] = price
+        else:
+            # Null is a request to calculate, never a request to erase a legacy reference.
+            updates.pop("sale_price_ars", None)
 
     def _price_with_tax(
         self,
@@ -953,9 +893,6 @@ class InventoryService:
         tax_rate = tax_rate_percentage if tax_rate_percentage is not None else ZERO
         tax_amount = self._quantize_money(price * tax_rate / HUNDRED)
         return self._quantize_money(price + tax_amount)
-
-    def _round_to_increment(self, value: Decimal, increment: Decimal) -> Decimal:
-        return (value / increment).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * increment
 
     def _quantize_money(self, value: Decimal) -> Decimal:
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
