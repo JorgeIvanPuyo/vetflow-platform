@@ -7,7 +7,7 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "
 import { createPortal } from "react-dom";
 
 import { useClinic } from "@/features/clinic/clinic-context";
-import { purchaseDiscountPreview } from "./purchase-discount";
+import { parsePurchaseQuantity, PURCHASE_QUANTITY_ERROR, purchaseDiscountPreview } from "./purchase-discount";
 import { formatPurchaseCurrency } from "@/features/purchases/components/purchase-helpers";
 import { getApiErrorMessage } from "@/lib/api";
 import { resolveMoneyPreferences } from "@/lib/money";
@@ -259,7 +259,7 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
       discount_value: discountType === "none" ? "0" : discountValue.trim().replace(",", "."),
       items: lines.map((line) => ({
         inventory_item_id: line.inventoryItemId,
-        quantity: line.quantity,
+        quantity: parsePurchaseQuantity(line.quantity)!,
         unit_price_without_tax_ars: line.unitPrice,
         tax_rate_percentage: line.taxRate,
       })),
@@ -403,12 +403,12 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
                 <article className="purchase-line" key={line.inventoryItemId}>
                   <div className="purchase-line__product"><strong>{line.name}</strong><small>{line.internalCode} · {line.unit}</small><small>Referencia: {formatPurchaseCurrency(line.referenceCost, moneyPreferences)}</small></div>
                   <div className="purchase-line__fields">
-                    <label className="field"><span>Cantidad</span><input min="1" step="1" inputMode="numeric" type="number" value={line.quantity} onKeyDown={preventFractionalQuantityInput} onChange={(event) => updateLine(index, { quantity: event.target.value })} onBlur={() => { const value = Number(line.quantity); if (Number.isInteger(value) && value > 0) updateLine(index, { quantity: String(value) }); }} /></label>
+                    <label className="field"><span>Cantidad</span><input min="1" step="1" inputMode="numeric" type="number" value={line.quantity} onKeyDown={preventFractionalQuantityInput} onChange={(event) => updateLine(index, { quantity: event.target.value })} onBlur={() => { const value = parsePurchaseQuantity(line.quantity); if (value !== null) updateLine(index, { quantity: value }); }} /></label>
                     <label className="field"><span>Costo sin IVA</span><input min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} /></label>
                     <label className="field"><span>IVA</span><select value={line.taxMode} onChange={(event) => changeTaxMode(index, event.target.value as EditableLine["taxMode"])}><option value="21">21%</option><option value="0">Sin IVA</option><option value="other">Otro porcentaje</option></select></label>
                   </div>
                   {line.taxMode === "other" ? <label className="field purchase-line__custom-tax"><span>IVA personalizado (%)</span><input min="0" max="100" step="0.01" type="number" value={line.taxRate} onChange={(event) => updateLine(index, { taxRate: event.target.value })} /></label> : null}
-                  <div className="purchase-line__totals"><div><span>Subtotal</span><strong>{formatPurchaseCurrency(subtotal, moneyPreferences)}</strong></div><div><span>IVA</span><strong>{formatPurchaseCurrency(tax, moneyPreferences)}</strong></div><div><span>Total</span><strong>{formatPurchaseCurrency(total, moneyPreferences)}</strong></div></div>
+                  <div className="purchase-line__totals"><div><span>Subtotal</span><strong>{subtotal === null ? "—" : formatPurchaseCurrency(subtotal, moneyPreferences)}</strong></div><div><span>IVA</span><strong>{tax === null ? "—" : formatPurchaseCurrency(tax, moneyPreferences)}</strong></div><div><span>Total</span><strong>{total === null ? "—" : formatPurchaseCurrency(total, moneyPreferences)}</strong></div></div>
                   <button className="secondary-button purchase-line__remove" type="button" aria-label={`Eliminar ${line.name}`} onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}><Trash2 size={17} /> Eliminar línea</button>
                 </article>
               );
@@ -423,15 +423,15 @@ export function PurchaseFormScreen({ purchaseId }: Props) {
           <label className="field"><span>Descuento</span><select aria-label="Modalidad de descuento" value={discountType} disabled={isSaving} onChange={(event) => { setDiscountType(event.target.value as PurchaseDiscountType); setDiscountValue("0"); }}>
             <option value="none">Sin descuento</option><option value="percentage">Porcentaje (%)</option><option value="amount">Importe ({moneyPreferences.currencyCode})</option>
           </select></label>
-          {discountType !== "none" ? <label className="field"><span>{discountType === "percentage" ? "Descuento (%)" : `Descuento (${moneyPreferences.currencyCode})`}</span><input aria-label="Valor del descuento" type="number" inputMode="decimal" min="0" max={discountType === "percentage" ? "100" : estimate.total} step="0.01" value={discountValue} disabled={isSaving} onChange={(event) => setDiscountValue(event.target.value)} /></label> : null}
+          {discountType !== "none" ? <label className="field"><span>{discountType === "percentage" ? "Descuento (%)" : `Descuento (${moneyPreferences.currencyCode})`}</span><input aria-label="Valor del descuento" type="number" inputMode="decimal" min="0" max={discountType === "percentage" ? "100" : estimate.total ?? undefined} step="0.01" value={discountValue} disabled={isSaving} onChange={(event) => setDiscountValue(event.target.value)} /></label> : null}
         </div>
         {estimate.error ? <p role="alert" className="error-state">{estimate.error}</p> : null}
       </section>
 
       <section className="panel purchase-summary" aria-label={savedAmounts ? "Importes guardados" : "Resumen estimativo"}>
-        <div><span>Subtotal</span><strong>{formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div>
-        <div><span>IVA</span><strong>{formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div>
-        <div><span>Total original</span><strong>{formatPurchaseCurrency(savedAmounts?.total_ars ?? estimate.total, moneyPreferences)}</strong></div>
+        <div><span>Subtotal</span><strong>{estimate.subtotal === null ? "—" : formatPurchaseCurrency(estimate.subtotal, moneyPreferences)}</strong></div>
+        <div><span>IVA</span><strong>{estimate.tax === null ? "—" : formatPurchaseCurrency(estimate.tax, moneyPreferences)}</strong></div>
+        <div><span>Total original</span><strong>{estimate.total === null ? "—" : formatPurchaseCurrency(savedAmounts?.total_ars ?? estimate.total, moneyPreferences)}</strong></div>
         <div><span>Descuento</span><strong>{estimate.discount_amount_ars === null ? "—" : formatPurchaseCurrency(savedAmounts?.discount_amount_ars ?? estimate.discount_amount_ars, moneyPreferences)}</strong></div>
         <div><span>Total a pagar</span><strong>{estimate.amount_payable_ars === null ? "—" : formatPurchaseCurrency(savedAmounts?.amount_payable_ars ?? estimate.amount_payable_ars, moneyPreferences)}</strong></div>
         <p>{savedAmounts ? "Importes definitivos guardados." : "Estimación visual. El backend recalcula y persiste los importes definitivos."}</p>
@@ -503,7 +503,7 @@ function lineFromPurchaseItem(item: PurchaseItem): EditableLine {
     internalCode: item.internal_code_snapshot,
     unit: item.unit,
     referenceCost: null,
-    quantity: String(item.quantity),
+    quantity: parsePurchaseQuantity(String(item.quantity)) ?? String(item.quantity),
     unitPrice: String(item.unit_price_without_tax_ars),
     taxMode: normalizedRate === 21 ? "21" : normalizedRate === 0 ? "0" : "other",
     taxRate,
@@ -515,7 +515,7 @@ function validateForm({ supplierId, purchaseDate, lines }: { supplierId?: string
   if (!purchaseDate) return "Ingresa la fecha de compra.";
   if (lines.length === 0) return "Agrega al menos un producto.";
   for (const line of lines) {
-    if (!Number.isInteger(Number(line.quantity)) || Number(line.quantity) <= 0) return "La cantidad debe ser un número entero mayor que cero.";
+    if (parsePurchaseQuantity(line.quantity) === null) return PURCHASE_QUANTITY_ERROR;
     if (!(Number(line.unitPrice) >= 0)) return `El precio de ${line.name} no puede ser negativo.`;
     const tax = Number(line.taxRate);
     if (!Number.isFinite(tax) || tax < 0 || tax > 100) return `El IVA de ${line.name} debe estar entre 0 y 100.`;

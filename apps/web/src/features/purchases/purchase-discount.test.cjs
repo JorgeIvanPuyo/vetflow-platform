@@ -32,16 +32,16 @@ const { PurchasesScreen } = require('./components/purchases-screen.tsx');
 const { PurchaseDashboardScreen } = require('./components/purchase-dashboard-screen.tsx');
 const { PurchaseReturnFormScreen } = require('./components/purchase-return-form-screen.tsx');
 Module._load = load;
-const { purchaseDiscountPreview } = require('./components/purchase-discount.ts');
+const { parsePurchaseQuantity, purchaseDiscountPreview } = require('./components/purchase-discount.ts');
 const { setAuthTokenProvider } = require('../../lib/api.ts');
 function nodes(n) { return Array.isArray(n) ? n.flatMap(nodes) : n && typeof n === 'object' ? [n, ...nodes(n.props?.children)] : []; }
 function text(n) { return Array.isArray(n) ? n.map(text).join('') : n && typeof n === 'object' ? text(n.props?.children) : typeof n === 'string' || typeof n === 'number' ? String(n) : ''; }
 const find = (h, predicate) => nodes(h.tree).find(predicate);
 const flush = async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); };
 const supplier = { id: 'supplier', name: 'Proveedor', is_active: true };
-const line = { id: 'line', inventory_item_id: 'item', description_snapshot: 'Producto', internal_code_snapshot: 'P-1', unit: 'unit', quantity: '1', unit_price_without_tax_ars: '1000.00', tax_rate_percentage: '0', line_subtotal_ars: '1000.00', line_total_ars: '1000.00', line_tax_ars: '0', returnable_quantity: '1', confirmed_returned_quantity: '0' };
+const line = { id: 'line', inventory_item_id: 'item', description_snapshot: 'Producto', internal_code_snapshot: 'P-1', unit: 'unit', quantity: '1.00', unit_price_without_tax_ars: '1000.00', tax_rate_percentage: '0.00', line_subtotal_ars: '1000.00', line_total_ars: '1000.00', line_tax_ars: '0', returnable_quantity: '1', confirmed_returned_quantity: '0' };
 const purchase = { id: 'purchase', supplier, supplier_id: supplier.id, supplier_name: supplier.name, currency: 'ARS', status: 'draft', purchase_date: '2026-10-30', document_type: 'invoice', document_number: null, notes: 'Nota', subtotal_ars: '1000.00', tax_total_ars: '0.00', total_ars: '1000.00', discount_type: 'percentage', discount_value: '10.00', discount_amount_ars: '100.00', amount_payable_ars: '900.00', items: [line], returns: [], attachment_history: [], return_status: 'none', confirmed_return_count: 0, returned_total_ars: '0', can_register_return: false, attachment_status: 'pending' };
-async function setup(t, { component = PurchaseFormScreen, editing = true, data = purchase } = {}) {
+async function setup(t, { component = PurchaseFormScreen, editing = true, data = purchase, products } = {}) {
   const oldFetch = global.fetch, oldWindow = global.window, oldDocument = global.document;
   global.window = { setTimeout(fn) { fn(); return 0; }, clearTimeout() {}, requestAnimationFrame() { return 0; } };
   global.document = { body: { style: { overflow: '' } }, addEventListener() {}, removeEventListener() {} };
@@ -57,7 +57,7 @@ async function setup(t, { component = PurchaseFormScreen, editing = true, data =
     }
     if (url.pathname === '/api/v1/purchases/purchase') return respond(data);
     if (url.pathname === '/api/v1/suppliers') return respond([supplier], { total_pages: 1 });
-    if (url.pathname === '/api/v1/inventory/items') return respond([{ id: 'item', name: 'Producto', internal_code: 'P-1', unit: 'unit', purchase_price_ars: '1000.00', purchase_tax_rate_percentage: '0' }], { page: 1, total_pages: 1 });
+    if (url.pathname === '/api/v1/inventory/items') return respond(products ?? [{ id: 'item', name: 'Producto', internal_code: 'P-1', unit: 'unit', purchase_price_ars: '1000.00', purchase_tax_rate_percentage: '0' }], { page: 1, total_pages: 1 });
     if (url.pathname === '/api/v1/purchases/filter-options') return respond({ creators: [] });
     if (url.pathname === '/api/v1/purchases') return respond([data], { page: 1, page_size: 20, total: 1, total_pages: 1, summary: { purchase_count: 1, subtotal_ars: data.subtotal_ars, tax_total_ars: data.tax_total_ars, total_ars: data.total_ars, discount_amount_ars: data.discount_amount_ars, amount_payable_ars: data.amount_payable_ars } });
     if (url.pathname === '/api/v1/purchases/dashboard') return respond({ generated_at: '2026-10-30T10:00:00Z', period: { date_from: '2026-10-01', date_to: '2026-10-31' }, summary: { registered_total_ars: '1000.00', registered_amount_payable_ars: '900.00', registered_discount_amount_ars: '100.00', received_total_ars: '1000.00', received_amount_payable_ars: '900.00', net_received_amount_payable_ars: '900.00', net_received_total_ars: '1000.00', returned_total_ars: '0', registered_tax_total_ars: '0', purchase_count: 1 }, attention: [], recent_purchases: [], top_suppliers: [] });
@@ -67,7 +67,9 @@ async function setup(t, { component = PurchaseFormScreen, editing = true, data =
   s.settle = async () => { await flush(); s.render(); await flush(); s.render(); };
   s.change = (label, value) => { find(s, n => n.props?.['aria-label'] === label).props.onChange({ target: { value } }); s.render(); };
   s.submit = async () => { await find(s, n => n.type === 'form').props.onSubmit({ preventDefault() {} }); s.render(); };
-  t.after(() => { s.effects.forEach(effect => effect?.cleanup?.()); global.fetch = oldFetch; global.window = oldWindow; global.document = oldDocument; setAuthTokenProvider(null); });
+  let cleaned = false;
+  s.cleanup = () => { if (cleaned) return; cleaned = true; s.effects.forEach(effect => effect?.cleanup?.()); global.fetch = oldFetch; global.window = oldWindow; global.document = oldDocument; setAuthTokenProvider(null); };
+  t.after(s.cleanup);
   s.render(); await s.settle(); return s;
 }
 function fillField(s, label, value) {
@@ -75,6 +77,119 @@ function fillField(s, label, value) {
   const input = nodes(field).find(n => ['input', 'textarea'].includes(n.type));
   input.props.onChange({ target: { value } }); s.render();
 }
+
+const examplePurchase = {
+  ...purchase, subtotal_ars: '350.75', tax_total_ars: '57.83', total_ars: '408.58',
+  discount_type: 'percentage', discount_value: '10.00', discount_amount_ars: '40.86', amount_payable_ars: '367.72',
+  items: [
+    { ...line, quantity: '2.00', unit_price_without_tax_ars: '100.00', tax_rate_percentage: '21.00', line_subtotal_ars: '200.00', line_tax_ars: '42.00', line_total_ars: '242.00' },
+    { ...line, id: 'line-b', inventory_item_id: 'item-b', description_snapshot: 'Producto B', quantity: '3.00', unit_price_without_tax_ars: '50.25', tax_rate_percentage: '10.50', line_subtotal_ars: '150.75', line_tax_ars: '15.83', line_total_ars: '166.58' },
+  ],
+};
+const quantityInputs = s => nodes(s.tree).filter(n => n.type === 'label' && text(n).startsWith('Cantidad')).map(n => nodes(n).find(c => c.type === 'input'));
+function assertSummary(s, expected) {
+  const summary = find(s, n => n.props?.className === 'panel purchase-summary');
+  for (const [label, amount] of Object.entries(expected)) {
+    const row = nodes(summary).find(n => n.type === 'div' && text(n.props.children[0]) === label);
+    assert.equal(text(row.props.children[1]).replace(/^ARS\s*/, ''), amount, label);
+  }
+}
+
+test('decimal quantities hydrate as integers with correct totals before any interaction', async t => {
+  const s = await setup(t, { data: examplePurchase });
+  assert.deepEqual(quantityInputs(s).map(n => n.props.value), ['2', '3']);
+  assertSummary(s, { Subtotal: '350,75', IVA: '57,83', 'Total original': '408,58', Descuento: '40,86', 'Total a pagar': '367,72' });
+  assert.equal(s.mutations, 0);
+});
+
+test('quantity parsing and preview preserve exact integers and the storage limit', () => {
+  for (const raw of ['2', '2.0', '2.00', '2.000', ' 002.000 ']) {
+    assert.equal(parsePurchaseQuantity(raw), '2');
+    assert.deepEqual(purchaseDiscountPreview([{ quantity: raw, unitPrice: '100.00', taxRate: '21.00' }], 'none', '0'), {
+      subtotal: '200.00', tax: '42.00', total: '242.00', discount_amount_ars: '0.00', amount_payable_ars: '242.00', error: null,
+    });
+  }
+  assert.equal(parsePurchaseQuantity('9999999999.000'), '9999999999');
+  assert.equal(purchaseDiscountPreview([{ quantity: '9999999999.00', unitPrice: '0.01', taxRate: '0' }], 'none', '0').total, '99999999.99');
+});
+
+const invalidQuantities = ['1.5', '1.0000000000000000001', '0', '0.00', '-1', '', ' ', 'NaN', 'Infinity', '10000000000', '9007199254740993', '2,00', '2e0', '1,000', '2.'];
+for (const raw of invalidQuantities) test(`invalid quantity ${JSON.stringify(raw)} keeps its value, error and blocks save`, async t => {
+  assert.equal(parsePurchaseQuantity(raw), null);
+  const preview = purchaseDiscountPreview([{ quantity: raw, unitPrice: '100.00', taxRate: '21' }], 'none', '0');
+  assert.equal(preview.subtotal, null); assert.equal(preview.tax, null); assert.equal(preview.total, null);
+  assert.match(preview.error, /La cantidad debe ser/);
+  const s = await setup(t, { data: examplePurchase });
+  fillField(s, 'Cantidad', raw);
+  quantityInputs(s)[0].props.onBlur(); s.render();
+  assert.equal(quantityInputs(s)[0].props.value, raw);
+  assertSummary(s, { Subtotal: '—', IVA: '—', 'Total original': '—', Descuento: '—', 'Total a pagar': '—' });
+  const invalidLine = find(s, n => n.props?.className === 'purchase-line__totals');
+  assert.equal(text(invalidLine), 'Subtotal—IVA—Total—');
+  await s.submit(); assert.equal(s.mutations, 0); assert.match(text(s.tree), /La cantidad debe ser/);
+});
+
+test('invalid quantities received on edit remain invalid instead of being normalized away', async t => {
+  const s = await setup(t, { data: { ...examplePurchase, items: [{ ...examplePurchase.items[0], quantity: '1.5' }] } });
+  assert.equal(quantityInputs(s)[0].props.value, '1.5');
+  assertSummary(s, { 'Total original': '—' });
+  await s.submit(); assert.equal(s.mutations, 0);
+});
+
+for (const [type, value, discount, net] of [
+  ['none', '0.00', '0,00', '408,58'], ['percentage', '10.00', '40,86', '367,72'], ['amount', '25.00', '25,00', '383,58'],
+]) test(`edit ${type} keeps amounts through blur, save and decimal rehydration`, async t => {
+  const data = { ...examplePurchase, discount_type: type, discount_value: value, discount_amount_ars: discount.replace(',', '.'), amount_payable_ars: net.replace(',', '.') };
+  const s = await setup(t, { data });
+  const expected = { Subtotal: '350,75', IVA: '57,83', 'Total original': '408,58', Descuento: discount, 'Total a pagar': net };
+  assertSummary(s, expected);
+  for (let i = 0; i < 2; i++) { quantityInputs(s)[i].props.onBlur(); s.render(); assertSummary(s, expected); }
+  fillField(s, 'Cantidad', '2.000'); assertSummary(s, expected);
+  // Submit before blur also uses the exact parser; totals never become payload authority.
+  await s.submit(); assert.equal(s.mutations, 1);
+  assertSummary(s, expected);
+  assert.deepEqual(s.body.items, [
+    { inventory_item_id: 'item', quantity: '2', unit_price_without_tax_ars: '100.00', tax_rate_percentage: '21.00' },
+    { inventory_item_id: 'item-b', quantity: '3', unit_price_without_tax_ars: '50.25', tax_rate_percentage: '10.50' },
+  ]);
+  assert.equal(s.body.discount_type, type); assert.equal(s.body.discount_value, type === 'none' ? '0' : value);
+  for (const key of ['subtotal_ars', 'tax_total_ars', 'total_ars', 'discount_amount_ars', 'amount_payable_ars']) assert.equal(s.body[key], undefined);
+  s.cleanup();
+  const reopened = await setup(t, { data: { ...data, items: data.items.map((item, i) => ({ ...item, ...s.body.items[i], quantity: `${s.body.items[i].quantity}.00` })) } });
+  assert.deepEqual(quantityInputs(reopened).map(n => n.props.value), ['2', '3']);
+  assertSummary(reopened, expected);
+});
+
+test('quantity, cost and custom or zero tax edits use independent expected amounts', async t => {
+  const s = await setup(t, { data: examplePurchase });
+  fillField(s, 'Cantidad', '4');
+  assertSummary(s, { Subtotal: '550,75', IVA: '99,83', 'Total original': '650,58', Descuento: '65,06', 'Total a pagar': '585,52' });
+  fillField(s, 'Costo sin IVA', '100.25');
+  assertSummary(s, { Subtotal: '551,75', IVA: '100,04', 'Total original': '651,79', Descuento: '65,18', 'Total a pagar': '586,61' });
+  const taxSelect = () => nodes(find(s, n => n.type === 'label' && text(n).startsWith('IVA'))).find(n => n.type === 'select');
+  taxSelect().props.onChange({ target: { value: 'other' } }); s.render();
+  fillField(s, 'IVA personalizado', '10.50');
+  assertSummary(s, { IVA: '57,94', 'Total original': '609,69', Descuento: '60,97', 'Total a pagar': '548,72' });
+  taxSelect().props.onChange({ target: { value: '0' } }); s.render();
+  assertSummary(s, { IVA: '15,83', 'Total original': '567,58', Descuento: '56,76', 'Total a pagar': '510,82' });
+  await s.submit(); assert.equal(s.mutations, 1);
+  assert.deepEqual(s.body.items[0], { inventory_item_id: 'item', quantity: '4', unit_price_without_tax_ars: '100.25', tax_rate_percentage: '0' });
+  s.cleanup();
+  const reopened = await setup(t, { data: { ...examplePurchase, subtotal_ars: '551.75', tax_total_ars: '15.83', total_ars: '567.58', discount_amount_ars: '56.76', amount_payable_ars: '510.82', items: [{ ...examplePurchase.items[0], ...s.body.items[0], quantity: '4.00', tax_rate_percentage: '0.00' }, examplePurchase.items[1]] } });
+  assertSummary(reopened, { Subtotal: '551,75', IVA: '15,83', 'Total original': '567,58', Descuento: '56,76', 'Total a pagar': '510,82' });
+});
+
+test('creation with integer quantities matches the two-product acceptance example', async t => {
+  const products = examplePurchase.items.map(item => ({ id: item.inventory_item_id, name: item.description_snapshot, internal_code: item.internal_code_snapshot, unit: item.unit, purchase_price_ars: item.unit_price_without_tax_ars, purchase_tax_rate_percentage: item.tax_rate_percentage }));
+  const s = await setup(t, { editing: false, products });
+  find(s, n => n.props.role === 'combobox').props.onFocus(); s.render(); await s.settle();
+  find(s, n => n.type === 'button' && n.props.role === 'option').props.onClick(); s.render();
+  await find(s, n => n.type === 'button' && text(n).trim() === 'Buscar').props.onClick(); await s.settle();
+  for (const product of products) { find(s, n => n.type === 'button' && text(n).includes(product.name) && text(n).includes('Costo actual')).props.onClick(); s.render(); }
+  for (const [i, value] of ['2', '3'].entries()) { quantityInputs(s)[i].props.onChange({ target: { value } }); s.render(); }
+  assertSummary(s, { Subtotal: '350,75', IVA: '57,83', 'Total original': '408,58', 'Total a pagar': '408,58' });
+  await s.submit(); assert.equal(s.mutations, 1); assert.deepEqual(s.body.items.map(item => item.quantity), ['2', '3']);
+});
 
 test('preview applies one discount after purchase tax and rounds only the global discount', () => {
   const preview = purchaseDiscountPreview([{ quantity: '1', unitPrice: '0.05', taxRate: '21' }, { quantity: '1', unitPrice: '0.05', taxRate: '21' }], 'percentage', '10');
