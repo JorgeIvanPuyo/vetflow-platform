@@ -66,6 +66,60 @@ def test_purchase_discount_persists_and_keeps_original_totals(client, tenant, di
     assert listed["meta"]["summary"]["amount_payable_ars"] == net
 
 
+@pytest.mark.parametrize(("mode", "value", "discount", "net"), [
+    ("none", "0", "0.00", "408.58"),
+    ("percentage", "10", "40.86", "367.72"),
+    ("amount", "25", "25.00", "383.58"),
+])
+def test_draft_decimal_quantity_roundtrip_preserves_historical_money_and_stock(
+    client, tenant, db_session, mode, value, discount, net,
+):
+    first, supplier = _setup(client, tenant)
+    second = _create_inventory_item(client, tenant, name="Segundo")
+    items = [
+        {"inventory_item_id": first["id"], "quantity": "2", "unit_price_without_tax_ars": "100.00", "tax_rate_percentage": "21"},
+        {"inventory_item_id": second["id"], "quantity": "3", "unit_price_without_tax_ars": "50.25", "tax_rate_percentage": "10.50"},
+    ]
+    body = _body(first, supplier, discount_type=mode, discount_value=value)
+    body["items"] = items
+    response = client.post("/api/v1/purchases", headers=_headers(tenant), json=body)
+    assert response.status_code == 201, response.text
+    created = response.json()["data"]
+    before = _read(client, tenant, created["id"])
+
+    # Current catalog prices/taxes must not replace the purchase's historical values.
+    response = client.patch(f"/api/v1/inventory/items/{first['id']}", headers=_headers(tenant), json={
+        "purchase_price_ars": "900", "purchase_tax_rate_percentage": "5",
+    })
+    assert response.status_code == 200
+    catalog = response.json()["data"]
+    patch = {key: before[key] for key in (
+        "supplier_id", "purchase_date", "document_type", "document_number", "notes", "discount_type", "discount_value",
+    )}
+    patch["items"] = [{key: item[key] for key in (
+        "inventory_item_id", "quantity", "unit_price_without_tax_ars", "tax_rate_percentage",
+    )} for item in before["items"]]
+    patch["items"][0]["quantity"] = "2.000"
+    updated = client.patch(f"/api/v1/purchases/{created['id']}", headers=_headers(tenant), json=patch)
+    assert updated.status_code == 200, updated.text
+    db_session.expire_all()
+    after = _read(client, tenant, created["id"])
+    for result in (created, before, updated.json()["data"], after):
+        assert result["status"] == "draft"
+        assert (result["subtotal_ars"], result["tax_total_ars"], result["total_ars"]) == ("350.75", "57.83", "408.58")
+        assert (result["discount_amount_ars"], result["amount_payable_ars"]) == (discount, net)
+        assert [(item["quantity"], item["unit_price_without_tax_ars"], item["tax_rate_percentage"]) for item in result["items"]] == [
+            ("2.00", "100.00", "21.00"), ("3.00", "50.25", "10.50"),
+        ]
+    current = client.get(f"/api/v1/inventory/items/{first['id']}", headers=_headers(tenant)).json()["data"]
+    assert (current["purchase_price_ars"], current["purchase_tax_rate_percentage"], current["sale_price_ars"]) == (
+        catalog["purchase_price_ars"], catalog["purchase_tax_rate_percentage"], catalog["sale_price_ars"],
+    )
+    for item_id in (first["id"], second["id"]):
+        assert db_session.get(InventoryItem, uuid.UUID(item_id)).current_stock == Decimal("0")
+    assert db_session.scalar(select(func.count()).select_from(InventoryMovement)) == 0
+
+
 def test_discounted_receipt_uses_original_cost_once_and_reversal_preserves_money(client, tenant, db_session):
     item, supplier = _setup(client, tenant)
     data = _create(client, tenant, item, supplier, discount_type="percentage", discount_value="10")
